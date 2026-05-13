@@ -112,9 +112,12 @@ namespace ClaudeUsageOverlay.Services
             [JsonPropertyName("utilization")]
             public double Utilization { get; set; }
 
-            /// <summary>リセット日時（ISO 8601 / UTC オフセット付き）</summary>
+            /// <summary>
+            /// リセット日時（ISO 8601 / UTC オフセット付き）。
+            /// 使用率が 0% の場合など、未使用のときは API が null を返すため nullable にする。
+            /// </summary>
             [JsonPropertyName("resets_at")]
-            public DateTimeOffset ResetsAt { get; set; }
+            public DateTimeOffset? ResetsAt { get; set; }
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -284,6 +287,10 @@ namespace ClaudeUsageOverlay.Services
         /// <summary>
         /// JSON テキストから ScrapedUsageData を生成する。
         /// five_hour / seven_day のいずれかが欠損している場合は null を返す。
+        ///
+        /// resets_at が null のケース（使用率 0% で未使用のとき API が null を返す）:
+        ///   - セッション残り時間 → 5時間（300分）をそのまま残り時間として扱う
+        ///   - 週間残り時間      → 7日（10080分）をそのまま残り時間として扱う
         /// </summary>
         private static ScrapedUsageData? ParseUsage(string json)
         {
@@ -296,17 +303,42 @@ namespace ClaudeUsageOverlay.Services
                     return null;
 
                 var now = DateTimeOffset.Now;
-                var sessionRemaining = resp.FiveHour.ResetsAt - now;
-                var weeklyRemaining  = resp.SevenDay.ResetsAt  - now;
+
+                // resets_at が null の場合（未使用で制限未到達）は各制限期間をフル残りとして扱う
+                int sessionRemainingMinutes;
+                if (resp.FiveHour.ResetsAt.HasValue)
+                {
+                    // リセット日時が分かっている場合は差分を計算する
+                    var sessionRemaining = resp.FiveHour.ResetsAt.Value - now;
+                    sessionRemainingMinutes = sessionRemaining.TotalMinutes > 0
+                                             ? (int)sessionRemaining.TotalMinutes : 0;
+                }
+                else
+                {
+                    // null = まだリセット不要（使用率 0%）→ 5時間フル残り
+                    sessionRemainingMinutes = 5 * 60;
+                }
+
+                int weeklyRemainingMinutes;
+                if (resp.SevenDay.ResetsAt.HasValue)
+                {
+                    // リセット日時が分かっている場合は差分を計算する
+                    var weeklyRemaining = resp.SevenDay.ResetsAt.Value - now;
+                    weeklyRemainingMinutes = weeklyRemaining.TotalMinutes > 0
+                                            ? (int)weeklyRemaining.TotalMinutes : 0;
+                }
+                else
+                {
+                    // null = まだリセット不要（使用率 0%）→ 7日フル残り
+                    weeklyRemainingMinutes = 7 * 24 * 60;
+                }
 
                 return new ScrapedUsageData
                 {
                     SessionPercent          = (int)Math.Round(resp.FiveHour.Utilization),
-                    SessionRemainingMinutes = sessionRemaining.TotalMinutes > 0
-                                             ? (int)sessionRemaining.TotalMinutes : 0,
+                    SessionRemainingMinutes = sessionRemainingMinutes,
                     WeeklyPercent           = (int)Math.Round(resp.SevenDay.Utilization),
-                    WeeklyRemainingMinutes  = weeklyRemaining.TotalMinutes > 0
-                                             ? (int)weeklyRemaining.TotalMinutes : 0
+                    WeeklyRemainingMinutes  = weeklyRemainingMinutes
                 };
             }
             catch
