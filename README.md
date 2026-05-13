@@ -1,0 +1,161 @@
+# Claude Usage Overlay
+
+Claude.ai の使用量（セッション・週間）を Windows 画面上に常時表示するオーバーレイアプリです。
+
+![overlay](docs/screenshot.png)
+
+---
+
+## 機能
+
+- **セッション使用率**をオレンジのプログレスバーで表示
+- **週間使用率**をカラーインジケーター（緑 / 黄 / 赤）で表示
+- **残り時間**をリアルタイムで表示（例: "2時間13分" / "4日8時間"）
+- 画面の好きな場所にドラッグして配置可能
+- Windows 起動時に自動起動（設定から ON/OFF）
+- 定期自動更新（デフォルト 60 秒）＋手動更新ボタン（↺）
+
+---
+
+## 動作要件
+
+| 項目 | 内容 |
+|------|------|
+| OS | Windows 10 / 11 (64-bit) |
+| WebView2 Runtime | Windows 11 および Edge インストール済みの Windows 10 には標準搭載 |
+| Claude.ai アカウント | Pro プラン推奨（Free プランでも動作します） |
+
+> **WebView2 が未インストールの場合**  
+> [Microsoft の公式ページ](https://developer.microsoft.com/ja-jp/microsoft-edge/webview2/) からインストールしてください。
+
+---
+
+## インストール（ビルド不要）
+
+1. [Releases](../../releases) ページを開く
+2. 最新バージョンの `ClaudeUsageOverlay.exe` をダウンロード
+3. ダウンロードしたフォルダで `ClaudeUsageOverlay.exe` をダブルクリック
+
+インストーラー不要・単一 exe ファイルです。
+
+---
+
+## 初回セットアップ
+
+アプリ起動後、**タスクバー**または**オーバーレイを右クリック**してメニューを開きます。
+
+### 1. ログイン
+
+```
+右クリック → ログイン
+```
+
+表示されたブラウザウィンドウで **claude.ai にログイン**します。  
+ログイン完了後、ウィンドウを閉じて ↺ ボタンを押すと使用量が反映されます。
+
+> ログイン情報は `%TEMP%\ClaudeUsageOverlay_WebView2` に保存され、  
+> **次回以降は自動ログイン**されます（Cookie の手動入力は不要です）。
+
+### 2. 設定（任意）
+
+```
+右クリック → 設定
+```
+
+| 設定項目 | 説明 |
+|----------|------|
+| 更新間隔（秒） | データ取得の間隔（最小 5 秒） |
+| Windows 起動時に自動起動 | チェックで HKCU\...\Run に登録 |
+
+---
+
+## 使い方
+
+| 操作 | 動作 |
+|------|------|
+| ドラッグ | オーバーレイを好きな場所へ移動 |
+| ↺ ボタン | 今すぐ更新 |
+| 右クリック → 設定 | 設定画面を開く |
+| 右クリック → ログイン | WebView2 ブラウザでログイン |
+| 右クリック → セッションリセット | セッションタイマーをリセット |
+| 右クリック → 終了 | アプリを終了 |
+
+### ステータス表示の見方
+
+| 表示 | 意味 |
+|------|------|
+| `API: HH:mm` | claude.ai からリアルタイムデータを取得中 |
+| `エラー: 未ログイン` | ログインが必要（右クリック → ログイン） |
+| `更新: HH:mm` | ローカル計測モード（ログイン前） |
+
+---
+
+## 自分でビルドする場合
+
+### 必要なもの
+
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- Visual Studio 2022 以降（WPF ワークロード）
+
+### ビルド手順
+
+```bash
+git clone https://github.com/<your-name>/Claude-UsageTool.git
+cd Claude-UsageTool/ClaudeUsageOverlay
+dotnet restore
+dotnet build -c Release
+```
+
+### 単一 exe として発行する
+
+```bash
+dotnet publish ClaudeUsageOverlay/ClaudeUsageOverlay.csproj ^
+  -c Release ^
+  -r win-x64 ^
+  --self-contained true ^
+  -p:PublishSingleFile=true ^
+  -o publish/
+```
+
+`publish/ClaudeUsageOverlay.exe` が生成されます。
+
+---
+
+## アーキテクチャ
+
+```
+ClaudeUsageOverlay/
+├── Models/
+│   ├── AppSettings.cs       # 設定（更新間隔・ウィンドウ位置）
+│   ├── ScrapedUsageData.cs  # API レスポンスの中間モデル
+│   └── UsageRecord.cs       # ローカル時間計測レコード
+├── Services/
+│   ├── ClaudeApiClient.cs   # WebView2 で claude.ai API を呼び出す
+│   ├── ClaudeWebScraper.cs  # （旧 HTTP 方式・予備）
+│   └── UsageService.cs      # 設定・API・フォールバックの統合
+├── ViewModels/
+│   └── MainViewModel.cs     # INotifyPropertyChanged / DispatcherTimer
+├── MainWindow.xaml(.cs)     # 常時最前面オーバーレイ
+├── SettingsWindow.xaml(.cs) # 設定ダイアログ
+└── LoginWindow.xaml(.cs)    # WebView2 ログインウィンドウ
+```
+
+**データ取得フロー:**
+1. WebView2 が `https://claude.ai/settings/usage` に自動アクセス
+2. ページ内の `fetch()` 呼び出しを JavaScript で傍受
+3. `/api/organizations/{id}/usage` のレスポンス JSON をパース
+4. `five_hour.utilization` → セッション %、`seven_day.utilization` → 週間 %
+
+---
+
+## プライバシー・セキュリティ
+
+- **外部サーバーへの送信なし** — データは claude.ai との直接通信のみ
+- **認証情報の保存場所** — `%TEMP%\ClaudeUsageOverlay_WebView2`（WebView2 の標準プロファイル）
+- **設定ファイル** — `%AppData%\ClaudeUsageOverlay\settings.json`
+
+---
+
+## ライセンス
+
+MIT License

@@ -1,0 +1,109 @@
+# ────────────────────────────────────────────────────────────────
+# release.yml
+#
+# バージョンタグ（例: v1.0.0）が push されたときに自動実行される
+# GitHub Actions ワークフロー。
+#
+# 処理内容:
+#   1. .NET 9 SDK をセットアップ
+#   2. dotnet publish で単一 exe（self-contained）を生成
+#   3. 生成した ClaudeUsageOverlay.exe を GitHub Release に添付
+#
+# トリガー例:
+#   git tag v1.0.0
+#   git push origin v1.0.0
+# ────────────────────────────────────────────────────────────────
+
+name: Release Build
+
+# v で始まるタグ push 時のみ実行する
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build & Publish (win-x64)
+    # Windows ランナーを使用（WPF は Windows 専用）
+    runs-on: windows-latest
+
+    permissions:
+      # GitHub Release の作成・アップロードに必要
+      contents: write
+
+    steps:
+      # ──────────────────────────────────────────────────────────
+      # 1. ソースコードをチェックアウト
+      # ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ──────────────────────────────────────────────────────────
+      # 2. .NET 9 SDK をセットアップ
+      #    global.json が存在する場合はそちらが優先される
+      # ──────────────────────────────────────────────────────────
+      - name: Setup .NET 9 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      # ──────────────────────────────────────────────────────────
+      # 3. NuGet パッケージを復元
+      # ──────────────────────────────────────────────────────────
+      - name: Restore dependencies
+        run: dotnet restore ClaudeUsageOverlay/ClaudeUsageOverlay.csproj
+
+      # ──────────────────────────────────────────────────────────
+      # 4. 単一 exe として発行
+      #    --self-contained true  : .NET ランタイム同梱
+      #    PublishSingleFile=true : すべてのファイルを 1 つの exe に圧縮
+      #    IncludeNativeLibrariesForSelfExtract=true : ネイティブライブラリも同梱
+      # ──────────────────────────────────────────────────────────
+      - name: Publish single-file executable
+        run: |
+          dotnet publish ClaudeUsageOverlay/ClaudeUsageOverlay.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -o publish/
+
+      # ──────────────────────────────────────────────────────────
+      # 5. タグ名からバージョン番号を取得（例: v1.0.0 → 1.0.0）
+      # ──────────────────────────────────────────────────────────
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # ──────────────────────────────────────────────────────────
+      # 6. GitHub Release を作成し、exe をアセットとして添付
+      #    draft: false  → 即時公開
+      #    prerelease: タグに "-beta" / "-rc" を含む場合は true
+      # ──────────────────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Claude Usage Overlay v${{ steps.version.outputs.version }}"
+          body: |
+            ## Claude Usage Overlay v${{ steps.version.outputs.version }}
+
+            ### インストール方法
+            1. `ClaudeUsageOverlay.exe` をダウンロード
+            2. ダウンロードしたフォルダで `ClaudeUsageOverlay.exe` をダブルクリック
+            3. インストーラー不要・単一 exe ファイルです
+
+            ### 動作要件
+            - Windows 10 / 11 (64-bit)
+            - WebView2 Runtime（Windows 11 および Edge インストール済み環境には標準搭載）
+
+            ### 初回セットアップ
+            起動後、オーバーレイを右クリック → **ログイン** から claude.ai にログインしてください。
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          files: publish/ClaudeUsageOverlay.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
