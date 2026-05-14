@@ -1,6 +1,8 @@
 using System.Windows;
 using Microsoft.Win32;
 using ClaudeUsageOverlay.Services;
+// UseWindowsForms 追加による WinForms との名前衝突を解消するエイリアス
+using MessageBox = System.Windows.MessageBox;
 
 namespace ClaudeUsageOverlay
 {

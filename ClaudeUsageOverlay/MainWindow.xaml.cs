@@ -1,9 +1,14 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using ClaudeUsageOverlay.Services;
 using ClaudeUsageOverlay.ViewModels;
+// UseWindowsForms 追加による WinForms との名前衝突を解消するエイリアス
+using Application      = System.Windows.Application;
+using Color            = System.Windows.Media.Color;
+using ColorConverter   = System.Windows.Media.ColorConverter;
 
 namespace ClaudeUsageOverlay
 {
@@ -11,6 +16,10 @@ namespace ClaudeUsageOverlay
     /// MainWindow のコードビハインド。
     /// 常時最前面表示のオーバーレイウィンドウとして動作し、
     /// ドラッグ移動・右クリックメニュー・週間インジケータ色変更を担当する。
+    ///
+    /// トレイ常駐対応:
+    ///   × ボタンを押してもアプリは終了せず、ウィンドウを非表示にしてトレイに引っ込む。
+    ///   App.IsExiting が true のとき（「終了」選択時）だけ実際に閉じる。
     /// </summary>
     public partial class MainWindow : Window
     {
@@ -132,13 +141,47 @@ namespace ClaudeUsageOverlay
         }
 
         /// <summary>
+        /// 右クリックメニューの「非表示にする」クリックハンドラ。
+        /// × ボタンと同じく、ウィンドウを非表示にしてトレイに引っ込める。
+        /// </summary>
+        private void Hide_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+        }
+
+        /// <summary>
         /// 右クリックメニューの「終了」クリックハンドラ。
-        /// アプリケーション全体を終了する。
+        /// App.ExitApplication() 経由で NotifyIcon を破棄してアプリを終了する。
         /// </summary>
         private void Exit_Click(object sender, RoutedEventArgs e)
         {
             _viewModel.Dispose();
-            Application.Current.Shutdown();
+            // App.ExitApplication() が IsExiting フラグを立ててから Shutdown() を呼ぶ
+            ((App)Application.Current).ExitApplication();
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // ウィンドウライフサイクル
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// ウィンドウが閉じようとするときに呼ばれるオーバーライド。
+        ///
+        /// App.IsExiting が false（通常時）: キャンセルしてウィンドウを非表示にする。
+        ///   → × ボタンや Alt+F4 でもアプリは終了せず、トレイに引っ込む。
+        /// App.IsExiting が true（終了操作時）: そのまま閉じる。
+        ///   → 「終了」メニューや ExitApplication() 経由でのみ本当に閉じる。
+        /// </summary>
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            if (!App.IsExiting)
+            {
+                // キャンセルして非表示にする（アプリは終了しない）
+                e.Cancel = true;
+                Hide();
+                return;
+            }
+            base.OnClosing(e);
         }
 
         // ────────────────────────────────────────────────────────────────
