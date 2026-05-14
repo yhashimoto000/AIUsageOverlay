@@ -13,7 +13,7 @@
         Background="Transparent"
         Topmost="True"
         ResizeMode="NoResize"
-        ShowInTaskbar="True"
+        ShowInTaskbar="False"
         MouseLeftButtonDown="Window_MouseLeftButtonDown">
 
     <!--
@@ -27,6 +27,10 @@
             <MenuItem Header="ログイン(_L)" Click="Login_Click"
                       Background="#2A2A2A" Foreground="White"/>
             <MenuItem Header="セッションリセット(_R)" Click="ResetSession_Click"
+                      Background="#2A2A2A" Foreground="White"/>
+            <Separator Background="#484848"/>
+            <!-- トレイに隠す（× ボタンと同じ動作） -->
+            <MenuItem Header="非表示にする(_H)" Click="Hide_Click"
                       Background="#2A2A2A" Foreground="White"/>
             <Separator Background="#484848"/>
             <MenuItem Header="終了(_X)" Click="Exit_Click"
