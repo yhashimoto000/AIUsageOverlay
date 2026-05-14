@@ -33,6 +33,12 @@ namespace ClaudeUsageOverlay
         /// <summary>データバインディング用 ViewModel</summary>
         private readonly MainViewModel _viewModel;
 
+        /// <summary>
+        /// App がトレイアイコン更新のために ViewModel を参照するための内部公開プロパティ。
+        /// PropertyChanged を購読することでセッション使用率の変化を検知する。
+        /// </summary>
+        internal MainViewModel ViewModel => _viewModel;
+
         // ────────────────────────────────────────────────────────────────
         // コンストラクタ
         // ────────────────────────────────────────────────────────────────
