@@ -11,6 +11,8 @@
         <Grid.RowDefinitions>
             <!-- 案内テキスト行 -->
             <RowDefinition Height="Auto"/>
+            <!-- エラーバナー行（通常は高さ0、エラー時に表示） -->
+            <RowDefinition x:Name="ErrorRow" Height="0"/>
             <!-- WebView2 行 -->
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
@@ -23,8 +25,35 @@
                    TextWrapping="Wrap"
                    Margin="12,10,12,8"/>
 
+        <!-- エラーバナー: WebView2 描画失敗時に表示するフォールバック UI -->
+        <Border x:Name="ErrorBanner"
+                Grid.Row="1"
+                Background="#2A1A1A"
+                Padding="12,8"
+                Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock x:Name="ErrorMessageText"
+                           Text="ブラウザの表示に失敗しました。"
+                           Foreground="#FF8888"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           Margin="0,0,12,0"/>
+                <!-- システムブラウザで開くフォールバックボタン -->
+                <Button x:Name="OpenBrowserButton"
+                        Content="ブラウザで claude.ai を開く"
+                        Click="OpenBrowserButton_Click"
+                        Background="#3A2A2A"
+                        Foreground="#FFAAAA"
+                        BorderBrush="#FF6666"
+                        BorderThickness="1"
+                        Padding="8,4"
+                        FontSize="12"
+                        Cursor="Hand"/>
+            </StackPanel>
+        </Border>
+
         <!-- WebView2 ブラウザ -->
         <wv2:WebView2 x:Name="LoginWebView"
-                      Grid.Row="1"/>
+                      Grid.Row="2"/>
     </Grid>
 </Window>
