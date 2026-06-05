@@ -49,14 +49,13 @@ namespace AIUsageOverlay.Services
     window.__ghInterceptorInstalled = true;
     window.__ghCopilotRaw = null;
 
-    // billing/copilot に関するレスポンスを捕捉する共通関数
+    // "copilot" をレスポンス本文に含む場合のみ捕捉する共通関数
+    // （billing URL であっても copilot 無関係な JSON は無視する）
     function tryCapture(url, text) {
         if (window.__ghCopilotRaw) return;   // 既に取得済み
         try {
-            const u = (url || '').toLowerCase();
             const t = (text || '').toLowerCase();
-            if ((u.includes('billing') || u.includes('copilot') || t.includes('copilot'))
-                && text && text.length > 10) {
+            if (t.includes('copilot') && text && text.length > 10) {
                 window.__ghCopilotRaw = text;
             }
         } catch {}
@@ -147,8 +146,17 @@ namespace AIUsageOverlay.Services
                 }
 
                 var result = ParseCopilotData(raw);
+
+                // 傍受 JSON のパースが失敗した場合は DOM テキストへフォールバックする
+                if (result == null && !raw.StartsWith("__PAGETEXT__:"))
+                {
+                    var pageText = await ReadPageTextAsync();
+                    if (pageText != null)
+                        result = ParseCopilotData(pageText);
+                }
+
                 if (result == null)
-                    LastError = $"ParseError: {raw[..Math.Min(120, raw.Length)]}";
+                    LastError = "Copilot情報が取得できませんでした（ページ構造が変化した可能性）";
 
                 return result;
             }
@@ -276,13 +284,25 @@ namespace AIUsageOverlay.Services
                     return JsonSerializer.Deserialize<string>(encoded);
             }
 
-            // 傍受できなかった場合は DOM テキストを返す（フォールバック）
-            var pageTextEncoded = await _webView.CoreWebView2.ExecuteScriptAsync(
-                "document.body ? document.body.innerText : ''");
-            var pageText = JsonSerializer.Deserialize<string>(pageTextEncoded) ?? "";
+            // 傍受できなかった（または copilot を含まなかった）→ DOM テキストで補完する
+            return await ReadPageTextAsync();
+        }
 
-            // GitHub にログインしているが Copilot 情報がない場合は認証失敗として扱わない
-            return pageText.Length > 100 ? $"__PAGETEXT__:{pageText}" : null;
+        /// <summary>
+        /// 現在のページの DOM テキストを読み取り __PAGETEXT__ プレフィックス付きで返す。
+        /// ページが十分なテキストを持っていない（未ロード・ログインリダイレクト等）場合は null を返す。
+        /// </summary>
+        private async Task<string?> ReadPageTextAsync()
+        {
+            if (_webView?.CoreWebView2 == null) return null;
+            try
+            {
+                var encoded = await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "document.body ? document.body.innerText : ''");
+                var text = JsonSerializer.Deserialize<string>(encoded) ?? "";
+                return text.Length > 100 ? $"__PAGETEXT__:{text}" : null;
+            }
+            catch { return null; }
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -456,24 +476,4 @@ namespace AIUsageOverlay.Services
 
             // 英語フルネーム月: "August 1, 2026"
             var fullMonth = Regex.Match(searchText,
-                @"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}",
-                RegexOptions.IgnoreCase);
-            if (fullMonth.Success && DateTimeOffset.TryParse(fullMonth.Value, out var dt1))
-                return dt1;
-
-            // 英語省略月: "Aug 1, 2026"
-            var shortMonth = Regex.Match(searchText,
-                @"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}",
-                RegexOptions.IgnoreCase);
-            if (shortMonth.Success && DateTimeOffset.TryParse(shortMonth.Value, out var dt2))
-                return dt2;
-
-            // ISO 形式: "2026-08-01"
-            var iso = Regex.Match(searchText, @"\d{4}-\d{2}-\d{2}");
-            if (iso.Success && DateTimeOffset.TryParse(iso.Value, out var dt3))
-                return dt3;
-
-            return null;
-        }
-    }
-}
+                @"(January|February|
