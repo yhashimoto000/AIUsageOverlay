@@ -22,8 +22,8 @@ namespace AIUsageOverlay
         // 定数
         // ────────────────────────────────────────────────────────────────
 
-        /// <summary>ログイン対象 URL</summary>
-        private const string LoginUrl = "https://claude.ai/";
+        /// <summary>Claude 用デフォルトログイン URL</summary>
+        private const string DefaultLoginUrl = "https://claude.ai/";
 
         /// <summary>
         /// WebView2 描画確認のポーリング間隔（ミリ秒）。
@@ -36,10 +36,16 @@ namespace AIUsageOverlay
         // ────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// ClaudeApiClient と共有する CoreWebView2Environment。
+        /// 呼び出し元（Claude or GitHub）から渡された共有 CoreWebView2Environment。
         /// 同じユーザーデータフォルダを参照するため Cookie を共有できる。
         /// </summary>
         private readonly CoreWebView2Environment _env;
+
+        /// <summary>
+        /// ログイン対象の URL。
+        /// デフォルトは claude.ai、GitHub ログイン時は github.com/login が渡される。
+        /// </summary>
+        private readonly string _loginUrl;
 
         // ────────────────────────────────────────────────────────────────
         // コンストラクタ
@@ -48,11 +54,13 @@ namespace AIUsageOverlay
         /// <summary>
         /// LoginWindow を初期化する。
         /// </summary>
-        /// <param name="env">ClaudeApiClient から渡された共有 CoreWebView2Environment</param>
-        public LoginWindow(CoreWebView2Environment env)
+        /// <param name="env">呼び出し元から渡された共有 CoreWebView2Environment</param>
+        /// <param name="loginUrl">ログイン先 URL（省略時は claude.ai）</param>
+        public LoginWindow(CoreWebView2Environment env, string loginUrl = DefaultLoginUrl)
         {
             InitializeComponent();
-            _env = env;
+            _env      = env;
+            _loginUrl = loginUrl;
 
             // ウィンドウ表示後に WebView2 を初期化する
             Loaded += OnLoaded;
@@ -80,8 +88,8 @@ namespace AIUsageOverlay
                 // ナビゲーション完了イベントをフックして失敗を検知する
                 LoginWebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
 
-                // claude.ai のトップページを開く（ログイン後に設定ページへ遷移する）
-                LoginWebView.CoreWebView2.Navigate(LoginUrl);
+                // ログイン対象 URL を開く（Claude: claude.ai / GitHub: github.com/login）
+                LoginWebView.CoreWebView2.Navigate(_loginUrl);
 
                 // 描画遅延チェック: NavigationCompleted から一定時間後に
                 // 実際にコンテンツが描画されているか JS で確認する
@@ -157,21 +165,4 @@ namespace AIUsageOverlay
         /// WebView2 が描画できない場合のフォールバックとして、
         /// システムの既定ブラウザで claude.ai を開く。
         /// </summary>
-        private void OpenBrowserButton_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                // システムの既定ブラウザで claude.ai を開く
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName        = LoginUrl,
-                    UseShellExecute = true   // OS のデフォルトブラウザに委譲する
-                });
-            }
-            catch (Exception ex)
-            {
-                ErrorMessageText.Text = $"ブラウザを開けませんでした: {ex.Message}";
-            }
-        }
-    }
-}
+        p

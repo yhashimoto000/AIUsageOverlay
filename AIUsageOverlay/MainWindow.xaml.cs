@@ -105,13 +105,22 @@ namespace AIUsageOverlay
         }
 
         /// <summary>
-        /// 右クリックメニューの「ログイン」クリックハンドラ。
-        /// WebView2 ウィンドウを画面中央に表示して claude.ai のログインページを開く。
-        /// ログイン完了後は ↺ ボタンで更新する。
+        /// 右クリックメニューの「ログイン - Claude」クリックハンドラ。
+        /// WebView2 ウィンドウを表示して claude.ai のログインページを開く。
         /// </summary>
         private async void Login_Click(object sender, RoutedEventArgs e)
         {
             await _usageService.ShowLoginWindowAsync();
+        }
+
+        /// <summary>
+        /// 右クリックメニューの「ログイン - GitHub」クリックハンドラ。
+        /// GitHub 専用の WebView2 ウィンドウを表示して github.com のログインページを開く。
+        /// ログイン後は ↺ ボタンで更新する。
+        /// </summary>
+        private async void GitHubLogin_Click(object sender, RoutedEventArgs e)
+        {
+            await _usageService.ShowGitHubLoginWindowAsync();
         }
 
         /// <summary>
@@ -263,15 +272,4 @@ namespace AIUsageOverlay
                 // 50% 未満: 通常色（グリーン）
                 colorHex = "#4CAF50";
                 textColorHex = "#4CAF50";
-            }
-
-            // ドット色を更新する
-            WeeklyIndicatorDot.Fill = new SolidColorBrush(
-                (Color)ColorConverter.ConvertFromString(colorHex));
-
-            // パーセンテージテキスト色を更新する
-            WeeklyPercentBlock.Foreground = new SolidColorBrush(
-                (Color)ColorConverter.ConvertFromString(textColorHex));
-        }
-    }
-}
+  

@@ -15,22 +15,12 @@ namespace AIUsageOverlay.Models
         public string ApiKey { get; set; } = string.Empty;
 
         /// <summary>
-        /// GitHub Personal Access Token。
-        /// GitHub Copilot 使用状況の取得に使用する（scopes: read:user, read:org）。
-        /// 未設定の場合は GitHub Copilot セクションを非表示にする。
+        /// GitHub Copilot 表示を有効にするかどうか。
+        /// true のとき GitHub Copilot セクションを表示し、スクレイピングを実行する。
+        /// WebView2 の GitHub セッションは %TEMP%\AIUsageOverlay_GitHub_WebView2 に永続保存される。
         /// </summary>
-        [JsonPropertyName("gitHubPat")]
-        public string GitHubPat { get; set; } = string.Empty;
-
-        /// <summary>
-        /// GitHub 組織名（省略可）。
-        /// 設定した場合、組織の Copilot シート使用状況（使用中/総数）を取得する。
-        /// 未設定の場合は個人プランとして認証確認のみ行う。
-        /// </summary>
-        [JsonPropertyName("gitHubOrg")]
-        public string GitHubOrg { get; set; } = string.Empty;
-
-
+        [JsonPropertyName("gitHubCopilotEnabled")]
+        public bool GitHubCopilotEnabled { get; set; } = false;
 
         /// <summary>
         /// セッションの制限時間（分）。
@@ -53,4 +43,12 @@ namespace AIUsageOverlay.Models
         [JsonPropertyName("refreshIntervalSeconds")]
         public int RefreshIntervalSeconds { get; set; } = 30;
 
-        /// <su
+        /// <summary>
+        /// オーバーレイウィンドウの X 座標。
+        /// -1 の場合は画面水平中央に自動配置する。
+        /// </summary>
+        [JsonPropertyName("windowLeft")]
+        public double WindowLeft { get; set; } = -1;
+
+        /// <summary>
+        /// オーバーレイウィンド�

@@ -74,8 +74,8 @@ namespace AIUsageOverlay.Services
         /// <summary>WebView2 を使って claude.ai API を呼び出すクライアント</summary>
         private readonly ClaudeApiClient _apiClient = new();
 
-        /// <summary>GitHub REST API を呼び出して Copilot 使用状況を取得するクライアント</summary>
-        private readonly GitHubApiClient _gitHubClient = new();
+        /// <summary>WebView2 で GitHub Billing ページをスクレイピングするクライアント</summary>
+        private readonly GitHubWebScraper _gitHubScraper = new();
 
         // ────────────────────────────────────────────────────────────────
         // 公開メソッド
@@ -94,23 +94,27 @@ namespace AIUsageOverlay.Services
         public string? GetLastApiError() => _apiClient.LastError;
 
         /// <summary>
-        /// 直前の GitHub API 呼び出しで発生したエラーの説明を取得する。
-        /// 成功時は null。例: "PAT認証エラー" / "タイムアウト"
+        /// 直前の GitHub スクレイピングで発生したエラーの説明を取得する。
+        /// 成功時は null。例: "未ログイン" / "タイムアウト"
         /// </summary>
-        public string? GetLastGitHubError() => _gitHubClient.LastError;
+        public string? GetLastGitHubError() => _gitHubScraper.LastError;
 
         /// <summary>
-        /// GitHub Copilot の使用状況を非同期で取得する。
-        /// PAT と組織名は現在の設定から読み込む。
+        /// GitHub Billing ページをスクレイピングして Copilot 使用状況を取得する。
+        /// GitHubCopilotEnabled が false の場合は即 null を返す。
         /// </summary>
-        /// <returns>取得成功時は GitHubCopilotData、失敗時は null</returns>
+        /// <returns>取得成功時は GitHubCopilotData、無効または失敗時は null</returns>
         public async Task<GitHubCopilotData?> FetchGitHubCopilotAsync()
         {
-            var settings = GetSettings();
-            return await _gitHubClient.FetchCopilotDataAsync(
-                settings.GitHubPat,
-                settings.GitHubOrg);
+            if (!_settings.GitHubCopilotEnabled) return null;
+            return await _gitHubScraper.FetchCopilotDataAsync();
         }
+
+        /// <summary>
+        /// GitHub ログイン用の LoginWindow（GitHub セッション共有）を表示する。
+        /// </summary>
+        public async Task ShowGitHubLoginWindowAsync()
+            => await _gitHubScraper.ShowLoginWindowAsync();
 
         /// <summary>
         /// ログイン用に WebView2 ウィンドウを表示する。
@@ -288,11 +292,4 @@ namespace AIUsageOverlay.Services
             }
             catch
             {
-                // 読み込みエラーはデフォルト設定にフォールバックする
-                return new AppSettings();
-            }
-        }
-
-        /// <summary>
-        /// 使用量記録ファイルを読み込む。
-        /// ファイルが存在しない場合・読み込み�
+                // 読み込みエラ�

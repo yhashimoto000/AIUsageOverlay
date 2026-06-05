@@ -51,9 +51,8 @@ namespace AIUsageOverlay
             var settings = _usageService.GetSettings();
             RefreshIntervalTextBox.Text = settings.RefreshIntervalSeconds.ToString();
 
-            // GitHub 設定を反映する（PAT は PasswordBox でマスク表示）
-            GitHubPatBox.Password = settings.GitHubPat;
-            GitHubOrgTextBox.Text = settings.GitHubOrg;
+            // GitHub Copilot 有効化チェックボックスを反映する
+            GitHubCopilotCheckBox.IsChecked = settings.GitHubCopilotEnabled;
 
             // レジストリの登録状態をチェックボックスに反映する
             StartupCheckBox.IsChecked = IsStartupRegistered();
@@ -79,11 +78,10 @@ namespace AIUsageOverlay
                 return;
             }
 
-            // 更新間隔・GitHub 設定を保存する
+            // 更新間隔・GitHub Copilot 設定を保存する
             var settings = _usageService.GetSettings();
             settings.RefreshIntervalSeconds = refreshInterval;
-            settings.GitHubPat = GitHubPatBox.Password;
-            settings.GitHubOrg = GitHubOrgTextBox.Text.Trim();
+            settings.GitHubCopilotEnabled   = GitHubCopilotCheckBox.IsChecked == true;
             _usageService.SaveSettings(settings);
 
             // スタートアップ登録を更新する
@@ -152,4 +150,7 @@ namespace AIUsageOverlay
                 {
                     // エントリが存在する場合のみ削除する
                     if (key.GetValue(StartupValueName) != null)
-                        key.DeleteValue(StartupValue
+                        key.DeleteValue(StartupValueName);
+                }
+            }
+            catch (Exception

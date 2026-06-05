@@ -25,7 +25,9 @@
         <ContextMenu Background="#2A2A2A" BorderBrush="#484848" Foreground="White">
             <MenuItem Header="設定(_S)" Click="Settings_Click"
                       Background="#2A2A2A" Foreground="White"/>
-            <MenuItem Header="ログイン(_L)" Click="Login_Click"
+            <MenuItem Header="ログイン - Claude(_L)" Click="Login_Click"
+                      Background="#2A2A2A" Foreground="White"/>
+            <MenuItem Header="ログイン - GitHub(_G)" Click="GitHubLogin_Click"
                       Background="#2A2A2A" Foreground="White"/>
             <MenuItem Header="セッションリセット(_R)" Click="ResetSession_Click"
                       Background="#2A2A2A" Foreground="White"/>
@@ -271,8 +273,4 @@
 
                     <!-- "セッション" ラベル -->
                     <TextBlock Grid.Column="0"
-                               Text="セッション"
-                               Foreground="#888888"
-                               FontSize="11"/>
-
             
