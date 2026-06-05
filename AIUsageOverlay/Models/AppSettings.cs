@@ -23,6 +23,14 @@ namespace AIUsageOverlay.Models
         public bool GitHubCopilotEnabled { get; set; } = false;
 
         /// <summary>
+        /// OpenAI / Codex 表示を有効にするかどうか。
+        /// true のとき Codex セクションを表示し、platform.openai.com をスクレイピングする。
+        /// WebView2 のセッションは %TEMP%\AIUsageOverlay_Codex_WebView2 に永続保存される。
+        /// </summary>
+        [JsonPropertyName("codexEnabled")]
+        public bool CodexEnabled { get; set; } = false;
+
+        /// <summary>
         /// セッションの制限時間（分）。
         /// デフォルト: 300 分（5 時間）= Claude Pro の標準セッション上限に相当
         /// </summary>
@@ -40,15 +48,4 @@ namespace AIUsageOverlay.Models
         /// 使用量データの更新間隔（秒）。
         /// デフォルト: 30 秒
         /// </summary>
-        [JsonPropertyName("refreshIntervalSeconds")]
-        public int RefreshIntervalSeconds { get; set; } = 30;
-
-        /// <summary>
-        /// オーバーレイウィンドウの X 座標。
-        /// -1 の場合は画面水平中央に自動配置する。
-        /// </summary>
-        [JsonPropertyName("windowLeft")]
-        public double WindowLeft { get; set; } = -1;
-
-        /// <summary>
-        /// オーバーレイウィンド�
+        [JsonPrope

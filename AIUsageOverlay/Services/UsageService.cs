@@ -77,6 +77,9 @@ namespace AIUsageOverlay.Services
         /// <summary>WebView2 で GitHub Billing ページをスクレイピングするクライアント</summary>
         private readonly GitHubWebScraper _gitHubScraper = new();
 
+        /// <summary>WebView2 で platform.openai.com をスクレイピングするクライアント</summary>
+        private readonly CodexWebScraper _codexScraper = new();
+
         // ────────────────────────────────────────────────────────────────
         // 公開メソッド
         // ────────────────────────────────────────────────────────────────
@@ -115,6 +118,23 @@ namespace AIUsageOverlay.Services
         /// </summary>
         public async Task ShowGitHubLoginWindowAsync()
             => await _gitHubScraper.ShowLoginWindowAsync();
+
+        /// <summary>直前の Codex スクレイピングで発生したエラーの説明を取得する。</summary>
+        public string? GetLastCodexError() => _codexScraper.LastError;
+
+        /// <summary>
+        /// OpenAI Billing ページをスクレイピングして Codex 使用状況を取得する。
+        /// CodexEnabled が false の場合は即 null を返す。
+        /// </summary>
+        public async Task<CodexUsageData?> FetchCodexAsync()
+        {
+            if (!_settings.CodexEnabled) return null;
+            return await _codexScraper.FetchUsageAsync();
+        }
+
+        /// <summary>Codex ログイン用の LoginWindow を表示する。</summary>
+        public async Task ShowCodexLoginWindowAsync()
+            => await _codexScraper.ShowLoginWindowAsync();
 
         /// <summary>
         /// ログイン用に WebView2 ウィンドウを表示する。
@@ -266,30 +286,4 @@ namespace AIUsageOverlay.Services
         /// </summary>
         private void ResetWeeklyIfNeeded()
         {
-            var thisMonday = UsageRecord.GetThisMonday();
-            if (_usageRecord.WeekStartDate.Date != thisMonday.Date)
-            {
-                _usageRecord.WeekStartDate = thisMonday;
-                _usageRecord.WeeklyUsedMinutes = 0;
-                SaveUsageRecord();
-            }
-        }
-
-        /// <summary>
-        /// 設定ファイルを読み込む。
-        /// ファイルが存在しない場合・読み込みエラーの場合はデフォルト設定を返す。
-        /// </summary>
-        /// <returns>読み込んだ AppSettings、または新規デフォルト設定</returns>
-        private AppSettings LoadSettings()
-        {
-            if (!File.Exists(SettingsFilePath))
-                return new AppSettings();
-
-            try
-            {
-                var json = File.ReadAllText(SettingsFilePath);
-                return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
-            }
-            catch
-            {
-                // 読み込みエラ�
+            var thisMonday = UsageRecord.GetThisMonday

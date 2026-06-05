@@ -124,6 +124,15 @@ namespace AIUsageOverlay
         }
 
         /// <summary>
+        /// 右クリックメニューの「ログイン - OpenAI」クリックハンドラ。
+        /// OpenAI 専用の WebView2 ウィンドウを表示して platform.openai.com のログインページを開く。
+        /// </summary>
+        private async void CodexLogin_Click(object sender, RoutedEventArgs e)
+        {
+            await _usageService.ShowCodexLoginWindowAsync();
+        }
+
+        /// <summary>
         /// 右クリックメニューの「セッションリセット」クリックハンドラ。
         /// セッション開始時刻をリセットし、表示を即時更新する。
         /// </summary>
@@ -259,17 +268,4 @@ namespace AIUsageOverlay
             {
                 // 80% 以上: 警告色（赤）
                 colorHex = "#F44336";
-                textColorHex = "#F44336";
-            }
-            else if (weeklyPercent >= 50)
-            {
-                // 50〜79%: 注意色（黄色）
-                colorHex = "#FFC107";
-                textColorHex = "#FFC107";
-            }
-            else
-            {
-                // 50% 未満: 通常色（グリーン）
-                colorHex = "#4CAF50";
-                textColorHex = "#4CAF50";
-  
+     

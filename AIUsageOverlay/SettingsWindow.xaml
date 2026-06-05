@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="設定 - AI Usage Overlay"
-        Width="400" Height="370"
+        Width="400" Height="480"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="#1C1C1C"
@@ -103,16 +103,17 @@
                            Margin="24,4,0,0"/>
             </StackPanel>
 
-            <!-- ── スタートアップ登録 ── -->
-            <StackPanel>
-                <CheckBox x:Name="StartupCheckBox"
-                          Content="Windows 起動時に自動で起動する"
+            <!-- ── OpenAI / Codex ── -->
+            <StackPanel Margin="0,0,0,20">
+                <TextBlock Text="OpenAI / Codex"
+                           Foreground="#10A37F"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,10"/>
+                <CheckBox x:Name="CodexCheckBox"
+                          Content="OpenAI / Codex の使用状況を表示する"
                           Foreground="White"
                           FontSize="13"
                           Cursor="Hand">
                     <CheckBox.Style>
-                        <Style TargetType="CheckBox">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="CheckBox">
-                                    
+                        <Sty

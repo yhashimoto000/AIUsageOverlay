@@ -54,6 +54,9 @@ namespace AIUsageOverlay
             // GitHub Copilot 有効化チェックボックスを反映する
             GitHubCopilotCheckBox.IsChecked = settings.GitHubCopilotEnabled;
 
+            // Codex 有効化チェックボックスを反映する
+            CodexCheckBox.IsChecked = settings.CodexEnabled;
+
             // レジストリの登録状態をチェックボックスに反映する
             StartupCheckBox.IsChecked = IsStartupRegistered();
         }
@@ -78,10 +81,11 @@ namespace AIUsageOverlay
                 return;
             }
 
-            // 更新間隔・GitHub Copilot 設定を保存する
+            // 更新間隔・各ツール設定を保存する
             var settings = _usageService.GetSettings();
             settings.RefreshIntervalSeconds = refreshInterval;
             settings.GitHubCopilotEnabled   = GitHubCopilotCheckBox.IsChecked == true;
+            settings.CodexEnabled           = CodexCheckBox.IsChecked == true;
             _usageService.SaveSettings(settings);
 
             // スタートアップ登録を更新する
@@ -148,9 +152,4 @@ namespace AIUsageOverlay
                 }
                 else
                 {
-                    // エントリが存在する場合のみ削除する
-                    if (key.GetValue(StartupValueName) != null)
-                        key.DeleteValue(StartupValueName);
-                }
-            }
-            catch (Exception
+                    // エントリが存在する�

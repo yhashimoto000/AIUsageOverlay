@@ -9,19 +9,18 @@ using AIUsageOverlay.Models;
 namespace AIUsageOverlay.Services
 {
     /// <summary>
-    /// WebView2（実際の Chromium エンジン）を使って GitHub の Billing ページを
-    /// スクレイピングし、GitHub Copilot の使用状況を取得するクライアント。
+    /// WebView2 を使って GitHub の Copilot 機能ページをスクレイピングし、
+    /// AI credits の使用状況・次回リセット日を取得するクライアント。
     ///
     /// 動作フロー:
-    ///   1. 不可視の WPF ウィンドウに WebView2 を初期化する（初回のみ）
-    ///   2. https://github.com/settings/billing/summary に Navigate する
-    ///   3. ページが呼び出す内部 API のレスポンスを fetch/XHR 傍受で取得する
-    ///   4. 傍受失敗時は DOM テキストからのフォールバック解析を行う
-    ///   5. GitHub Copilot の状態・次回更新日を返す
+    ///   1. https://github.com/settings/copilot/features に Navigate する
+    ///   2. fetch/XHR 傍受で copilot/credits 関連レスポンスを捕捉する
+    ///   3. 捕捉失敗時は DOM テキストから "X / Y AI credits" を解析する
+    ///   4. フォールバックとして billing/summary も試みる
     ///
-    /// 認証について:
-    ///   WebView2 は %TEMP%\AIUsageOverlay_GitHub_WebView2 に永続セッションを保存するため、
-    ///   初回ログイン後は再ログイン不要。Claude とは別のユーザーデータフォルダを使用する。
+    /// 認証:
+    ///   %TEMP%\AIUsageOverlay_GitHub_WebView2 にセッションを永続保存。
+    ///   Claude とは別フォルダなので両方のセッションが独立している。
     /// </summary>
     public class GitHubWebScraper : IDisposable
     {
@@ -29,19 +28,21 @@ namespace AIUsageOverlay.Services
         // 定数
         // ────────────────────────────────────────────────────────────────
 
-        /// <summary>Billing ページ URL（GitHub Copilot の購読情報が掲載される）</summary>
+        /// <summary>Copilot 機能ページ（"18 / 1,500 AI credits" が掲載される）</summary>
+        private const string UsageUrl = "https://github.com/settings/copilot/features";
+
+        /// <summary>Billing サマリーページ（UsageUrl で取得できない場合のフォールバック）</summary>
         private const string BillingUrl = "https://github.com/settings/billing/summary";
 
-        /// <summary>GitHub ログイン URL（LoginWindow で開く）</summary>
+        /// <summary>ログイン URL（LoginWindow で開く）</summary>
         public const string LoginUrl = "https://github.com/login";
 
-        /// <summary>Claude とは別に GitHub セッションを永続保存するフォルダ名</summary>
+        /// <summary>Claude とは別フォルダに GitHub セッションを保存する</summary>
         private const string UserDataFolderName = "AIUsageOverlay_GitHub_WebView2";
 
         /// <summary>
-        /// ページ生成時に注入する fetch/XHR 傍受スクリプト。
-        /// billing・copilot に関連するレスポンスを window.__ghCopilotRaw に保存する。
-        /// また埋め込みスクリプトタグや window グローバルも探索する。
+        /// copilot または AI credits を含むレスポンスを捕捉する fetch/XHR 傍受スクリプト。
+        /// window.__ghCopilotRaw に保存する。
         /// </summary>
         private const string InterceptorScript = @"
 (function() {
@@ -49,19 +50,18 @@ namespace AIUsageOverlay.Services
     window.__ghInterceptorInstalled = true;
     window.__ghCopilotRaw = null;
 
-    // "copilot" をレスポンス本文に含む場合のみ捕捉する共通関数
-    // （billing URL であっても copilot 無関係な JSON は無視する）
+    // copilot または AI credits を含むレスポンスのみ捕捉する
     function tryCapture(url, text) {
-        if (window.__ghCopilotRaw) return;   // 既に取得済み
+        if (window.__ghCopilotRaw) return;
         try {
             const t = (text || '').toLowerCase();
-            if (t.includes('copilot') && text && text.length > 10) {
+            if ((t.includes('copilot') || t.includes('ai_credit') || t.includes('ai credit'))
+                && text && text.length > 10) {
                 window.__ghCopilotRaw = text;
             }
         } catch {}
     }
 
-    // fetch() を傍受する
     const _origFetch = window.fetch;
     window.fetch = async function(...args) {
         const response = await _origFetch.apply(this, args);
@@ -73,7 +73,6 @@ namespace AIUsageOverlay.Services
         return response;
     };
 
-    // XMLHttpRequest を傍受する
     const _origOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(method, url) {
         this._ghUrl = url || '';
@@ -93,29 +92,16 @@ namespace AIUsageOverlay.Services
         // フィールド
         // ────────────────────────────────────────────────────────────────
 
-        /// <summary>WebView2 コントロールを保持する不可視の WPF ウィンドウ</summary>
         private Window? _hostWindow;
-
-        /// <summary>スクレイピングに使う WebView2 コントロール</summary>
         private WebView2? _webView;
-
-        /// <summary>
-        /// GitHub セッション用の CoreWebView2Environment。
-        /// LoginWindow と共有することで Cookie を同期する。
-        /// </summary>
         private CoreWebView2Environment? _env;
-
-        /// <summary>WebView2 の初期化完了フラグ</summary>
         private bool _initialized;
 
         // ────────────────────────────────────────────────────────────────
         // 公開プロパティ
         // ────────────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// 直前の呼び出しで発生したエラーの説明。成功時は null。
-        /// 例: "未ログイン" / "取得タイムアウト" / "ParseError"
-        /// </summary>
+        /// <summary>直前の呼び出しで発生したエラーの説明。成功時は null。</summary>
         public string? LastError { get; private set; }
 
         // ────────────────────────────────────────────────────────────────
@@ -123,8 +109,8 @@ namespace AIUsageOverlay.Services
         // ────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// GitHub Billing ページをスクレイピングして GitHubCopilotData を返す。
-        /// 未ログインやタイムアウトの場合は null を返す（LastError に理由が入る）。
+        /// GitHub Copilot の使用状況をスクレイピングして返す。
+        /// 未ログインやタイムアウトの場合は null を返す。
         /// </summary>
         public async Task<GitHubCopilotData?> FetchCopilotDataAsync()
         {
@@ -138,6 +124,7 @@ namespace AIUsageOverlay.Services
                     return null;
                 }
 
+                // UsageUrl → BillingUrl の順で試みる
                 var raw = await NavigateAndCaptureAsync();
                 if (raw == null)
                 {
@@ -147,7 +134,7 @@ namespace AIUsageOverlay.Services
 
                 var result = ParseCopilotData(raw);
 
-                // 傍受 JSON のパースが失敗した場合は DOM テキストへフォールバックする
+                // JSON パース失敗時は DOM テキストへフォールバック
                 if (result == null && !raw.StartsWith("__PAGETEXT__:"))
                 {
                     var pageText = await ReadPageTextAsync();
@@ -156,7 +143,7 @@ namespace AIUsageOverlay.Services
                 }
 
                 if (result == null)
-                    LastError = "Copilot情報が取得できませんでした（ページ構造が変化した可能性）";
+                    LastError = "Copilot情報が取得できませんでした";
 
                 return result;
             }
@@ -169,24 +156,20 @@ namespace AIUsageOverlay.Services
 
         /// <summary>
         /// GitHub ログイン用の LoginWindow を表示する。
-        /// GitHub 専用の CoreWebView2Environment を共有するため、
-        /// ここでログインした Cookie がスクレイピング用 WebView2 にも引き継がれる。
+        /// GitHub 専用 Environment を共有するため Cookie が同期される。
         /// </summary>
         public async Task ShowLoginWindowAsync()
         {
             await EnsureInitializedAsync();
             if (_env == null) return;
-
-            // LoginWindow を GitHub 用 URL で開く
             var loginWindow = new LoginWindow(_env, LoginUrl);
             loginWindow.Show();
         }
 
-        /// <summary>リソースを解放する。ホストウィンドウを閉じて WebView2 を破棄する。</summary>
         public void Dispose()
         {
             _hostWindow?.Close();
-            _webView    = null;
+            _webView = null;
             _hostWindow = null;
         }
 
@@ -194,47 +177,30 @@ namespace AIUsageOverlay.Services
         // 初期化
         // ────────────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// WebView2 を初期化する（初回呼び出し時のみ実行）。
-        /// Claude とは別フォルダにセッションを保存するため、GitHub セッションは独立している。
-        /// </summary>
         private async Task EnsureInitializedAsync()
         {
             if (_initialized) return;
 
-            // Claude とは別のユーザーデータフォルダを使い、セッションを分離する
             var userDataFolder = Path.Combine(Path.GetTempPath(), UserDataFolderName);
             _env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-            var env = _env;
 
-            // 不可視ホストウィンドウを作成する
             _hostWindow = new Window
             {
-                Width              = 1,
-                Height             = 1,
-                Left               = -9999,
-                Top                = -9999,
-                ShowInTaskbar      = false,
-                WindowStyle        = WindowStyle.None,
-                AllowsTransparency = true,
-                Opacity            = 0,
-                Title              = "GitHubScraperHost"
+                Width = 1, Height = 1, Left = -9999, Top = -9999,
+                ShowInTaskbar = false, WindowStyle = WindowStyle.None,
+                AllowsTransparency = true, Opacity = 0,
+                Title = "GitHubScraperHost"
             };
-
             _webView = new WebView2();
             _hostWindow.Content = _webView;
             _hostWindow.Show();
 
-            await _webView.EnsureCoreWebView2Async(env);
-
-            // 不要な UI 機能を無効化する
-            _webView.CoreWebView2.Settings.IsStatusBarEnabled            = false;
+            await _webView.EnsureCoreWebView2Async(_env);
+            _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
             _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            _webView.CoreWebView2.Settings.AreDevToolsEnabled            = false;
+            _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
 
-            // fetch/XHR 傍受スクリプトをすべてのページ生成前に注入する
             await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(InterceptorScript);
-
             _initialized = true;
         }
 
@@ -242,20 +208,22 @@ namespace AIUsageOverlay.Services
         // Navigate & 傍受
         // ────────────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Billing ページに Navigate し、傍受データまたは DOM テキストを返す。
-        ///
-        /// 手順:
-        ///   1. Billing ページへ遷移し、ナビゲーション完了を待つ
-        ///   2. ページ内の fetch/XHR 傍受を最大 10 秒ポーリングする
-        ///   3. 傍受データが得られなければ DOM テキストをフォールバックとして返す
-        ///   4. ログインページ（/login）にリダイレクトされていたら null を返す
-        /// </summary>
+        /// <summary>UsageUrl → BillingUrl の順に試みる</summary>
         private async Task<string?> NavigateAndCaptureAsync()
+        {
+            var result = await NavigateOnceAsync(UsageUrl);
+            if (result != null) return result;
+            return await NavigateOnceAsync(BillingUrl);
+        }
+
+        /// <summary>指定 URL に遷移し、傍受データまたは DOM テキストを返す</summary>
+        private async Task<string?> NavigateOnceAsync(string url)
         {
             if (_webView?.CoreWebView2 == null) return null;
 
-            // ナビゲーション完了を待つ
+            // 傍受バッファをリセット
+            await _webView.CoreWebView2.ExecuteScriptAsync("window.__ghCopilotRaw = null;");
+
             var navTcs = new TaskCompletionSource<bool>();
             void OnNav(object? s, CoreWebView2NavigationCompletedEventArgs e)
             {
@@ -263,18 +231,17 @@ namespace AIUsageOverlay.Services
                 navTcs.SetResult(e.IsSuccess);
             }
             _webView.CoreWebView2.NavigationCompleted += OnNav;
-            _webView.CoreWebView2.Navigate(BillingUrl);
+            _webView.CoreWebView2.Navigate(url);
 
             var navDone = await Task.WhenAny(navTcs.Task, Task.Delay(20_000));
             if (navDone != navTcs.Task || !navTcs.Task.Result)
                 return null;
 
-            // ログインページにリダイレクトされていないか確認する
             var currentUrl = _webView.CoreWebView2.Source ?? "";
             if (currentUrl.Contains("/login") || currentUrl.Contains("/sessions/new"))
                 return null;
 
-            // fetch/XHR 傍受データをポーリングする（300ms × 最大 33 回 ≒ 10 秒）
+            // fetch/XHR 傍受データをポーリング（300ms × 33 回 ≒ 10 秒）
             for (int i = 0; i < 33; i++)
             {
                 await Task.Delay(300);
@@ -284,22 +251,18 @@ namespace AIUsageOverlay.Services
                     return JsonSerializer.Deserialize<string>(encoded);
             }
 
-            // 傍受できなかった（または copilot を含まなかった）→ DOM テキストで補完する
             return await ReadPageTextAsync();
         }
 
-        /// <summary>
-        /// 現在のページの DOM テキストを読み取り __PAGETEXT__ プレフィックス付きで返す。
-        /// ページが十分なテキストを持っていない（未ロード・ログインリダイレクト等）場合は null を返す。
-        /// </summary>
+        /// <summary>現在ページの DOM テキストを __PAGETEXT__ プレフィックス付きで返す</summary>
         private async Task<string?> ReadPageTextAsync()
         {
             if (_webView?.CoreWebView2 == null) return null;
             try
             {
-                var encoded = await _webView.CoreWebView2.ExecuteScriptAsync(
+                var enc = await _webView.CoreWebView2.ExecuteScriptAsync(
                     "document.body ? document.body.innerText : ''");
-                var text = JsonSerializer.Deserialize<string>(encoded) ?? "";
+                var text = JsonSerializer.Deserialize<string>(enc) ?? "";
                 return text.Length > 100 ? $"__PAGETEXT__:{text}" : null;
             }
             catch { return null; }
@@ -309,77 +272,60 @@ namespace AIUsageOverlay.Services
         // パース
         // ────────────────────────────────────────────────────────────────
 
-        /// <summary>
-        /// 傍受データまたは DOM テキストから GitHubCopilotData を生成する。
-        ///
-        /// 処理の優先順位:
-        ///   1. 傍受 JSON: "copilot" キーを含む JSON を解析して状態と次回更新日を取得する
-        ///   2. DOM テキスト（__PAGETEXT__ プレフィックス付き）:
-        ///      "GitHub Copilot" セクションのテキストからステータスと日付をパースする
-        ///
-        /// いずれも失敗した場合は null を返す。
-        /// </summary>
         private static GitHubCopilotData? ParseCopilotData(string raw)
         {
             if (raw.StartsWith("__PAGETEXT__:"))
                 return ParseFromPageText(raw["__PAGETEXT__:".Length..]);
-
             return ParseFromJson(raw);
         }
 
-        /// <summary>
-        /// 傍受した JSON レスポンスから Copilot データを解析する。
-        /// GitHub 内部 API のレスポンス形式に対応した柔軟なパーサー。
-        /// </summary>
+        /// <summary>傍受した JSON から Copilot データを解析する</summary>
         private static GitHubCopilotData? ParseFromJson(string json)
         {
             try
             {
                 var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-
-                // JSON 全体を文字列化して Copilot 関連キーを探す
                 var jsonLower = json.ToLowerInvariant();
-                if (!jsonLower.Contains("copilot"))
+                if (!jsonLower.Contains("copilot") && !jsonLower.Contains("credit"))
                     return null;
 
-                // 再帰的にノードを探索して次回請求日と状態を取得する
                 DateTimeOffset? nextBilling = null;
-                bool isActive = false;
+                bool isActive    = false;
+                int creditsUsed  = -1, creditsTotal = -1;
 
-                FindCopilotFields(root, ref nextBilling, ref isActive);
+                FindCopilotFields(doc.RootElement,
+                    ref nextBilling, ref isActive,
+                    ref creditsUsed, ref creditsTotal);
 
-                // 解析できた場合はデータを返す
-                if (nextBilling.HasValue || isActive)
+                if (nextBilling.HasValue || isActive || creditsUsed >= 0)
                 {
                     return new GitHubCopilotData
                     {
-                        IsConnected       = true,
-                        IsActive          = isActive,
-                        NextBillingDate   = nextBilling,
-                        DaysUntilRenewal  = nextBilling.HasValue
+                        IsConnected      = true,
+                        IsActive         = isActive || nextBilling.HasValue || creditsUsed >= 0,
+                        CreditsUsed      = creditsUsed,
+                        CreditsTotal     = creditsTotal,
+                        HasUsageData     = creditsUsed >= 0 && creditsTotal > 0,
+                        NextBillingDate  = nextBilling,
+                        DaysUntilRenewal = nextBilling.HasValue
                             ? Math.Max(0, (int)(nextBilling.Value - DateTimeOffset.Now).TotalDays)
                             : -1
                     };
                 }
-
                 return null;
             }
-            catch
-            {
-                return null;
-            }
+            catch { return null; }
         }
 
         /// <summary>
-        /// JSON 要素ツリーを再帰的に探索して next_billing_date と status を取得する。
-        /// GitHub の内部 API レスポンスは構造が変わる可能性があるため、
-        /// キー名で汎用的にマッチさせる。
+        /// JSON ツリーを再帰探索して next_billing_date・status・AI credits を取得する
         /// </summary>
         private static void FindCopilotFields(
             JsonElement el,
             ref DateTimeOffset? nextBilling,
-            ref bool isActive)
+            ref bool isActive,
+            ref int creditsUsed,
+            ref int creditsTotal)
         {
             if (el.ValueKind == JsonValueKind.Object)
             {
@@ -387,16 +333,16 @@ namespace AIUsageOverlay.Services
                 {
                     var key = prop.Name.ToLowerInvariant();
 
-                    // 次回請求日のキー候補
+                    // 次回リセット日
                     if ((key.Contains("next") && key.Contains("bill"))
-                        || key is "next_billing_date" or "renewal_date" or "renews_at")
+                        || key is "next_billing_date" or "renewal_date" or "renews_at" or "reset_at" or "resets_at")
                     {
                         if (prop.Value.ValueKind == JsonValueKind.String
                             && DateTimeOffset.TryParse(prop.Value.GetString(), out var dt))
                             nextBilling = dt;
                     }
 
-                    // ステータスのキー候補
+                    // ステータス
                     if (key is "status" or "state" or "subscription_status")
                     {
                         var val = (prop.Value.GetString() ?? "").ToLowerInvariant();
@@ -404,49 +350,66 @@ namespace AIUsageOverlay.Services
                             isActive = true;
                     }
 
-                    // 再帰探索
-                    FindCopilotFields(prop.Value, ref nextBilling, ref isActive);
+                    // AI credits 使用数・上限
+                    if (key.Contains("credit") || key.Contains("quota") || key.Contains("allowance"))
+                    {
+                        if (key.Contains("used") || key.Contains("consumed") || key.Contains("spent"))
+                            TryGetInt(prop.Value, ref creditsUsed);
+                        else if (key.Contains("total") || key.Contains("limit")
+                              || key.Contains("included") || key.Contains("max") || key.Contains("allowance"))
+                            TryGetInt(prop.Value, ref creditsTotal);
+                    }
+
+                    FindCopilotFields(prop.Value, ref nextBilling, ref isActive,
+                        ref creditsUsed, ref creditsTotal);
                 }
             }
             else if (el.ValueKind == JsonValueKind.Array)
             {
                 foreach (var item in el.EnumerateArray())
-                    FindCopilotFields(item, ref nextBilling, ref isActive);
+                    FindCopilotFields(item, ref nextBilling, ref isActive,
+                        ref creditsUsed, ref creditsTotal);
             }
         }
 
+        private static void TryGetInt(JsonElement el, ref int target)
+        {
+            if (el.ValueKind == JsonValueKind.Number && el.TryGetInt32(out var v) && v >= 0)
+                target = v;
+        }
+
         /// <summary>
-        /// DOM テキスト（page.innerText）から Copilot 情報を解析する。
-        ///
-        /// GitHub の Billing ページテキストには以下のような記述が含まれる（英語 UI）:
-        ///   "GitHub Copilot"
-        ///   "Individual"
-        ///   "Active"
-        ///   "Next billing date  August 1, 2026"
-        ///
-        /// 日本語 UI の場合は "アクティブ" や "次の請求日" などが含まれる可能性がある。
+        /// DOM テキストから Copilot 情報を解析する。
+        /// "18 / 1,500 AI credits" や "Resets in 26 days on Jul 1, 2026" を捕捉する。
         /// </summary>
         private static GitHubCopilotData? ParseFromPageText(string pageText)
         {
-            if (string.IsNullOrWhiteSpace(pageText))
-                return null;
+            if (string.IsNullOrWhiteSpace(pageText)) return null;
 
             var ltext = pageText.ToLowerInvariant();
-
-            // GitHub Copilot の記載がなければ null
-            if (!ltext.Contains("copilot"))
+            if (!ltext.Contains("copilot") && !ltext.Contains("credit"))
                 return null;
 
-            // ステータス判定: "active" / "アクティブ" が含まれるかどうか
-            bool isActive = ltext.Contains("active") || ltext.Contains("アクティブ");
+            // Active 判定: キャンセル文言がなければアクティブとみなす
+            bool isActive = !ltext.Contains("cancel")
+                         && !ltext.Contains("キャンセル")
+                         && !ltext.Contains("inactive")
+                         && !ltext.Contains("expired")
+                         && !ltext.Contains("無効");
 
-            // 次回請求日の抽出: 英語日付パターン（例: "August 1, 2026" / "Aug 1, 2026"）
+            // AI credits の使用量を抽出: "18 / 1,500 AI credits"
+            var (creditsUsed, creditsTotal) = ExtractUsagePair(pageText, "credit");
+
+            // 次回リセット日を抽出: "Resets in 26 days on Jul 1, 2026"
             DateTimeOffset? nextBilling = ExtractNextBillingDate(pageText);
 
             return new GitHubCopilotData
             {
                 IsConnected      = true,
                 IsActive         = isActive,
+                CreditsUsed      = creditsUsed,
+                CreditsTotal     = creditsTotal,
+                HasUsageData     = creditsUsed >= 0 && creditsTotal > 0,
                 NextBillingDate  = nextBilling,
                 DaysUntilRenewal = nextBilling.HasValue
                     ? Math.Max(0, (int)(nextBilling.Value - DateTimeOffset.Now).TotalDays)
@@ -455,25 +418,58 @@ namespace AIUsageOverlay.Services
         }
 
         /// <summary>
-        /// テキストから "Next billing date" 近傍の英語日付文字列を抽出して
-        /// DateTimeOffset に変換する。
-        ///
-        /// 対応フォーマット:
-        ///   - "August 1, 2026"
-        ///   - "Aug 1, 2026"
-        ///   - "2026-08-01"
+        /// ページテキストから次回リセット日を抽出する。
+        /// 検索起点: "resets" / "next billing" / "次の請求"
         /// </summary>
         private static DateTimeOffset? ExtractNextBillingDate(string text)
         {
-            // "next billing" / "次の請求" 付近の 200 文字を探索対象にする
-            var idx = text.IndexOf("next billing", StringComparison.OrdinalIgnoreCase);
-            if (idx < 0)
-                idx = text.IndexOf("次の請求", StringComparison.OrdinalIgnoreCase);
+            var idx = text.IndexOf("resets", StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) idx = text.IndexOf("next billing", StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) idx = text.IndexOf("次の請求", StringComparison.OrdinalIgnoreCase);
 
             var searchText = idx >= 0
                 ? text.Substring(idx, Math.Min(200, text.Length - idx))
                 : text;
 
-            // 英語フルネーム月: "August 1, 2026"
-            var fullMonth = Regex.Match(searchText,
-                @"(January|February|
+            // 英語フルネーム月: "August 1, 2026" / "Jul 1, 2026"
+            var m1 = Regex.Match(searchText,
+                @"(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}",
+                RegexOptions.IgnoreCase);
+            if (m1.Success && DateTimeOffset.TryParse(m1.Value, out var dt1))
+                return dt1;
+
+            // ISO 形式: "2026-08-01"
+            var m2 = Regex.Match(searchText, @"\d{4}-\d{2}-\d{2}");
+            if (m2.Success && DateTimeOffset.TryParse(m2.Value, out var dt2))
+                return dt2;
+
+            return null;
+        }
+
+        /// <summary>
+        /// ページテキストから使用量ペア（used, total）を抽出する。
+        /// 対応パターン: "18 / 1,500 AI credits" / "150 of 300 credits"
+        /// </summary>
+        private static (int used, int total) ExtractUsagePair(string text, string keyword)
+        {
+            var idx = text.IndexOf(keyword, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) return (-1, -1);
+
+            var start = Math.Max(0, idx - 50);
+            var chunk = text.Substring(start, Math.Min(300, text.Length - start));
+
+            // "18 / 1,500" or "18 of 1,500"
+            var m = Regex.Match(chunk, @"([\d,]+)\s*(?:of|\/)\s*([\d,]+)", RegexOptions.IgnoreCase);
+            if (m.Success
+                && TryParseNumber(m.Groups[1].Value, out var u)
+                && TryParseNumber(m.Groups[2].Value, out var t))
+                return (u, t);
+
+            return (-1, -1);
+        }
+
+        private static bool TryParseNumber(string s, out int result)
+            => int.TryParse(s.Replace(",", ""), out result);
+    }
+}
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        

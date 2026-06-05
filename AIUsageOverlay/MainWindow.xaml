@@ -29,6 +29,8 @@
                       Background="#2A2A2A" Foreground="White"/>
             <MenuItem Header="ログイン - GitHub(_G)" Click="GitHubLogin_Click"
                       Background="#2A2A2A" Foreground="White"/>
+            <MenuItem Header="ログイン - OpenAI(_O)" Click="CodexLogin_Click"
+                      Background="#2A2A2A" Foreground="White"/>
             <MenuItem Header="セッションリセット(_R)" Click="ResetSession_Click"
                       Background="#2A2A2A" Foreground="White"/>
             <Separator Background="#484848"/>
@@ -62,16 +64,20 @@
             <Grid.RowDefinitions>
                 <!-- Claude セクション行 -->
                 <RowDefinition Height="Auto"/>
-                <!-- Claude / GitHub 区切り線（GitHub 表示時のみ高さを持つ） -->
+                <!-- Claude / GitHub 区切り線 -->
                 <RowDefinition Height="Auto"/>
-                <!-- GitHub Copilot セクション行（非表示時は高さ 0） -->
+                <!-- GitHub Copilot セクション行 -->
+                <RowDefinition Height="Auto"/>
+                <!-- GitHub / Codex 区切り線 -->
+                <RowDefinition Height="Auto"/>
+                <!-- Codex セクション行 -->
                 <RowDefinition Height="Auto"/>
                 <!-- ステータスバー行 -->
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
         <!-- ステータスバー（最終更新時刻 or エラー） -->
-        <TextBlock Grid.Row="3"
+        <TextBlock Grid.Row="5"
                    Text="{Binding StatusText}"
                    Foreground="#555555"
                    FontSize="9"
@@ -195,31 +201,25 @@
             </Grid>
         </Grid>
 
-        <!-- Claude / GitHub 区切り線（GitHub 表示時のみ） -->
-        <Rectangle Grid.Row="1"
+        <!-- GitHub / Codex 区切り線（Codex 表示時のみ） -->
+        <Rectangle Grid.Row="3"
                    Height="1"
                    Fill="#2A2A2A"
                    Margin="10,0"
-                   Visibility="{Binding GitHubSectionVisibility}"/>
+                   Visibility="{Binding CodexSectionVisibility}"/>
 
-        <Grid Grid.Row="0" Margin="14,8">
+        <!-- Codex セクション（未設定時は Collapsed） -->
+        <Grid Grid.Row="4"
+              Margin="14,6,14,6"
+              Visibility="{Binding CodexSectionVisibility}">
+
             <Grid.ColumnDefinitions>
-                <!-- セッションセクション: 週間より広いスペースを確保する -->
                 <ColumnDefinition Width="5*"/>
-                <!-- 縦区切り線 -->
                 <ColumnDefinition Width="Auto"/>
-                <!-- 週間セクション -->
                 <ColumnDefinition Width="3*"/>
-                <!-- 更新ボタン -->
-                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <!-- ===================================================
-                 左列: セッションセクション
-                 行 0: オレンジ色プログレスバー + 使用率テキスト
-                 行 1: スペーサー (4px)
-                 行 2: "セッション" ラベル + 残り時間テキスト
-                 =================================================== -->
+            <!-- 左列: クレジット残高プログレスバー or ステータスドット -->
             <Grid Grid.Column="0" Margin="0,0,12,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -227,43 +227,41 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- 行 0: プログレスバー行 -->
                 <Grid Grid.Row="0">
                     <Grid.ColumnDefinitions>
-                        <!-- バー部分: 利用可能な幅を全て使う -->
                         <ColumnDefinition Width="*"/>
-                        <!-- パーセンテージテキスト: 内容に合わせた幅 -->
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!--
-                        セッション プログレスバー（オレンジ）:
-                        - Value を SessionPercent (0〜100) にバインドする
-                        - Foreground="#FF8C00" でオレンジ色を指定する
-                        - RoundProgressBarStyle で丸角スタイルを適用する
-                    -->
+                    <!-- クレジット使用率プログレスバー（クレジットデータあり時） -->
                     <ProgressBar Grid.Column="0"
-                                 Value="{Binding SessionPercent}"
+                                 Value="{Binding CodexUsagePercent}"
                                  Maximum="100"
                                  Height="11"
-                                 Foreground="#FF8C00"
+                                 Foreground="#10A37F"
                                  VerticalAlignment="Center"
+                                 Visibility="{Binding CodexBarVisibility}"
                                  Style="{StaticResource RoundProgressBarStyle}"/>
 
-                    <!--
-                        セッション使用率テキスト（例: "75%"）:
-                        オレンジ色・太字で目立たせる
-                    -->
+                    <!-- データなし時のステータスドット -->
+                    <Ellipse Grid.Column="0"
+                             Width="10" Height="10"
+                             Fill="#10A37F"
+                             HorizontalAlignment="Left"
+                             VerticalAlignment="Center"
+                             Visibility="{Binding CodexDotVisibility}"/>
+
+                    <!-- 使用率テキスト -->
                     <TextBlock Grid.Column="1"
-                               Text="{Binding SessionPercentText}"
-                               Foreground="#FF8C00"
+                               Text="{Binding CodexUsagePercentText}"
+                               Foreground="#10A37F"
                                FontSize="15"
                                FontWeight="Bold"
                                Margin="8,0,0,0"
-                               VerticalAlignment="Center"/>
+                               VerticalAlignment="Center"
+                               Visibility="{Binding CodexBarVisibility}"/>
                 </Grid>
 
-                <!-- 行 2: ラベル行（"セッション" と 残り時間） -->
                 <Grid Grid.Row="2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -271,6 +269,12 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- "セッション" ラベル -->
                     <TextBlock Grid.Column="0"
-            
+                               Text="OpenAI / Codex"
+                               Foreground="#888888"
+                               FontSize="11"/>
+
+                    <!-- クレジット詳細テキスト（例: "$5.23 残高"） -->
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding CodexDetailText}"
+                               Foreground="#888888"
