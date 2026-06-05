@@ -1,4 +1,4 @@
-namespace ClaudeUsageOverlay.Models
+namespace AIUsageOverlay.Models
 {
     /// <summary>
     /// claude.ai/settings/usage ページのスクレイピング結果を保持するクラス。

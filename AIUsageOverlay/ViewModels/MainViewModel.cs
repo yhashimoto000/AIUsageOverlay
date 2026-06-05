@@ -1,9 +1,9 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading;
-using ClaudeUsageOverlay.Services;
+using AIUsageOverlay.Services;
 
-namespace ClaudeUsageOverlay.ViewModels
+namespace AIUsageOverlay.ViewModels
 {
     /// <summary>
     /// MainWindow のデータバインディングを担当する ViewModel クラス。

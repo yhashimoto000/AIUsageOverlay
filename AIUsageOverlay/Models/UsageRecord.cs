@@ -1,10 +1,10 @@
 using System.Text.Json.Serialization;
 
-namespace ClaudeUsageOverlay.Models
+namespace AIUsageOverlay.Models
 {
     /// <summary>
     /// Claude の使用量記録データを保持するクラス。
-    /// %AppData%\ClaudeUsageOverlay\usage.json に JSON 形式で永続化される。
+    /// %AppData%\AIUsageOverlay\usage.json に JSON 形式で永続化される。
     /// アプリ起動中に経過時間が加算され、週をまたぐと自動リセットされる。
     /// </summary>
     public class UsageRecord

@@ -1,8 +1,8 @@
 using System.IO;
 using System.Text.Json;
-using ClaudeUsageOverlay.Models;
+using AIUsageOverlay.Models;
 
-namespace ClaudeUsageOverlay.Services
+namespace AIUsageOverlay.Services
 {
     /// <summary>
     /// Claude の使用量追跡・管理を担当するサービスクラス。
@@ -15,10 +15,10 @@ namespace ClaudeUsageOverlay.Services
         // 定数 / ファイルパス
         // ────────────────────────────────────────────────────────────────
 
-        /// <summary>設定・使用量ファイルを保存するフォルダパス（%AppData%\ClaudeUsageOverlay）</summary>
+        /// <summary>設定・使用量ファイルを保存するフォルダパス（%AppData%\AIUsageOverlay）</summary>
         private static readonly string AppDataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "ClaudeUsageOverlay");
+            "AIUsageOverlay");
 
         /// <summary>設定ファイルのフルパス</summary>
         private static readonly string SettingsFilePath = Path.Combine(AppDataFolder, "settings.json");

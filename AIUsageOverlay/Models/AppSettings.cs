@@ -1,10 +1,10 @@
 using System.Text.Json.Serialization;
 
-namespace ClaudeUsageOverlay.Models
+namespace AIUsageOverlay.Models
 {
     /// <summary>
     /// アプリケーションの設定情報を保持するクラス。
-    /// %AppData%\ClaudeUsageOverlay\settings.json に JSON 形式で永続化される。
+    /// %AppData%\AIUsageOverlay\settings.json に JSON 形式で永続化される。
     /// </summary>
     public class AppSettings
     {

@@ -1,9 +1,9 @@
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using ClaudeUsageOverlay.Models;
+using AIUsageOverlay.Models;
 
-namespace ClaudeUsageOverlay.Services
+namespace AIUsageOverlay.Services
 {
     /// <summary>
     /// claude.ai の Usage JSON API を呼び出して使用量データを取得するクラス。
