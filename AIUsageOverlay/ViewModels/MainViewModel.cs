@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows;
 using System.Windows.Threading;
 using AIUsageOverlay.Services;
 
@@ -30,6 +31,16 @@ namespace AIUsageOverlay.ViewModels
         private string _weeklyPercentText = "0%";
         private string _weeklyRemainingText = "--";
         private string _statusText = "取得中...";
+
+        // GitHub Copilot バッキングフィールド
+        private Visibility _gitHubSectionVisibility = Visibility.Collapsed;
+        private Visibility _gitHubOrgBarVisibility  = Visibility.Collapsed;
+        private Visibility _gitHubIndividualDotVisibility = Visibility.Visible;
+        private double     _gitHubSeatsPercent;
+        private string     _gitHubSeatsPercentText = "0%";
+        private string     _gitHubSeatsText        = "";
+        private string     _gitHubStatusText       = "--";
+        private string     _gitHubUserText         = "";
 
         // ────────────────────────────────────────────────────────────────
         // バインディングプロパティ
@@ -95,6 +106,89 @@ namespace AIUsageOverlay.ViewModels
             set { _weeklyRemainingText = value; OnPropertyChanged(); }
         }
 
+        // ────────────────────────────────────────────────────────────────
+        // GitHub Copilot バインディングプロパティ
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// GitHub Copilot セクションの表示/非表示。
+        /// PAT が設定済みのとき Visible、未設定のとき Collapsed。
+        /// </summary>
+        public Visibility GitHubSectionVisibility
+        {
+            get => _gitHubSectionVisibility;
+            set { _gitHubSectionVisibility = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// 組織プランのシート使用率バーの表示/非表示。
+        /// 組織データ取得成功時のみ Visible。
+        /// </summary>
+        public Visibility GitHubOrgBarVisibility
+        {
+            get => _gitHubOrgBarVisibility;
+            set { _gitHubOrgBarVisibility = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// 個人プラン用ステータスドットの表示/非表示。
+        /// 組織データが取得できない（個人プラン）ときのみ Visible。
+        /// </summary>
+        public Visibility GitHubIndividualDotVisibility
+        {
+            get => _gitHubIndividualDotVisibility;
+            set { _gitHubIndividualDotVisibility = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// 組織シート使用率（0.0 ～ 100.0）。ProgressBar の Value にバインドする。
+        /// </summary>
+        public double GitHubSeatsPercent
+        {
+            get => _gitHubSeatsPercent;
+            set { _gitHubSeatsPercent = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// 組織シート使用率テキスト（例: "80%"）。
+        /// </summary>
+        public string GitHubSeatsPercentText
+        {
+            get => _gitHubSeatsPercentText;
+            set { _gitHubSeatsPercentText = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// 組織シート数テキスト（例: "8/10 シート"）。
+        /// 個人プランの場合は空文字。
+        /// </summary>
+        public string GitHubSeatsText
+        {
+            get => _gitHubSeatsText;
+            set { _gitHubSeatsText = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// GitHub Copilot ステータステキスト（例: "Connected" / "エラー: PAT認証エラー"）。
+        /// </summary>
+        public string GitHubStatusText
+        {
+            get => _gitHubStatusText;
+            set { _gitHubStatusText = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// GitHub ログインユーザー名（例: "@yhashimoto"）。
+        /// 未接続時は空文字。
+        /// </summary>
+        public string GitHubUserText
+        {
+            get => _gitHubUserText;
+            set { _gitHubUserText = value; OnPropertyChanged(); }
+        }
+
+        // ────────────────────────────────────────────────────────────────
+
         /// <summary>
         /// データ取得状態を示すテキスト。
         /// 例: "更新: 14:32"（成功）/ "接続エラー" / "取得中..."
@@ -146,6 +240,7 @@ namespace AIUsageOverlay.ViewModels
         {
             StatusText = "取得中...";
 
+            // ── Claude 使用量を更新 ──
             var (sessionRatio, sessionRemaining, weeklyRatio, weeklyRemaining, isFromApi) =
                 await _usageService.UpdateAndGetUsageAsync();
 
@@ -160,102 +255,7 @@ namespace AIUsageOverlay.ViewModels
             WeeklyRemainingText = FormatMinutes(weeklyRemaining);
 
             // ステータステキストを更新する
-            // - API 成功 → "API: HH:mm"
-            // - API 設定済みだが失敗 → "接続エラー"
-            // - API 未設定（ローカル計測）→ "更新: HH:mm"
             if (isFromApi)
                 StatusText = $"API: {DateTime.Now:HH:mm}";
             else
-            {
-                var apiError = _usageService.GetLastApiError();
-                StatusText = apiError != null ? $"エラー: {apiError}" : "接続エラー";
-            }
-        }
-
-        /// <summary>
-        /// 同期版リフレッシュ（後方互換・フォールバック用）。
-        /// ローカル時間計測データのみを取得する。
-        /// </summary>
-        public void RefreshUsage()
-        {
-            _ = RefreshUsageAsync();
-        }
-
-        /// <summary>
-        /// 設定変更後にタイマーの更新間隔を再設定する。
-        /// SettingsWindow で設定を保存した後に MainWindow から呼び出す。
-        /// </summary>
-        public void UpdateRefreshInterval()
-        {
-            var settings = _usageService.GetSettings();
-            _refreshTimer.Interval = TimeSpan.FromSeconds(settings.RefreshIntervalSeconds);
-        }
-
-        /// <summary>
-        /// セッションをリセットして表示を即時更新する。
-        /// 右クリックメニューの「セッションリセット」から呼び出される。
-        /// </summary>
-        public void ResetSession()
-        {
-            _usageService.ResetSession();
-            RefreshUsage();
-        }
-
-        /// <summary>
-        /// タイマーを停止してリソースを解放する（ウィンドウクローズ時に呼ぶ）。
-        /// </summary>
-        public void Dispose()
-        {
-            _refreshTimer.Stop();
-        }
-
-        // ────────────────────────────────────────────────────────────────
-        // 内部ヘルパー
-        // ────────────────────────────────────────────────────────────────
-
-        /// <summary>
-        /// 分数を「X日Y時間Z分」形式の日本語テキストに変換する。
-        /// 最上位の単位が 0 の場合はその桁を省略する（例: "13分"、"1時間13分"、"6日21時間"）。
-        /// </summary>
-        /// <param name="totalMinutes">変換する合計分数</param>
-        /// <returns>フォーマットされた残り時間テキスト</returns>
-        private static string FormatMinutes(int totalMinutes)
-        {
-            if (totalMinutes <= 0)
-                return "0分";
-
-            var ts = TimeSpan.FromMinutes(totalMinutes);
-            int days = (int)ts.TotalDays;
-            int hours = ts.Hours;
-            int minutes = ts.Minutes;
-
-            if (days > 0 && hours > 0)
-                return $"{days}日{hours}時間";
-            else if (days > 0)
-                return $"{days}日";
-            else if (hours > 0 && minutes > 0)
-                return $"{hours}時間{minutes}分";
-            else if (hours > 0)
-                return $"{hours}時間";
-            else
-                return $"{minutes}分";
-        }
-
-        // ────────────────────────────────────────────────────────────────
-        // INotifyPropertyChanged
-        // ────────────────────────────────────────────────────────────────
-
-        /// <summary>プロパティ変更時に UI へ通知するイベント</summary>
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        /// <summary>
-        /// プロパティ変更を通知する。
-        /// CallerMemberName 属性によりプロパティ名を自動取得する。
-        /// </summary>
-        /// <param name="propertyName">変更されたプロパティ名（自動取得）</param>
-        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-    }
-}
+           

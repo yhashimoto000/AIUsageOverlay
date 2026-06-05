@@ -51,6 +51,10 @@ namespace AIUsageOverlay
             var settings = _usageService.GetSettings();
             RefreshIntervalTextBox.Text = settings.RefreshIntervalSeconds.ToString();
 
+            // GitHub 設定を反映する（PAT は PasswordBox でマスク表示）
+            GitHubPatBox.Password = settings.GitHubPat;
+            GitHubOrgTextBox.Text = settings.GitHubOrg;
+
             // レジストリの登録状態をチェックボックスに反映する
             StartupCheckBox.IsChecked = IsStartupRegistered();
         }
@@ -75,9 +79,11 @@ namespace AIUsageOverlay
                 return;
             }
 
-            // 更新間隔を保存する
+            // 更新間隔・GitHub 設定を保存する
             var settings = _usageService.GetSettings();
             settings.RefreshIntervalSeconds = refreshInterval;
+            settings.GitHubPat = GitHubPatBox.Password;
+            settings.GitHubOrg = GitHubOrgTextBox.Text.Trim();
             _usageService.SaveSettings(settings);
 
             // スタートアップ登録を更新する
@@ -146,15 +152,4 @@ namespace AIUsageOverlay
                 {
                     // エントリが存在する場合のみ削除する
                     if (key.GetValue(StartupValueName) != null)
-                        key.DeleteValue(StartupValueName);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(
-                    $"スタートアップ設定の変更に失敗しました。\n{ex.Message}",
-                    "エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-        }
-    }
-}
+                        key.DeleteValue(StartupValue

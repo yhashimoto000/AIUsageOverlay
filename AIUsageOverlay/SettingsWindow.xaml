@@ -4,8 +4,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="設定 - Claude Usage Overlay"
-        Width="360" Height="290"
+        Title="設定 - AI Usage Overlay"
+        Width="400" Height="430"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="#1C1C1C"
@@ -48,6 +48,54 @@
                          ToolTip="デフォルト: 60（秒）"/>
             </StackPanel>
 
+            <!-- ── GitHub Copilot ── -->
+            <StackPanel Margin="0,0,0,20">
+                <!-- セクションヘッダー -->
+                <TextBlock Text="GitHub Copilot"
+                           Foreground="#58A6FF"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Margin="0,0,0,10"/>
+
+                <!-- PAT 入力 -->
+                <TextBlock Text="Personal Access Token（PAT）"
+                           Foreground="#AAAAAA"
+                           FontSize="12"
+                           Margin="0,0,0,4"/>
+                <PasswordBox x:Name="GitHubPatBox"
+                             Background="#2E2E2E"
+                             Foreground="White"
+                             CaretBrush="White"
+                             BorderBrush="#555555"
+                             BorderThickness="1"
+                             Padding="8,6"
+                             FontSize="13"
+                             ToolTip="ghp_xxx 形式のトークン（必要なスコープ: read:user, read:org）"/>
+                <TextBlock Text="設定しない場合は GitHub Copilot セクションを非表示にします"
+                           Foreground="#555555"
+                           FontSize="10"
+                           Margin="0,4,0,12"/>
+
+                <!-- 組織名入力 -->
+                <TextBlock Text="組織名（任意）"
+                           Foreground="#AAAAAA"
+                           FontSize="12"
+                           Margin="0,0,0,4"/>
+                <TextBox x:Name="GitHubOrgTextBox"
+                         Background="#2E2E2E"
+                         Foreground="White"
+                         CaretBrush="White"
+                         BorderBrush="#555555"
+                         BorderThickness="1"
+                         Padding="8,6"
+                         FontSize="13"
+                         ToolTip="シート使用状況を表示したい GitHub 組織名（省略可）"/>
+                <TextBlock Text="組織管理者権限が必要です。個人プランの場合は空のままにしてください"
+                           Foreground="#555555"
+                           FontSize="10"
+                           Margin="0,4,0,0"/>
+            </StackPanel>
+
             <!-- ── スタートアップ登録 ── -->
             <StackPanel>
                 <CheckBox x:Name="StartupCheckBox"
@@ -74,58 +122,4 @@
                                                            Text="✓"
                                                            Foreground="#FF8C00"
                                                            FontSize="11"
-                                                           FontWeight="Bold"
-                                                           HorizontalAlignment="Center"
-                                                           VerticalAlignment="Center"
-                                                           Visibility="Collapsed"/>
-                                            </Border>
-                                            <ContentPresenter VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
-                                                <Setter TargetName="CheckBorder" Property="BorderBrush" Value="#FF8C00"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </CheckBox.Style>
-                </CheckBox>
-                <TextBlock Text="レジストリ（HKCU\...\Run）に登録します"
-                           Foreground="#555555"
-                           FontSize="10"
-                           Margin="24,4,0,0"/>
-            </StackPanel>
-
-        </StackPanel>
-
-        <!-- ボタン行 -->
-        <StackPanel Grid.Row="2"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Right"
-                    Margin="0,16,0,0">
-
-            <Button Content="キャンセル"
-                    Width="90" Height="34"
-                    Margin="0,0,10,0"
-                    Background="#333333"
-                    Foreground="White"
-                    BorderBrush="#555555"
-                    BorderThickness="1"
-                    Cursor="Hand"
-                    Click="Cancel_Click"/>
-
-            <Button Content="保存"
-                    Width="90" Height="34"
-                    Background="#FF8C00"
-                    Foreground="White"
-                    BorderThickness="0"
-                    FontWeight="SemiBold"
-                    Cursor="Hand"
-                    Click="Save_Click"/>
-        </StackPanel>
-
-    </Grid>
-</Window>
+        

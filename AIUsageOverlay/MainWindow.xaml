@@ -5,8 +5,9 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:AIUsageOverlay"
         mc:Ignorable="d"
-        Title="Claude Usage Overlay"
-        Width="460" Height="74"
+        Title="AI Usage Overlay"
+        Width="460"
+        SizeToContent="Height"
         MinWidth="360"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -57,19 +58,147 @@
         -->
         <Grid>
             <Grid.RowDefinitions>
-                <!-- メインコンテンツ行 -->
-                <RowDefinition Height="*"/>
+                <!-- Claude セクション行 -->
+                <RowDefinition Height="Auto"/>
+                <!-- Claude / GitHub 区切り線（GitHub 表示時のみ高さを持つ） -->
+                <RowDefinition Height="Auto"/>
+                <!-- GitHub Copilot セクション行（非表示時は高さ 0） -->
+                <RowDefinition Height="Auto"/>
                 <!-- ステータスバー行 -->
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
         <!-- ステータスバー（最終更新時刻 or エラー） -->
-        <TextBlock Grid.Row="1"
+        <TextBlock Grid.Row="3"
                    Text="{Binding StatusText}"
                    Foreground="#555555"
                    FontSize="9"
                    HorizontalAlignment="Right"
                    Margin="0,0,10,4"/>
+
+        <!-- GitHub Copilot セクション（PAT 未設定時は Collapsed） -->
+        <Grid Grid.Row="2"
+              Margin="14,6,14,6"
+              Visibility="{Binding GitHubSectionVisibility}">
+
+            <Grid.ColumnDefinitions>
+                <!-- シート数プログレスバー or ステータスドット -->
+                <ColumnDefinition Width="5*"/>
+                <!-- 縦区切り線 -->
+                <ColumnDefinition Width="Auto"/>
+                <!-- ユーザー/シート情報 -->
+                <ColumnDefinition Width="3*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ===================================================
+                 左列: GitHub Copilot ラベル + プログレスバー（組織プラン）
+                 =================================================== -->
+            <Grid Grid.Column="0" Margin="0,0,12,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="4"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- 行 0: プログレスバー行（組織）or ステータスドット（個人） -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!--
+                        組織シート使用率プログレスバー（ブルー）:
+                        組織データなし時は Collapsed → ステータスドットを表示
+                    -->
+                    <ProgressBar Grid.Column="0"
+                                 Value="{Binding GitHubSeatsPercent}"
+                                 Maximum="100"
+                                 Height="11"
+                                 Foreground="#58A6FF"
+                                 VerticalAlignment="Center"
+                                 Visibility="{Binding GitHubOrgBarVisibility}"
+                                 Style="{StaticResource RoundProgressBarStyle}"/>
+
+                    <!-- 個人プラン用ステータスドット（組織データあり時は Collapsed） -->
+                    <Ellipse Grid.Column="0"
+                             Width="10" Height="10"
+                             Fill="#58A6FF"
+                             HorizontalAlignment="Left"
+                             VerticalAlignment="Center"
+                             Visibility="{Binding GitHubIndividualDotVisibility}"/>
+
+                    <!-- シート使用率テキスト（例: "80%"）-->
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding GitHubSeatsPercentText}"
+                               Foreground="#58A6FF"
+                               FontSize="15"
+                               FontWeight="Bold"
+                               Margin="8,0,0,0"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding GitHubOrgBarVisibility}"/>
+                </Grid>
+
+                <!-- 行 2: "GitHub Copilot" ラベル + シート数テキスト -->
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                               Text="GitHub Copilot"
+                               Foreground="#888888"
+                               FontSize="11"/>
+
+                    <!-- 組織: "8/10 シート" / 個人: 非表示 -->
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding GitHubSeatsText}"
+                               Foreground="#888888"
+                               FontSize="11"
+                               Visibility="{Binding GitHubOrgBarVisibility}"/>
+                </Grid>
+            </Grid>
+
+            <!-- 縦区切り線 -->
+            <Rectangle Grid.Column="1"
+                       Width="1"
+                       Fill="#404040"
+                       Margin="0,3"/>
+
+            <!-- ===================================================
+                 右列: ユーザー情報 / ステータス
+                 =================================================== -->
+            <Grid Grid.Column="2" Margin="12,0,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="4"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- GitHub ステータステキスト（例: "Connected" or エラー） -->
+                <TextBlock Grid.Row="0"
+                           Text="{Binding GitHubStatusText}"
+                           Foreground="#58A6FF"
+                           FontSize="13"
+                           FontWeight="Bold"
+                           VerticalAlignment="Center"/>
+
+                <!-- ログインユーザー名（例: "@yhashimoto"） -->
+                <TextBlock Grid.Row="2"
+                           Text="{Binding GitHubUserText}"
+                           Foreground="#888888"
+                           FontSize="11"/>
+            </Grid>
+        </Grid>
+
+        <!-- Claude / GitHub 区切り線（GitHub 表示時のみ） -->
+        <Rectangle Grid.Row="1"
+                   Height="1"
+                   Fill="#2A2A2A"
+                   Margin="10,0"
+                   Visibility="{Binding GitHubSectionVisibility}"/>
 
         <Grid Grid.Row="0" Margin="14,8">
             <Grid.ColumnDefinitions>
@@ -146,133 +275,4 @@
                                Foreground="#888888"
                                FontSize="11"/>
 
-                    <!-- 残り時間テキスト（例: "1時間13分"）: 右寄せ -->
-                    <TextBlock Grid.Column="2"
-                               Text="{Binding SessionRemainingText}"
-                               Foreground="#888888"
-                               FontSize="11"/>
-                </Grid>
-            </Grid>
-
-            <!-- 縦区切り線: セッションと週間を視覚的に分離する -->
-            <Rectangle Grid.Column="1"
-                       Width="1"
-                       Fill="#404040"
-                       Margin="0,3"/>
-
-            <!-- ===================================================
-                 右列: 週間セクション
-                 行 0: グリーンドット + 使用率テキスト
-                 行 1: スペーサー (4px)
-                 行 2: "週間" ラベル + 残り時間テキスト
-                 =================================================== -->
-            <Grid Grid.Column="2" Margin="12,0,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="4"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <!-- 行 0: グリーンドット + パーセンテージ行 -->
-                <StackPanel Grid.Row="0"
-                            Orientation="Horizontal"
-                            VerticalAlignment="Center">
-
-                    <!--
-                        週間インジケータ（グリーンドット）:
-                        使用率が低いことを示す小さな丸いインジケータ。
-                        使用率が高くなると色が変わる（黄色・赤）。
-                        色の制御は MainWindow.xaml.cs で行う。
-                    -->
-                    <Ellipse x:Name="WeeklyIndicatorDot"
-                             Width="10" Height="10"
-                             Fill="#4CAF50"
-                             VerticalAlignment="Center"
-                             Margin="0,0,7,0"/>
-
-                    <!--
-                        週間使用率テキスト（例: "5%"）:
-                        グリーン色・太字で表示する
-                    -->
-                    <TextBlock x:Name="WeeklyPercentBlock"
-                               Text="{Binding WeeklyPercentText}"
-                               Foreground="#4CAF50"
-                               FontSize="15"
-                               FontWeight="Bold"
-                               VerticalAlignment="Center"/>
-                </StackPanel>
-
-                <!-- 行 2: ラベル行（"週間" と 残り時間） -->
-                <Grid Grid.Row="2">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <!-- "週間" ラベル -->
-                    <TextBlock Grid.Column="0"
-                               Text="週間"
-                               Foreground="#888888"
-                               FontSize="11"/>
-
-                    <!-- 週間リセットまでの残り時間（例: "6日21時間"）: 右寄せ -->
-                    <TextBlock Grid.Column="2"
-                               Text="{Binding WeeklyRemainingText}"
-                               Foreground="#888888"
-                               FontSize="11"/>
-                </Grid>
-            </Grid>
-
-            <!-- ===================================================
-                 右端: 更新ボタン（↺）
-                 クリックで claude.ai から最新データを即時取得する
-                 =================================================== -->
-            <Button x:Name="RefreshButton"
-                    Grid.Column="3"
-                    Width="22" Height="22"
-                    Margin="8,0,0,0"
-                    VerticalAlignment="Center"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Cursor="Hand"
-                    ToolTip="今すぐ更新"
-                    Click="Refresh_Click">
-                <Button.Template>
-                    <ControlTemplate TargetType="Button">
-                        <!--
-                            ホバー時に色が変わるシンプルなアイコンボタン。
-                            ContentPresenter で ↺ テキストを表示する。
-                        -->
-                        <Border x:Name="ButtonBorder"
-                                Background="Transparent"
-                                CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ButtonBorder"
-                                        Property="Background"
-                                        Value="#333333"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="ButtonBorder"
-                                        Property="Background"
-                                        Value="#444444"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Button.Template>
-                <!-- ↺ アイコン（Unicode 回転矢印） -->
-                <TextBlock Text="↺"
-                           FontSize="16"
-                           Foreground="#888888"
-                           ToolTip="今すぐ更新"/>
-            </Button>
-
-        </Grid>
-
-        </Grid><!-- outer Grid -->
-    </Border>
-</Window>
+            

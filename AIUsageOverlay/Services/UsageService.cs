@@ -74,6 +74,9 @@ namespace AIUsageOverlay.Services
         /// <summary>WebView2 を使って claude.ai API を呼び出すクライアント</summary>
         private readonly ClaudeApiClient _apiClient = new();
 
+        /// <summary>GitHub REST API を呼び出して Copilot 使用状況を取得するクライアント</summary>
+        private readonly GitHubApiClient _gitHubClient = new();
+
         // ────────────────────────────────────────────────────────────────
         // 公開メソッド
         // ────────────────────────────────────────────────────────────────
@@ -89,6 +92,25 @@ namespace AIUsageOverlay.Services
         /// 成功時は null。例: "未ログイン" / "取得タイムアウト" / "ParseError"
         /// </summary>
         public string? GetLastApiError() => _apiClient.LastError;
+
+        /// <summary>
+        /// 直前の GitHub API 呼び出しで発生したエラーの説明を取得する。
+        /// 成功時は null。例: "PAT認証エラー" / "タイムアウト"
+        /// </summary>
+        public string? GetLastGitHubError() => _gitHubClient.LastError;
+
+        /// <summary>
+        /// GitHub Copilot の使用状況を非同期で取得する。
+        /// PAT と組織名は現在の設定から読み込む。
+        /// </summary>
+        /// <returns>取得成功時は GitHubCopilotData、失敗時は null</returns>
+        public async Task<GitHubCopilotData?> FetchGitHubCopilotAsync()
+        {
+            var settings = GetSettings();
+            return await _gitHubClient.FetchCopilotDataAsync(
+                settings.GitHubPat,
+                settings.GitHubOrg);
+        }
 
         /// <summary>
         /// ログイン用に WebView2 ウィンドウを表示する。
@@ -273,41 +295,4 @@ namespace AIUsageOverlay.Services
 
         /// <summary>
         /// 使用量記録ファイルを読み込む。
-        /// ファイルが存在しない場合・読み込みエラーの場合は新規レコードを返す。
-        /// </summary>
-        /// <returns>読み込んだ UsageRecord、または新規レコード</returns>
-        private UsageRecord LoadUsageRecord()
-        {
-            if (!File.Exists(UsageFilePath))
-                return new UsageRecord();
-
-            try
-            {
-                var json = File.ReadAllText(UsageFilePath);
-                return JsonSerializer.Deserialize<UsageRecord>(json) ?? new UsageRecord();
-            }
-            catch
-            {
-                // 読み込みエラーは新規レコードにフォールバックする
-                return new UsageRecord();
-            }
-        }
-
-        /// <summary>
-        /// 現在の使用量記録をファイルに保存する。
-        /// 書き込みエラーは静かに無視する（表示には影響しない）。
-        /// </summary>
-        private void SaveUsageRecord()
-        {
-            try
-            {
-                var json = JsonSerializer.Serialize(_usageRecord, JsonOptions);
-                File.WriteAllText(UsageFilePath, json);
-            }
-            catch
-            {
-                // ファイル保存エラーは無視する（次回起動時にデータが失われる可能性がある）
-            }
-        }
-    }
-}
+        /// ファイルが存在しない場合・読み込み�
