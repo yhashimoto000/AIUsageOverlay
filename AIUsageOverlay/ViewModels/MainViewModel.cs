@@ -266,4 +266,192 @@ namespace AIUsageOverlay.ViewModels
             WeeklyRemainingText = FormatMinutes(weeklyRemaining);
 
             if (isFromApi)
-                Statu
+                StatusText = $"API: {DateTime.Now:HH:mm}";
+            else
+            {
+                var apiError = _usageService.GetLastApiError();
+                StatusText = apiError != null ? $"エラー: {apiError}" : "接続エラー";
+            }
+
+            // ── GitHub Copilot ──
+            await RefreshGitHubCopilotAsync();
+
+            // ── Codex / OpenAI ──
+            await RefreshCodexAsync();
+        }
+
+        /// <summary>
+        /// GitHub Copilot の使用状況を取得してバインディングプロパティを更新する。
+        /// 有効設定なければセクション非表示。使用量データがあればプログレスバーを表示。
+        /// </summary>
+        private async Task RefreshGitHubCopilotAsync()
+        {
+            var settings = _usageService.GetSettings();
+
+            if (!settings.GitHubCopilotEnabled)
+            {
+                GitHubSectionVisibility = Visibility.Collapsed;
+                return;
+            }
+
+            GitHubSectionVisibility       = Visibility.Visible;
+            GitHubOrgBarVisibility        = Visibility.Collapsed;
+            GitHubIndividualDotVisibility = Visibility.Visible;
+
+            var data = await _usageService.FetchGitHubCopilotAsync();
+
+            if (data == null)
+            {
+                GitHubStatusText = "エラー";
+                GitHubUserText   = _usageService.GetLastGitHubError() ?? "接続失敗";
+                return;
+            }
+
+            // 残り日数（右列サブ情報）
+            GitHubUserText = data.DaysUntilRenewal >= 0
+                ? $"更新まで {data.DaysUntilRenewal}日"
+                : data.NextBillingDate.HasValue
+                    ? $"更新: {data.NextBillingDate.Value.LocalDateTime:M/d}"
+                    : "Active";
+
+            if (data.HasUsageData && data.CreditsTotal > 0)
+            {
+                // 使用量プログレスバーを表示する
+                GitHubOrgBarVisibility        = Visibility.Visible;
+                GitHubIndividualDotVisibility = Visibility.Collapsed;
+
+                double ratio           = Math.Min(1.0, (double)data.CreditsUsed / data.CreditsTotal);
+                GitHubSeatsPercent     = ratio * 100.0;
+                GitHubSeatsPercentText = $"{(int)(ratio * 100)}%";
+                GitHubSeatsText        = $"{data.CreditsUsed}/{data.CreditsTotal} AI credits";
+                GitHubStatusText       = $"{data.CreditsUsed}/{data.CreditsTotal}";
+            }
+            else
+            {
+                // データなし → ドット + Active 表示
+                GitHubOrgBarVisibility        = Visibility.Collapsed;
+                GitHubIndividualDotVisibility = Visibility.Visible;
+                GitHubStatusText              = data.IsActive ? "Active" : "Inactive";
+            }
+        }
+
+        /// <summary>
+        /// OpenAI / Codex の使用状況を取得してバインディングプロパティを更新する。
+        /// クレジット残高があればプログレスバー表示。なければステータスドット表示。
+        /// </summary>
+        private async Task RefreshCodexAsync()
+        {
+            var settings = _usageService.GetSettings();
+
+            if (!settings.CodexEnabled)
+            {
+                CodexSectionVisibility = Visibility.Collapsed;
+                return;
+            }
+
+            CodexSectionVisibility = Visibility.Visible;
+            CodexBarVisibility     = Visibility.Collapsed;
+            CodexDotVisibility     = Visibility.Visible;
+
+            var data = await _usageService.FetchCodexAsync();
+
+            if (data == null)
+            {
+                CodexStatusText = "エラー";
+                CodexSubText    = _usageService.GetLastCodexError() ?? "接続失敗";
+                return;
+            }
+
+            if (data.HasCreditData && data.CreditTotal > 0)
+            {
+                // クレジット残高 + 上限 → 使用率プログレスバー
+                CodexBarVisibility  = Visibility.Visible;
+                CodexDotVisibility  = Visibility.Collapsed;
+
+                decimal used  = data.CreditTotal - data.CreditBalance;
+                double  ratio = Math.Min(1.0, (double)(used / data.CreditTotal));
+                CodexUsagePercent     = ratio * 100.0;
+                CodexUsagePercentText = $"{(int)(ratio * 100)}%";
+                CodexDetailText       = $"残 ${data.CreditBalance:F2}";
+                CodexStatusText       = $"${data.CreditBalance:F2}";
+                CodexSubText          = data.HasUsageData
+                    ? $"今月 ${data.MonthlyUsageUsd:F2} 使用"
+                    : "残高";
+            }
+            else if (data.HasCreditData)
+            {
+                // 残高のみ（上限不明）
+                CodexBarVisibility  = Visibility.Collapsed;
+                CodexDotVisibility  = Visibility.Visible;
+                CodexStatusText     = $"${data.CreditBalance:F2}";
+                CodexSubText        = "残高";
+                CodexDetailText     = "";
+            }
+            else if (data.HasUsageData)
+            {
+                // 使用額のみ
+                CodexBarVisibility  = Visibility.Collapsed;
+                CodexDotVisibility  = Visibility.Visible;
+                CodexStatusText     = "Connected";
+                CodexSubText        = $"今月 ${data.MonthlyUsageUsd:F2} 使用";
+                CodexDetailText     = "";
+            }
+            else
+            {
+                CodexDotVisibility  = Visibility.Visible;
+                CodexStatusText     = "Connected";
+                CodexSubText        = "取得中";
+                CodexDetailText     = "";
+            }
+        }
+
+        /// <summary>同期版リフレッシュ（後方互換用）</summary>
+        public void RefreshUsage() => _ = RefreshUsageAsync();
+
+        /// <summary>タイマー間隔を設定変更後に再設定する</summary>
+        public void UpdateRefreshInterval()
+        {
+            var settings = _usageService.GetSettings();
+            _refreshTimer.Interval = TimeSpan.FromSeconds(settings.RefreshIntervalSeconds);
+        }
+
+        /// <summary>セッションをリセットして表示を即時更新する</summary>
+        public void ResetSession()
+        {
+            _usageService.ResetSession();
+            RefreshUsage();
+        }
+
+        /// <summary>タイマーを停止してリソースを解放する</summary>
+        public void Dispose() => _refreshTimer.Stop();
+
+        // ────────────────────────────────────────────────────────────────
+        // 内部ヘルパー
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>分数を "X日Y時間Z分" 形式に変換する</summary>
+        private static string FormatMinutes(int totalMinutes)
+        {
+            if (totalMinutes <= 0) return "0分";
+            var ts      = TimeSpan.FromMinutes(totalMinutes);
+            int days    = (int)ts.TotalDays;
+            int hours   = ts.Hours;
+            int minutes = ts.Minutes;
+
+            if (days > 0 && hours > 0)  return $"{days}日{hours}時間";
+            if (days > 0)               return $"{days}日";
+            if (hours > 0 && minutes > 0) return $"{hours}時間{minutes}分";
+            if (hours > 0)              return $"{hours}時間";
+            return $"{minutes}分";
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // INotifyPropertyChanged
+        // ────────────────────────────────────────────────────────────────
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}

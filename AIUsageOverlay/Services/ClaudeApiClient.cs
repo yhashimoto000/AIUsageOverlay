@@ -174,7 +174,7 @@ namespace AIUsageOverlay.Services
             if (_env == null) return;
 
             // 別ウィンドウで開くことで AllowsTransparency の問題を回避する
-            var loginWindow = new LoginWindow(_env);
+            var loginWindow = new LoginWindow(_env, "https://claude.ai/", "Claude");
             loginWindow.Show();
         }
 
@@ -225,9 +225,15 @@ namespace AIUsageOverlay.Services
             await _webView.EnsureCoreWebView2Async(env);
 
             // 不要な UI 機能を無効化する
-            _webView.CoreWebView2.Settings.IsStatusBarEnabled         = false;
+            _webView.CoreWebView2.Settings.IsStatusBarEnabled           = false;
             _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            _webView.CoreWebView2.Settings.AreDevToolsEnabled         = false;
+            _webView.CoreWebView2.Settings.AreDevToolsEnabled           = false;
+
+            // Google OAuth がWebView2をブロックしないよう通常のChrome UAを設定する
+            _webView.CoreWebView2.Settings.UserAgent =
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/130.0.0.0 Safari/537.36";
 
             // fetch() 傍受スクリプトをすべてのページ生成前に注入する（一度だけ登録）
             await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(InterceptorScript);

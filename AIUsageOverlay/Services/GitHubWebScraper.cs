@@ -162,7 +162,7 @@ namespace AIUsageOverlay.Services
         {
             await EnsureInitializedAsync();
             if (_env == null) return;
-            var loginWindow = new LoginWindow(_env, LoginUrl);
+            var loginWindow = new LoginWindow(_env, LoginUrl, "GitHub");
             loginWindow.Show();
         }
 
@@ -196,9 +196,15 @@ namespace AIUsageOverlay.Services
             _hostWindow.Show();
 
             await _webView.EnsureCoreWebView2Async(_env);
-            _webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+            _webView.CoreWebView2.Settings.IsStatusBarEnabled           = false;
             _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            _webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+            _webView.CoreWebView2.Settings.AreDevToolsEnabled           = false;
+
+            // Google OAuth がWebView2をブロックしないよう通常のChrome UAを設定する
+            _webView.CoreWebView2.Settings.UserAgent =
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/130.0.0.0 Safari/537.36";
 
             await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(InterceptorScript);
             _initialized = true;
@@ -472,4 +478,3 @@ namespace AIUsageOverlay.Services
             => int.TryParse(s.Replace(",", ""), out result);
     }
 }
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        

@@ -1,168 +1,159 @@
 using System.Diagnostics;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
+// WinForms との名前衝突を解消するエイリアス（wpftmp ビルドで両方参照されるため）
+using MessageBox = System.Windows.MessageBox;
 
 namespace AIUsageOverlay
 {
     /// <summary>
-    /// claude.ai へのログイン用ウィンドウ。
-    /// ClaudeApiClient と同じユーザーデータフォルダを共有するため、
-    /// ここでログインした認証情報はバックグラウンドの WebView2 にも引き継がれる。
-    /// ログイン完了後にウィンドウを閉じると、次回の FetchUsageAsync() が自動で成功する。
-    ///
-    /// 黒画面対策:
-    ///   AllowsTransparency=true の背景 WebView2 と Environment を共有すると GPU
-    ///   レンダリングが失敗し黒画面になることがある。
-    ///   NavigationCompleted で失敗を検知し、エラーバナーとシステムブラウザへの
-    ///   フォールバックを提供する。
+    /// Claude / GitHub / OpenAI 共用のログインウィンドウ。
+    /// 呼び出し元から渡された CoreWebView2Environment を共有するため、
+    /// ここでログインした Cookie がバックグラウンド WebView2 にも引き継がれる。
+    /// serviceName を渡すことで、タイトルバーとガイドメッセージにサービス名を表示する。
     /// </summary>
     public partial class LoginWindow : Window
     {
-        // ────────────────────────────────────────────────────────────────
-        // 定数
-        // ────────────────────────────────────────────────────────────────
-
-        /// <summary>Claude 用デフォルトログイン URL</summary>
         private const string DefaultLoginUrl = "https://claude.ai/";
-
-        /// <summary>
-        /// WebView2 描画確認のポーリング間隔（ミリ秒）。
-        /// NavigationCompleted 後にページが白紙・黒画面でないかを確認するために使用する。
-        /// </summary>
         private const int RenderCheckDelayMs = 3000;
 
-        // ────────────────────────────────────────────────────────────────
-        // フィールド
-        // ────────────────────────────────────────────────────────────────
-
-        /// <summary>
-        /// 呼び出し元（Claude or GitHub）から渡された共有 CoreWebView2Environment。
-        /// 同じユーザーデータフォルダを参照するため Cookie を共有できる。
-        /// </summary>
         private readonly CoreWebView2Environment _env;
-
-        /// <summary>
-        /// ログイン対象の URL。
-        /// デフォルトは claude.ai、GitHub ログイン時は github.com/login が渡される。
-        /// </summary>
         private readonly string _loginUrl;
 
-        // ────────────────────────────────────────────────────────────────
-        // コンストラクタ
-        // ────────────────────────────────────────────────────────────────
-
         /// <summary>
-        /// LoginWindow を初期化する。
+        /// ログインウィンドウを初期化する。
         /// </summary>
-        /// <param name="env">呼び出し元から渡された共有 CoreWebView2Environment</param>
-        /// <param name="loginUrl">ログイン先 URL（省略時は claude.ai）</param>
-        public LoginWindow(CoreWebView2Environment env, string loginUrl = DefaultLoginUrl)
+        /// <param name="env">WebView2 の共有 Environment（Cookie を引き継ぐために共有する）</param>
+        /// <param name="loginUrl">最初に開く URL。省略時は claude.ai を開く。</param>
+        /// <param name="serviceName">タイトルバー・ガイドメッセージに表示するサービス名（例: "Claude"）</param>
+        public LoginWindow(CoreWebView2Environment env,
+                           string loginUrl    = DefaultLoginUrl,
+                           string serviceName = "Claude")
         {
             InitializeComponent();
             _env      = env;
             _loginUrl = loginUrl;
 
-            // ウィンドウ表示後に WebView2 を初期化する
+            // タイトルバーとガイドメッセージをサービス名で上書きして、
+            // 利用者がどのサービスにログインしているかを明確にする
+            Title = $"{serviceName} ログイン - AI Usage Overlay";
+            GuideMessageText.Text =
+                $"{serviceName} にログインしてください。" +
+                "ログイン完了後、このウィンドウを閉じると自動で使用量が更新されます。";
+
             Loaded += OnLoaded;
         }
 
-        // ────────────────────────────────────────────────────────────────
-        // イベントハンドラ
-        // ────────────────────────────────────────────────────────────────
-
-        /// <summary>
-        /// ウィンドウ表示後に WebView2 を初期化して claude.ai を開く。
-        /// ClaudeApiClient と同じ CoreWebView2Environment を使うことで Cookie を共有する。
-        /// 初期化または描画に失敗した場合はエラーバナーを表示してフォールバックを提供する。
-        /// </summary>
         private async void OnLoaded(object sender, RoutedEventArgs e)
         {
             try
             {
-                // 共有 Environment で初期化することで Cookie が同期される
                 await LoginWebView.EnsureCoreWebView2Async(_env);
-
-                // ステータスバーを非表示にする（ブラウザらしさを抑える）
                 LoginWebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
 
-                // ナビゲーション完了イベントをフックして失敗を検知する
-                LoginWebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+                // Google OAuth は組み込みブラウザ（WebView2）をブロックすることがある。
+                // 通常の Chrome と同じ UA を設定することで disallowed_useragent エラーを回避する。
+                LoginWebView.CoreWebView2.Settings.UserAgent =
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                    "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/130.0.0.0 Safari/537.36";
 
-                // ログイン対象 URL を開く（Claude: claude.ai / GitHub: github.com/login）
+                // ナビゲーション開始時に URL バーを更新する
+                LoginWebView.CoreWebView2.NavigationStarting  += OnNavigationStarting;
+                LoginWebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
                 LoginWebView.CoreWebView2.Navigate(_loginUrl);
 
-                // 描画遅延チェック: NavigationCompleted から一定時間後に
-                // 実際にコンテンツが描画されているか JS で確認する
                 await Task.Delay(RenderCheckDelayMs);
                 await CheckRenderAsync();
             }
             catch (Exception ex)
             {
-                // WebView2 初期化自体が失敗した場合（ランタイム未インストール等）
                 ShowErrorBanner($"WebView2 の初期化に失敗しました: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// ナビゲーション完了イベントハンドラ。
-        /// HTTP エラー（4xx/5xx）やネットワークエラー時にエラーバナーを表示する。
+        /// ナビゲーション開始時に URL バーを更新し、戻るボタンの有効/無効を切り替える。
+        /// </summary>
+        private void OnNavigationStarting(
+            object? sender, CoreWebView2NavigationStartingEventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                UrlBar.Text     = e.Uri;
+                BackButton.IsEnabled = LoginWebView.CoreWebView2?.CanGoBack ?? false;
+            });
+        }
+
+        /// <summary>
+        /// ナビゲーション完了時に URL バーを最終 URL に更新し、エラーを表示する。
         /// </summary>
         private void OnNavigationCompleted(
             object? sender, CoreWebView2NavigationCompletedEventArgs e)
         {
-            if (!e.IsSuccess)
+            Dispatcher.Invoke(() =>
             {
-                // ナビゲーション失敗（ネットワークエラー・DNS解決失敗等）
+                var url = LoginWebView.CoreWebView2?.Source ?? "";
+                UrlBar.Text          = url;
+                BackButton.IsEnabled = LoginWebView.CoreWebView2?.CanGoBack ?? false;
+            });
+
+            if (!e.IsSuccess)
                 ShowErrorBanner($"ページの読み込みに失敗しました（エラーコード: {e.WebErrorStatus}）");
-            }
         }
 
-        /// <summary>
-        /// WebView2 描画状態を JavaScript で確認する。
-        /// body が空（黒画面・白画面）と判断できる場合はエラーバナーを表示する。
-        /// </summary>
+        /// <summary>戻るボタン: ひとつ前のページに戻る。</summary>
+        private void BackButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (LoginWebView.CoreWebView2?.CanGoBack == true)
+                LoginWebView.CoreWebView2.GoBack();
+        }
+
+        /// <summary>更新ボタン: 現在のページを再読み込みする。</summary>
+        private void ReloadButton_Click(object sender, RoutedEventArgs e)
+        {
+            LoginWebView.CoreWebView2?.Reload();
+        }
+
         private async Task CheckRenderAsync()
         {
             try
             {
                 if (LoginWebView.CoreWebView2 == null) return;
-
-                // document.body の有無を確認する（null = 描画されていない可能性が高い）
                 var result = await LoginWebView.CoreWebView2.ExecuteScriptAsync(
                     "document.body ? document.body.innerHTML.length.toString() : '0'");
-
-                // JS が "0" または null を返した場合はコンテンツが描画されていない
                 var lengthStr = result?.Trim('"') ?? "0";
                 if (int.TryParse(lengthStr, out var bodyLength) && bodyLength < 100)
-                {
                     ShowErrorBanner("ブラウザの描画に失敗した可能性があります（黒画面）。");
-                }
             }
-            catch
-            {
-                // 描画チェック自体のエラーは無視する（WebView2 が正常な場合もある）
-            }
+            catch { }
         }
 
-        /// <summary>
-        /// エラーバナーを表示する。
-        /// UI スレッドから安全に呼び出せるよう Dispatcher.Invoke を使用する。
-        /// </summary>
-        /// <param name="message">ユーザーに表示するエラーメッセージ</param>
         private void ShowErrorBanner(string message)
         {
             Dispatcher.Invoke(() =>
             {
                 ErrorMessageText.Text = message;
                 ErrorBanner.Visibility = Visibility.Visible;
-                // エラーバナー行を Auto 高さに変更して表示する
                 ErrorRow.Height = new System.Windows.GridLength(1, System.Windows.GridUnitType.Auto);
             });
         }
 
-        /// <summary>
-        /// 「ブラウザで claude.ai を開く」ボタンのクリックハンドラ。
-        /// WebView2 が描画できない場合のフォールバックとして、
-        /// システムの既定ブラウザで claude.ai を開く。
-        /// </summary>
-        p
+        private void OpenBrowserButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName        = _loginUrl,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"ブラウザを開けませんでした。\n{ex.Message}",
+                    "エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+    }
+}

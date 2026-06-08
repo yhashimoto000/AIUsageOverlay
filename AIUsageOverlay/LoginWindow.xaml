@@ -11,23 +11,54 @@
         <Grid.RowDefinitions>
             <!-- 案内テキスト行 -->
             <RowDefinition Height="Auto"/>
+            <!-- ナビゲーションバー行 -->
+            <RowDefinition Height="Auto"/>
             <!-- エラーバナー行（通常は高さ0、エラー時に表示） -->
             <RowDefinition x:Name="ErrorRow" Height="0"/>
             <!-- WebView2 行 -->
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- 案内メッセージ -->
-        <TextBlock Grid.Row="0"
-                   Text="claude.ai にログインしてください。ログイン完了後、このウィンドウを閉じると自動で使用量が更新されます。"
+        <!-- 案内メッセージ（x:Name でコードビハインドから動的に設定する） -->
+        <TextBlock x:Name="GuideMessageText"
+                   Grid.Row="0"
+                   Text="ログインしてください。ログイン完了後、このウィンドウを閉じると自動で使用量が更新されます。"
                    Foreground="#AAAAAA"
                    FontSize="12"
                    TextWrapping="Wrap"
                    Margin="12,10,12,8"/>
 
+        <!-- ナビゲーションバー: リダイレクト時に戻るために使う -->
+        <Grid Grid.Row="1" Background="#252525" Height="36">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <!-- 戻るボタン -->
+            <Button x:Name="BackButton" Grid.Column="0"
+                    Content="◀" Width="36" Height="36"
+                    Background="Transparent" Foreground="#AAAAAA"
+                    BorderThickness="0" FontSize="14" Cursor="Hand"
+                    ToolTip="前のページに戻る"
+                    Click="BackButton_Click"/>
+            <!-- 更新ボタン -->
+            <Button x:Name="ReloadButton" Grid.Column="1"
+                    Content="↺" Width="36" Height="36"
+                    Background="Transparent" Foreground="#AAAAAA"
+                    BorderThickness="0" FontSize="16" Cursor="Hand"
+                    ToolTip="ページを更新する"
+                    Click="ReloadButton_Click"/>
+            <!-- URL 表示欄 -->
+            <TextBlock x:Name="UrlBar" Grid.Column="2"
+                       Foreground="#888888" FontSize="11"
+                       VerticalAlignment="Center" Margin="6,0,8,0"
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip="現在のURL"/></Grid>
+
         <!-- エラーバナー: WebView2 描画失敗時に表示するフォールバック UI -->
         <Border x:Name="ErrorBanner"
-                Grid.Row="1"
+                Grid.Row="2"
                 Background="#2A1A1A"
                 Padding="12,8"
                 Visibility="Collapsed">
@@ -54,6 +85,6 @@
 
         <!-- WebView2 ブラウザ -->
         <wv2:WebView2 x:Name="LoginWebView"
-                      Grid.Row="2"/>
+                      Grid.Row="3"/>
     </Grid>
 </Window>

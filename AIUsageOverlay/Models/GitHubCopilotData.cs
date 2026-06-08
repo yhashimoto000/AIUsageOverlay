@@ -28,4 +28,15 @@ namespace AIUsageOverlay.Models
         /// <summary>使用量データが取得できたかどうか</summary>
         public bool HasUsageData { get; set; }
 
-        // ── 請求サイクル ────────────────────────�
+        // ── 請求サイクル ─────────────────────────────────────────────
+
+        /// <summary>次回リセット日（取得できなかった場合は null）</summary>
+        public DateTimeOffset? NextBillingDate { get; set; }
+
+        /// <summary>次回リセットまでの残り日数（取得できなかった場合は -1）</summary>
+        public int DaysUntilRenewal { get; set; } = -1;
+
+        /// <summary>最後に発生したエラーの説明。成功時は null。</summary>
+        public string? ErrorMessage { get; set; }
+    }
+}
