@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <!-- WinForms を有効化: System.Windows.Forms.NotifyIcon を使うために必要 -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- exe ファイルのアイコンをカスタムアイコンに設定する -->
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WebView2: 実際の Chromium エンジンを使った API アクセス（Cloudflare 回避に必須） -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2849.39" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- トレイアイコン画像: pack://application:,,, で参照できるようにリソースとして埋め込む -->
+    <Resource Include="Resources\app.ico" />
+  </ItemGroup>
+
+</Project>

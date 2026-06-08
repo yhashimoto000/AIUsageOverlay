@@ -3,17 +3,17 @@ setlocal
 
 REM ----------------------------------------------------------------
 REM build-release.bat
-REM Publishes ClaudeUsageOverlay as a self-contained single exe.
-REM Output: publish\ClaudeUsageOverlay.exe
+REM Publishes AIUsageOverlay as a self-contained single exe.
+REM Output: publish\AIUsageOverlay.exe
 REM ----------------------------------------------------------------
 
 set ROOT=%~dp0
-set PROJECT=%ROOT%ClaudeUsageOverlay\ClaudeUsageOverlay.csproj
+set PROJECT=%ROOT%AIUsageOverlay\AIUsageOverlay.csproj
 set OUTPUT=%ROOT%publish
 
 echo.
 echo ========================================
-echo  Claude Usage Overlay - Release Build
+echo  AI Usage Overlay - Release Build
 echo ========================================
 echo.
 
@@ -66,7 +66,7 @@ if %ERRORLEVEL% neq 0 (
 echo.
 echo ========================================
 echo  Build complete!
-echo  Output: %OUTPUT%\ClaudeUsageOverlay.exe
+echo  Output: %OUTPUT%\AIUsageOverlay.exe
 echo ========================================
 echo.
 

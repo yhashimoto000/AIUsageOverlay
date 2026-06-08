@@ -7,9 +7,9 @@ bin/
 obj/
 
 # 発行出力ディレクトリ（dotnet publish -o publish/ の出力先）
-# ただし ClaudeUsageOverlay.exe はリリース配布用として追跡対象とする
+# ただし AIUsageOverlay.exe はリリース配布用として追跡対象とする
 publish/*
-!publish/ClaudeUsageOverlay.exe
+!publish/AIUsageOverlay.exe
 
 # NuGet パッケージキャッシュ（packages/ 以下に展開される場合）
 packages/

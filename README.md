@@ -1,4 +1,4 @@
-# Claude Usage Overlay
+# AI Usage Overlay
 
 Claude.ai の使用量（セッション・週間）を Windows 画面上に常時表示するオーバーレイアプリです。  
 タスクトレイに常駐し、使用率に応じてアイコンの色がリアルタイムで変化します。
@@ -37,8 +37,8 @@ Claude.ai の使用量（セッション・週間）を Windows 画面上に常�
 ## インストール（ビルド不要）
 
 1. [Releases](../../releases) ページを開く
-2. 最新バージョンの `ClaudeUsageOverlay.exe` をダウンロード
-3. ダウンロードしたフォルダで `ClaudeUsageOverlay.exe` をダブルクリック
+2. 最新バージョンの `AIUsageOverlay.exe` をダウンロード
+3. ダウンロードしたフォルダで `AIUsageOverlay.exe` をダブルクリック
 
 インストーラー不要・単一 exe ファイルです。
 
@@ -58,7 +58,7 @@ Claude.ai の使用量（セッション・週間）を Windows 画面上に常�
 表示されたブラウザウィンドウで **claude.ai にログイン**します。  
 ログイン完了後、ウィンドウを閉じて ↺ ボタンを押すと使用量が反映されます。
 
-> ログイン情報は `%TEMP%\ClaudeUsageOverlay_WebView2` に保存され、  
+> ログイン情報は `%TEMP%\AIUsageOverlay_WebView2` に保存され、  
 > **次回以降は自動ログイン**されます（Cookie の手動入力は不要です）。
 
 ### 2. 設定（任意）
@@ -127,7 +127,7 @@ Claude.ai の使用量（セッション・週間）を Windows 画面上に常�
 
 ```bash
 git clone https://github.com/<your-name>/Claude-UsageTool.git
-cd Claude-UsageTool/ClaudeUsageOverlay
+cd Claude-UsageTool/AIUsageOverlay
 dotnet restore
 dotnet build -c Release
 ```
@@ -135,7 +135,7 @@ dotnet build -c Release
 ### 単一 exe として発行する
 
 ```bash
-dotnet publish ClaudeUsageOverlay/ClaudeUsageOverlay.csproj ^
+dotnet publish AIUsageOverlay/AIUsageOverlay.csproj ^
   -c Release ^
   -r win-x64 ^
   --self-contained true ^
@@ -143,14 +143,14 @@ dotnet publish ClaudeUsageOverlay/ClaudeUsageOverlay.csproj ^
   -o publish/
 ```
 
-`publish/ClaudeUsageOverlay.exe` が生成されます。
+`publish/AIUsageOverlay.exe` が生成されます。
 
 ---
 
 ## アーキテクチャ
 
 ```
-ClaudeUsageOverlay/
+AIUsageOverlay/
 ├── Resources/
 │   └── app.ico              # トレイアイコン（カスタム）
 ├── Models/
@@ -186,8 +186,8 @@ ClaudeUsageOverlay/
 ## プライバシー・セキュリティ
 
 - **外部サーバーへの送信なし** — データは claude.ai との直接通信のみ
-- **認証情報の保存場所** — `%TEMP%\ClaudeUsageOverlay_WebView2`（WebView2 の標準プロファイル）
-- **設定ファイル** — `%AppData%\ClaudeUsageOverlay\settings.json`
+- **認証情報の保存場所** — `%TEMP%\AIUsageOverlay_WebView2`（WebView2 の標準プロファイル）
+- **設定ファイル** — `%AppData%\AIUsageOverlay\settings.json`
 
 ---
 
