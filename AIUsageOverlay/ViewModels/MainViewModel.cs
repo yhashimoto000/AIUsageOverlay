@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -61,49 +62,49 @@ namespace AIUsageOverlay.ViewModels
         public double SessionPercent
         {
             get => _sessionPercent;
-            set { _sessionPercent = value; OnPropertyChanged(); }
+            set => SetProperty(ref _sessionPercent, value);
         }
 
         /// <summary>セッション使用率テキスト（例: "75%"）</summary>
         public string SessionPercentText
         {
             get => _sessionPercentText;
-            set { _sessionPercentText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _sessionPercentText, value);
         }
 
         /// <summary>セッション残り時間テキスト（例: "1時間13分"）</summary>
         public string SessionRemainingText
         {
             get => _sessionRemainingText;
-            set { _sessionRemainingText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _sessionRemainingText, value);
         }
 
         /// <summary>週間使用率（0.0 ～ 100.0）</summary>
         public double WeeklyPercent
         {
             get => _weeklyPercent;
-            set { _weeklyPercent = value; OnPropertyChanged(); }
+            set => SetProperty(ref _weeklyPercent, value);
         }
 
         /// <summary>週間使用率テキスト（例: "5%"）</summary>
         public string WeeklyPercentText
         {
             get => _weeklyPercentText;
-            set { _weeklyPercentText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _weeklyPercentText, value);
         }
 
         /// <summary>週間リセットまでの残り時間テキスト</summary>
         public string WeeklyRemainingText
         {
             get => _weeklyRemainingText;
-            set { _weeklyRemainingText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _weeklyRemainingText, value);
         }
 
         /// <summary>データ取得状態テキスト（例: "API: 14:32"）</summary>
         public string StatusText
         {
             get => _statusText;
-            set { _statusText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _statusText, value);
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -114,56 +115,56 @@ namespace AIUsageOverlay.ViewModels
         public Visibility GitHubSectionVisibility
         {
             get => _gitHubSectionVisibility;
-            set { _gitHubSectionVisibility = value; OnPropertyChanged(); }
+            set => SetProperty(ref _gitHubSectionVisibility, value);
         }
 
         /// <summary>シート/クレジット使用率バーの表示/非表示</summary>
         public Visibility GitHubOrgBarVisibility
         {
             get => _gitHubOrgBarVisibility;
-            set { _gitHubOrgBarVisibility = value; OnPropertyChanged(); }
+            set => SetProperty(ref _gitHubOrgBarVisibility, value);
         }
 
         /// <summary>個人プラン用ステータスドットの表示/非表示</summary>
         public Visibility GitHubIndividualDotVisibility
         {
             get => _gitHubIndividualDotVisibility;
-            set { _gitHubIndividualDotVisibility = value; OnPropertyChanged(); }
+            set => SetProperty(ref _gitHubIndividualDotVisibility, value);
         }
 
         /// <summary>使用率（0.0 ～ 100.0）</summary>
         public double GitHubSeatsPercent
         {
             get => _gitHubSeatsPercent;
-            set { _gitHubSeatsPercent = value; OnPropertyChanged(); }
+            set => SetProperty(ref _gitHubSeatsPercent, value);
         }
 
         /// <summary>使用率テキスト（例: "1%"）</summary>
         public string GitHubSeatsPercentText
         {
             get => _gitHubSeatsPercentText;
-            set { _gitHubSeatsPercentText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _gitHubSeatsPercentText, value);
         }
 
         /// <summary>使用量テキスト（例: "18/1500 AI credits"）</summary>
         public string GitHubSeatsText
         {
             get => _gitHubSeatsText;
-            set { _gitHubSeatsText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _gitHubSeatsText, value);
         }
 
         /// <summary>GitHub ステータステキスト（例: "18/1500"）</summary>
         public string GitHubStatusText
         {
             get => _gitHubStatusText;
-            set { _gitHubStatusText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _gitHubStatusText, value);
         }
 
         /// <summary>更新日テキスト（例: "更新まで26日"）</summary>
         public string GitHubUserText
         {
             get => _gitHubUserText;
-            set { _gitHubUserText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _gitHubUserText, value);
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -174,56 +175,56 @@ namespace AIUsageOverlay.ViewModels
         public Visibility CodexSectionVisibility
         {
             get => _codexSectionVisibility;
-            set { _codexSectionVisibility = value; OnPropertyChanged(); }
+            set => SetProperty(ref _codexSectionVisibility, value);
         }
 
         /// <summary>クレジット使用率バーの表示/非表示</summary>
         public Visibility CodexBarVisibility
         {
             get => _codexBarVisibility;
-            set { _codexBarVisibility = value; OnPropertyChanged(); }
+            set => SetProperty(ref _codexBarVisibility, value);
         }
 
         /// <summary>ステータスドットの表示/非表示</summary>
         public Visibility CodexDotVisibility
         {
             get => _codexDotVisibility;
-            set { _codexDotVisibility = value; OnPropertyChanged(); }
+            set => SetProperty(ref _codexDotVisibility, value);
         }
 
         /// <summary>クレジット使用率（0.0 ～ 100.0）</summary>
         public double CodexUsagePercent
         {
             get => _codexUsagePercent;
-            set { _codexUsagePercent = value; OnPropertyChanged(); }
+            set => SetProperty(ref _codexUsagePercent, value);
         }
 
         /// <summary>クレジット使用率テキスト（例: "52%"）</summary>
         public string CodexUsagePercentText
         {
             get => _codexUsagePercentText;
-            set { _codexUsagePercentText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _codexUsagePercentText, value);
         }
 
         /// <summary>クレジット詳細テキスト（例: "$5.23 残高"）</summary>
         public string CodexDetailText
         {
             get => _codexDetailText;
-            set { _codexDetailText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _codexDetailText, value);
         }
 
         /// <summary>ステータステキスト（例: "$5.23" / "エラー"）</summary>
         public string CodexStatusText
         {
             get => _codexStatusText;
-            set { _codexStatusText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _codexStatusText, value);
         }
 
         /// <summary>サブテキスト（例: "今月 $3.47 使用"）</summary>
         public string CodexSubText
         {
             get => _codexSubText;
-            set { _codexSubText = value; OnPropertyChanged(); }
+            set => SetProperty(ref _codexSubText, value);
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -451,7 +452,37 @@ namespace AIUsageOverlay.ViewModels
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
+        /// <summary>
+        /// 指定プロパティの変更を UI へ通知する。
+        /// </summary>
+        /// <param name="propertyName">
+        /// 変更されたプロパティ名。呼び出し元メンバー名が自動補完される。
+        /// </param>
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
+        /// <summary>
+        /// バッキングフィールドへ値を設定する共通ヘルパー。
+        /// 既存値と新規値が等しい場合は何もせず false を返し、不要な
+        /// PropertyChanged 通知（=不要な UI 更新）を抑制する。
+        /// 値が変化した場合のみフィールドを更新し、OnPropertyChanged を発火して true を返す。
+        /// </summary>
+        /// <typeparam name="T">プロパティの型</typeparam>
+        /// <param name="field">更新対象のバッキングフィールド（ref 渡し）</param>
+        /// <param name="value">設定する新しい値</param>
+        /// <param name="propertyName">
+        /// 通知するプロパティ名。呼び出し元プロパティ名が自動補完される。
+        /// </param>
+        /// <returns>値が変化して通知した場合 true、変化がなく何もしなかった場合 false</returns>
+        private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+        {
+            // 既存値と等価なら通知不要（参照型・値型ともに既定の比較子で判定）
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return false;
+
+            field = value;
+            OnPropertyChanged(propertyName);
+            return true;
+        }
     }
 }

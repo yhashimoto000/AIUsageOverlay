@@ -2,7 +2,7 @@ namespace AIUsageOverlay.Models
 {
     /// <summary>
     /// claude.ai/settings/usage ページのスクレイピング結果を保持するクラス。
-    /// ClaudeWebScraper によって生成され、UsageService で使用される。
+    /// ClaudeApiClient（WebView2 経由）によって生成され、UsageService で使用される。
     /// </summary>
     public class ScrapedUsageData
     {
