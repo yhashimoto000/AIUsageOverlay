@@ -7,7 +7,7 @@
 # 処理内容:
 #   1. .NET 9 SDK をセットアップ
 #   2. dotnet publish で単一 exe（self-contained）を生成
-#   3. 生成した ClaudeUsageOverlay.exe を GitHub Release に添付
+#   3. 生成した AIUsageOverlay.exe を GitHub Release に添付
 #
 # トリガー例:
 #   git tag v1.0.0
@@ -52,7 +52,7 @@ jobs:
       # 3. NuGet パッケージを復元
       # ──────────────────────────────────────────────────────────
       - name: Restore dependencies
-        run: dotnet restore ClaudeUsageOverlay/ClaudeUsageOverlay.csproj
+        run: dotnet restore AIUsageOverlay/AIUsageOverlay.csproj
 
       # ──────────────────────────────────────────────────────────
       # 4. 単一 exe として発行
@@ -62,7 +62,7 @@ jobs:
       # ──────────────────────────────────────────────────────────
       - name: Publish single-file executable
         run: |
-          dotnet publish ClaudeUsageOverlay/ClaudeUsageOverlay.csproj `
+          dotnet publish AIUsageOverlay/AIUsageOverlay.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
@@ -87,13 +87,13 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Claude Usage Overlay v${{ steps.version.outputs.version }}"
+          name: "AI Usage Overlay v${{ steps.version.outputs.version }}"
           body: |
-            ## Claude Usage Overlay v${{ steps.version.outputs.version }}
+            ## AI Usage Overlay v${{ steps.version.outputs.version }}
 
             ### インストール方法
-            1. `ClaudeUsageOverlay.exe` をダウンロード
-            2. ダウンロードしたフォルダで `ClaudeUsageOverlay.exe` をダブルクリック
+            1. `AIUsageOverlay.exe` をダウンロード
+            2. ダウンロードしたフォルダで `AIUsageOverlay.exe` をダブルクリック
             3. インストーラー不要・単一 exe ファイルです
 
             ### 動作要件
@@ -104,6 +104,6 @@ jobs:
             起動後、オーバーレイを右クリック → **ログイン** から claude.ai にログインしてください。
           draft: false
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          files: publish/ClaudeUsageOverlay.exe
+          files: publish/AIUsageOverlay.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
