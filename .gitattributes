@@ -1,0 +1,12 @@
+# Windows バッチは cmd.exe が CRLF を要求するため、常に CRLF でチェックアウトする。
+# （LF だと REM 行や ^ 行継続が壊れ、コメントがコマンドとして実行されてしまう）
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# それ以外のテキストはリポジトリ標準の LF に統一する。
+*.cs   text eol=lf
+*.csproj text eol=lf
+*.xaml text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.json text eol=lf

@@ -44,6 +44,13 @@ namespace AIUsageOverlay.ViewModels
         private string     _gitHubStatusText       = "--";
         private string     _gitHubUserText         = "";
 
+        /// <summary>
+        /// 一度でも Copilot 使用量の取得に成功したかを表すフラグ。
+        /// 一時的な取得失敗（タイムアウト等）の際に前回の正常表示を維持し、
+        /// "エラー" への切り替えによるちらつきを防ぐために使用する。
+        /// </summary>
+        private bool       _gitHubEverLoaded;
+
         // Codex バッキングフィールド
         private Visibility _codexSectionVisibility = Visibility.Collapsed;
         private Visibility _codexBarVisibility     = Visibility.Collapsed;
@@ -284,6 +291,12 @@ namespace AIUsageOverlay.ViewModels
         /// <summary>
         /// GitHub Copilot の使用状況を取得してバインディングプロパティを更新する。
         /// 有効設定なければセクション非表示。使用量データがあればプログレスバーを表示。
+        ///
+        /// ちらつき対策:
+        ///   表示の切り替え（バー⇄ドット）は取得が完了した後にのみ行う。
+        ///   await 前にバーを Collapsed へ戻すと、スクレイピング待ち（最大十数秒）の間
+        ///   バーが消えてドット表示になり、更新のたびにちらついていたため廃止した。
+        ///   一時的な取得失敗時は前回の正常表示を維持し、"エラー" で上書きしない。
         /// </summary>
         private async Task RefreshGitHubCopilotAsync()
         {
@@ -295,16 +308,21 @@ namespace AIUsageOverlay.ViewModels
                 return;
             }
 
-            GitHubSectionVisibility       = Visibility.Visible;
-            GitHubOrgBarVisibility        = Visibility.Collapsed;
-            GitHubIndividualDotVisibility = Visibility.Visible;
+            // セクションは常に表示。バー/ドットの切り替えは取得完了後にのみ行う
+            // （await 前にリセットしないことでちらつきを防ぐ）。
+            GitHubSectionVisibility = Visibility.Visible;
 
             var data = await _usageService.FetchGitHubCopilotAsync();
 
             if (data == null)
             {
-                GitHubStatusText = "エラー";
-                GitHubUserText   = _usageService.GetLastGitHubError() ?? "接続失敗";
+                // 一時的な取得失敗（タイムアウト等）では前回の正常表示を維持する。
+                // 一度も取得できていない初回のみエラーを表示する。
+                if (!_gitHubEverLoaded)
+                {
+                    GitHubStatusText = "エラー";
+                    GitHubUserText   = _usageService.GetLastGitHubError() ?? "接続失敗";
+                }
                 return;
             }
 
@@ -334,6 +352,9 @@ namespace AIUsageOverlay.ViewModels
                 GitHubIndividualDotVisibility = Visibility.Visible;
                 GitHubStatusText              = data.IsActive ? "Active" : "Inactive";
             }
+
+            // 取得成功を記録（以降の一時的失敗では前回表示を維持する）
+            _gitHubEverLoaded = true;
         }
 
         /// <summary>

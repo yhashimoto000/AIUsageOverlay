@@ -130,6 +130,11 @@ namespace AIUsageOverlay.Services
                 LastError = $"{ex.GetType().Name}: {ex.Message}";
                 return null;
             }
+            finally
+            {
+                // 取得完了後（成功・失敗いずれも）にアイドル時メモリを抑制する
+                await ReleaseMemoryAsync();
+            }
         }
 
         /// <summary>
@@ -225,6 +230,9 @@ namespace AIUsageOverlay.Services
         {
             if (_webView?.CoreWebView2 == null) return null;
 
+            // 前回 Low に下げたメモリ目標を通常へ戻してから取得する
+            ResumeMemory();
+
             // ナビゲーション完了を待機する
             var navTcs = new TaskCompletionSource<bool>();
             void OnNavigationCompleted(object? s, CoreWebView2NavigationCompletedEventArgs e)
@@ -255,6 +263,55 @@ namespace AIUsageOverlay.Services
             }
 
             return null;
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // メモリ最適化
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 取得完了後に呼び出し、常駐 WebView2 のメモリ使用量を抑える。
+        /// 重いページ DOM/JS を解放するため about:blank へ遷移し、メモリ目標レベルを
+        /// Low に下げる（次回取得時に <see cref="ResumeMemory"/> で通常へ復帰）。
+        /// メモリ最適化は失敗しても機能に影響しないため例外は無視する。
+        /// </summary>
+        private async Task ReleaseMemoryAsync()
+        {
+            try
+            {
+                if (_webView?.CoreWebView2 == null) return;
+
+                // 重いページを破棄して常駐メモリを削減する
+                var navTcs = new TaskCompletionSource<bool>();
+                void OnNav(object? s, CoreWebView2NavigationCompletedEventArgs e)
+                {
+                    _webView.CoreWebView2.NavigationCompleted -= OnNav;
+                    navTcs.TrySetResult(true);
+                }
+                _webView.CoreWebView2.NavigationCompleted += OnNav;
+                _webView.CoreWebView2.Navigate("about:blank");
+                await Task.WhenAny(navTcs.Task, Task.Delay(3_000));
+
+                // アイドル時のメモリ目標を下げる
+                _webView.CoreWebView2.MemoryUsageTargetLevel =
+                    CoreWebView2MemoryUsageTargetLevel.Low;
+            }
+            catch { /* メモリ最適化失敗は無視（機能には影響しない） */ }
+        }
+
+        /// <summary>
+        /// 取得開始時に呼び出し、Low に下げていたメモリ目標を Normal へ戻す。
+        /// ページ描画・スクリプト実行を通常速度で行えるようにする。
+        /// </summary>
+        private void ResumeMemory()
+        {
+            try
+            {
+                if (_webView?.CoreWebView2 != null)
+                    _webView.CoreWebView2.MemoryUsageTargetLevel =
+                        CoreWebView2MemoryUsageTargetLevel.Normal;
+            }
+            catch { /* 同上 */ }
         }
     }
 }
