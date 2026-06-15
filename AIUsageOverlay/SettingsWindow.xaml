@@ -73,12 +73,12 @@
                            Foreground="#555555" FontSize="10" Margin="24,4,0,0"/>
             </StackPanel>
 
-            <!-- OpenAI / Codex -->
+            <!-- Codex -->
             <StackPanel Margin="0,0,0,20">
-                <TextBlock Text="OpenAI / Codex" Foreground="#10A37F" FontSize="13"
+                <TextBlock Text="Codex" Foreground="#10A37F" FontSize="13"
                            FontWeight="SemiBold" Margin="0,0,0,8"/>
                 <CheckBox x:Name="CodexCheckBox"
-                          Content="OpenAI / Codex の使用状況を表示する"
+                          Content="Codex の使用制限を表示する"
                           Foreground="White" FontSize="13" Cursor="Hand">
                     <CheckBox.Style>
                         <Style TargetType="CheckBox">
@@ -109,7 +109,7 @@
                         </Style>
                     </CheckBox.Style>
                 </CheckBox>
-                <TextBlock Text="有効後、右クリック → ログイン - OpenAI からログインしてください"
+                <TextBlock Text="有効後、右クリック → ログイン - Codex からログインしてください"
                            Foreground="#555555" FontSize="10" Margin="24,4,0,0"/>
             </StackPanel>
 

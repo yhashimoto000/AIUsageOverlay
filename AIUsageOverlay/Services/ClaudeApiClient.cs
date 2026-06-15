@@ -2,6 +2,7 @@ using System.IO;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using System.Text.Json;
+using System.Threading;
 using System.Windows;
 using AIUsageOverlay.Models;
 using AIUsageOverlay.Services.Parsing;
@@ -77,6 +78,13 @@ namespace AIUsageOverlay.Services
         /// LoginWindow に渡すことで Cookie を共有し、ログイン後に自動認証される。
         /// </summary>
         private CoreWebView2Environment? _env;
+
+        /// <summary>
+        /// 初期化処理の多重実行を防ぐ排他制御。
+        /// 起動直後の自動更新とユーザーのログイン操作が同時に走った場合でも、
+        /// 同じユーザーデータフォルダを使う WebView2 Environment を一度だけ作る。
+        /// </summary>
+        private readonly SemaphoreSlim _initializationGate = new(1, 1);
 
         /// <summary>WebView2 の初期化完了フラグ</summary>
         private bool _initialized;
@@ -157,9 +165,8 @@ namespace AIUsageOverlay.Services
         /// <summary>リソースを解放する。ホストウィンドウを閉じて WebView2 を破棄する。</summary>
         public void Dispose()
         {
-            _hostWindow?.Close();
-            _webView = null;
-            _hostWindow = null;
+            ResetWebViewState();
+            _initializationGate.Dispose();
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -173,48 +180,65 @@ namespace AIUsageOverlay.Services
         /// </summary>
         private async Task EnsureInitializedAsync()
         {
-            if (_initialized) return;
+            if (IsInitialized()) return;
 
-            var userDataFolder = Path.Combine(Path.GetTempPath(), UserDataFolderName);
-            // LoginWindow と同じ Environment を共有することで Cookie を同期する
-            _env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-            var env = _env;
-
-            // 通常は画面外の不可視ウィンドウとして作成する（ログイン時のみ可視化）
-            _hostWindow = new Window
+            await _initializationGate.WaitAsync();
+            try
             {
-                Width  = 1,
-                Height = 1,
-                Left   = -9999,
-                Top    = -9999,
-                ShowInTaskbar      = false,
-                WindowStyle        = WindowStyle.None,
-                AllowsTransparency = true,
-                Opacity            = 0,
-                Title              = "ClaudeApiClientHost"
-            };
+                if (IsInitialized()) return;
 
-            _webView = new WebView2();
-            _hostWindow.Content = _webView;
-            _hostWindow.Show();
+                ResetWebViewState();
 
-            await _webView.EnsureCoreWebView2Async(env);
+                var userDataFolder = Path.Combine(Path.GetTempPath(), UserDataFolderName);
+                // LoginWindow と同じ Environment を共有することで Cookie を同期する
+                _env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+                var env = _env;
 
-            // 不要な UI 機能を無効化する
-            _webView.CoreWebView2.Settings.IsStatusBarEnabled           = false;
-            _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            _webView.CoreWebView2.Settings.AreDevToolsEnabled           = false;
+                // 通常は画面外の不可視ウィンドウとして作成する（ログイン時のみ可視化）
+                _hostWindow = new Window
+                {
+                    Width  = 1,
+                    Height = 1,
+                    Left   = -9999,
+                    Top    = -9999,
+                    ShowInTaskbar      = false,
+                    WindowStyle        = WindowStyle.None,
+                    AllowsTransparency = true,
+                    Opacity            = 0,
+                    Title              = "ClaudeApiClientHost"
+                };
 
-            // Google OAuth がWebView2をブロックしないよう通常のChrome UAを設定する
-            _webView.CoreWebView2.Settings.UserAgent =
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/130.0.0.0 Safari/537.36";
+                _webView = new WebView2();
+                _hostWindow.Content = _webView;
+                _hostWindow.Show();
 
-            // fetch() 傍受スクリプトをすべてのページ生成前に注入する（一度だけ登録）
-            await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(InterceptorScript);
+                await _webView.EnsureCoreWebView2Async(env);
 
-            _initialized = true;
+                // 不要な UI 機能を無効化する
+                _webView.CoreWebView2.Settings.IsStatusBarEnabled           = false;
+                _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled           = false;
+
+                // Google OAuth がWebView2をブロックしないよう通常のChrome UAを設定する
+                _webView.CoreWebView2.Settings.UserAgent =
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                    "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/130.0.0.0 Safari/537.36";
+
+                // fetch() 傍受スクリプトをすべてのページ生成前に注入する（一度だけ登録）
+                await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(InterceptorScript);
+
+                _initialized = true;
+            }
+            catch
+            {
+                ResetWebViewState();
+                throw;
+            }
+            finally
+            {
+                _initializationGate.Release();
+            }
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -233,12 +257,16 @@ namespace AIUsageOverlay.Services
             // 前回 Low に下げたメモリ目標を通常へ戻してから取得する
             ResumeMemory();
 
+            // SPA 遷移や前回失敗時に古い傍受結果が残っていても誤読しないよう初期化する
+            await _webView.CoreWebView2.ExecuteScriptAsync("window.__claudeUsageData = null;");
+
             // ナビゲーション完了を待機する
-            var navTcs = new TaskCompletionSource<bool>();
+            var navTcs = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             void OnNavigationCompleted(object? s, CoreWebView2NavigationCompletedEventArgs e)
             {
                 _webView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
-                navTcs.SetResult(e.IsSuccess);
+                navTcs.TrySetResult(e.IsSuccess);
             }
             _webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
             _webView.CoreWebView2.Navigate(SettingsUsageUrl);
@@ -312,6 +340,31 @@ namespace AIUsageOverlay.Services
                         CoreWebView2MemoryUsageTargetLevel.Normal;
             }
             catch { /* 同上 */ }
+        }
+
+        /// <summary>
+        /// WebView2 が利用可能な状態まで初期化済みかを判定する。
+        /// _initialized だけで判断すると、起動直後の初期化失敗後に壊れた参照を再利用する恐れがある。
+        /// </summary>
+        private bool IsInitialized()
+            => _initialized && _env != null && _webView?.CoreWebView2 != null;
+
+        /// <summary>
+        /// 初期化途中または利用済みの WebView2 関連オブジェクトを破棄し、次回呼び出しで再作成できる状態へ戻す。
+        /// WebView2 初期化失敗はアプリ起動直後に起きやすいため、失敗状態を固定しないことが重要。
+        /// </summary>
+        private void ResetWebViewState()
+        {
+            try
+            {
+                _hostWindow?.Close();
+            }
+            catch { /* 終了時・初期化失敗時の破棄失敗は次回再作成で回復する */ }
+
+            _webView = null;
+            _hostWindow = null;
+            _env = null;
+            _initialized = false;
         }
     }
 }
