@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using System.Windows;
@@ -95,6 +96,13 @@ namespace AIUsageOverlay.Services
         private Window? _hostWindow;
         private WebView2? _webView;
         private CoreWebView2Environment? _env;
+
+        /// <summary>
+        /// 初期化処理の多重実行を防ぐ排他制御。
+        /// 自動更新とログイン操作が同時に走っても、同一プロファイルの WebView2 を一度だけ作成する。
+        /// </summary>
+        private readonly SemaphoreSlim _initializationGate = new(1, 1);
+
         private bool _initialized;
 
         // ────────────────────────────────────────────────────────────────
@@ -173,9 +181,8 @@ namespace AIUsageOverlay.Services
 
         public void Dispose()
         {
-            _hostWindow?.Close();
-            _webView = null;
-            _hostWindow = null;
+            ResetWebViewState();
+            _initializationGate.Dispose();
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -184,35 +191,52 @@ namespace AIUsageOverlay.Services
 
         private async Task EnsureInitializedAsync()
         {
-            if (_initialized) return;
+            if (IsInitialized()) return;
 
-            var userDataFolder = Path.Combine(Path.GetTempPath(), UserDataFolderName);
-            _env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-
-            _hostWindow = new Window
+            await _initializationGate.WaitAsync();
+            try
             {
-                Width = 1, Height = 1, Left = -9999, Top = -9999,
-                ShowInTaskbar = false, WindowStyle = WindowStyle.None,
-                AllowsTransparency = true, Opacity = 0,
-                Title = "GitHubScraperHost"
-            };
-            _webView = new WebView2();
-            _hostWindow.Content = _webView;
-            _hostWindow.Show();
+                if (IsInitialized()) return;
 
-            await _webView.EnsureCoreWebView2Async(_env);
-            _webView.CoreWebView2.Settings.IsStatusBarEnabled           = false;
-            _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            _webView.CoreWebView2.Settings.AreDevToolsEnabled           = false;
+                ResetWebViewState();
 
-            // Google OAuth がWebView2をブロックしないよう通常のChrome UAを設定する
-            _webView.CoreWebView2.Settings.UserAgent =
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/130.0.0.0 Safari/537.36";
+                var userDataFolder = Path.Combine(Path.GetTempPath(), UserDataFolderName);
+                _env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
 
-            await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(InterceptorScript);
-            _initialized = true;
+                _hostWindow = new Window
+                {
+                    Width = 1, Height = 1, Left = -9999, Top = -9999,
+                    ShowInTaskbar = false, WindowStyle = WindowStyle.None,
+                    AllowsTransparency = true, Opacity = 0,
+                    Title = "GitHubScraperHost"
+                };
+                _webView = new WebView2();
+                _hostWindow.Content = _webView;
+                _hostWindow.Show();
+
+                await _webView.EnsureCoreWebView2Async(_env);
+                _webView.CoreWebView2.Settings.IsStatusBarEnabled           = false;
+                _webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                _webView.CoreWebView2.Settings.AreDevToolsEnabled           = false;
+
+                // Google OAuth がWebView2をブロックしないよう通常のChrome UAを設定する
+                _webView.CoreWebView2.Settings.UserAgent =
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                    "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                    "Chrome/130.0.0.0 Safari/537.36";
+
+                await _webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(InterceptorScript);
+                _initialized = true;
+            }
+            catch
+            {
+                ResetWebViewState();
+                throw;
+            }
+            finally
+            {
+                _initializationGate.Release();
+            }
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -238,11 +262,12 @@ namespace AIUsageOverlay.Services
             // 傍受バッファをリセット
             await _webView.CoreWebView2.ExecuteScriptAsync("window.__ghCopilotRaw = null;");
 
-            var navTcs = new TaskCompletionSource<bool>();
+            var navTcs = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             void OnNav(object? s, CoreWebView2NavigationCompletedEventArgs e)
             {
                 _webView.CoreWebView2.NavigationCompleted -= OnNav;
-                navTcs.SetResult(e.IsSuccess);
+                navTcs.TrySetResult(e.IsSuccess);
             }
             _webView.CoreWebView2.NavigationCompleted += OnNav;
             _webView.CoreWebView2.Navigate(url);
@@ -329,6 +354,30 @@ namespace AIUsageOverlay.Services
                         CoreWebView2MemoryUsageTargetLevel.Normal;
             }
             catch { /* 同上 */ }
+        }
+
+        /// <summary>
+        /// WebView2 が利用可能な状態まで初期化済みかを判定する。
+        /// 起動直後の初期化失敗で壊れた参照を再利用しないため、CoreWebView2 の存在も確認する。
+        /// </summary>
+        private bool IsInitialized()
+            => _initialized && _env != null && _webView?.CoreWebView2 != null;
+
+        /// <summary>
+        /// WebView2 関連オブジェクトを破棄し、次回呼び出しで再初期化できる状態へ戻す。
+        /// </summary>
+        private void ResetWebViewState()
+        {
+            try
+            {
+                _hostWindow?.Close();
+            }
+            catch { /* 初期化失敗時の破棄失敗は次回再作成で回復する */ }
+
+            _webView = null;
+            _hostWindow = null;
+            _env = null;
+            _initialized = false;
         }
 
     }

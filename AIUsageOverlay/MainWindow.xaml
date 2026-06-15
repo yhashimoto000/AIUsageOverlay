@@ -22,7 +22,7 @@
             <MenuItem Header="設定(_S)" Click="Settings_Click" Background="#2A2A2A" Foreground="White"/>
             <MenuItem Header="ログイン - Claude(_L)" Click="Login_Click" Background="#2A2A2A" Foreground="White"/>
             <MenuItem Header="ログイン - GitHub(_G)" Click="GitHubLogin_Click" Background="#2A2A2A" Foreground="White"/>
-            <MenuItem Header="ログイン - OpenAI(_O)" Click="CodexLogin_Click" Background="#2A2A2A" Foreground="White"/>
+            <MenuItem Header="ログイン - Codex(_O)" Click="CodexLogin_Click" Background="#2A2A2A" Foreground="White"/>
             <MenuItem Header="セッションリセット(_R)" Click="ResetSession_Click" Background="#2A2A2A" Foreground="White"/>
             <Separator Background="#484848"/>
             <MenuItem Header="非表示にする(_H)" Click="Hide_Click" Background="#2A2A2A" Foreground="White"/>
@@ -187,7 +187,7 @@
                 </Grid>
             </Grid>
 
-            <!-- Row 4: Codex / OpenAI -->
+            <!-- Row 4: Codex -->
             <Grid Grid.Row="4" Margin="14,6,14,6" Visibility="{Binding CodexSectionVisibility}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="5*"/>
@@ -223,7 +223,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="OpenAI / Codex" Foreground="#888888" FontSize="11"/>
+                        <TextBlock Grid.Column="0" Text="Codex 5時間" Foreground="#888888" FontSize="11"/>
                         <TextBlock Grid.Column="2" Text="{Binding CodexDetailText}"
                                    Foreground="#888888" FontSize="11"/>
                     </Grid>
@@ -237,8 +237,16 @@
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Text="{Binding CodexStatusText}"
                                Foreground="#10A37F" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Row="2" Text="{Binding CodexSubText}"
-                               Foreground="#888888" FontSize="11"/>
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="週間" Foreground="#888888" FontSize="11"/>
+                        <TextBlock Grid.Column="2" Text="{Binding CodexSubText}"
+                                   Foreground="#888888" FontSize="11"/>
+                    </Grid>
                 </Grid>
             </Grid>
 
