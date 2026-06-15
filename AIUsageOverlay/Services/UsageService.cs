@@ -121,7 +121,7 @@ namespace AIUsageOverlay.Services
         public async Task ShowGitHubLoginWindowAsync()
             => await _gitHubScraper.ShowLoginWindowAsync();
 
-        // ── Codex / OpenAI ───────────────────────────────────────────
+        // ── Codex / ChatGPT ──────────────────────────────────────────
 
         public string? GetLastCodexError() => _codexScraper.LastError;
 

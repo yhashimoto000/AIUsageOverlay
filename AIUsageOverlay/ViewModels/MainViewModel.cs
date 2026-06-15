@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using AIUsageOverlay.Services;
@@ -23,6 +24,25 @@ namespace AIUsageOverlay.ViewModels
 
         /// <summary>定期更新用タイマー</summary>
         private readonly DispatcherTimer _refreshTimer;
+
+        /// <summary>
+        /// 起動直後に Windows のネットワーク初期化や WebView2 プロファイル復元と競合しないよう、
+        /// 初回の自動取得だけ短く遅延させる秒数。
+        /// </summary>
+        private const int InitialRefreshDelaySeconds = 5;
+
+        /// <summary>
+        /// 定期更新・手動更新・設定保存後更新が同時に走らないようにする排他制御。
+        /// WebView2 は同一インスタンスで複数 Navigate を重ねると状態が壊れやすいため、
+        /// ViewModel 側で更新処理全体を 1 本に制限する。
+        /// </summary>
+        private readonly SemaphoreSlim _refreshGate = new(1, 1);
+
+        /// <summary>
+        /// ViewModel 破棄済みフラグ。
+        /// 起動直後の遅延初回更新が残っている状態でアプリ終了しても、破棄後の更新処理を走らせない。
+        /// </summary>
+        private bool _disposed;
 
         // Claude バッキングフィールド
         private double _sessionPercent;
@@ -60,6 +80,12 @@ namespace AIUsageOverlay.ViewModels
         private string     _codexDetailText        = "";
         private string     _codexStatusText        = "--";
         private string     _codexSubText           = "";
+
+        /// <summary>
+        /// 一度でも Codex 使用量の取得に成功したかを表すフラグ。
+        /// 起動直後の一時的なネットワーク失敗で前回表示を消さないために使用する。
+        /// </summary>
+        private bool       _codexEverLoaded;
 
         // ────────────────────────────────────────────────────────────────
         // バインディングプロパティ（Claude）
@@ -185,7 +211,7 @@ namespace AIUsageOverlay.ViewModels
             set => SetProperty(ref _codexSectionVisibility, value);
         }
 
-        /// <summary>クレジット使用率バーの表示/非表示</summary>
+        /// <summary>5時間制限使用率バーの表示/非表示</summary>
         public Visibility CodexBarVisibility
         {
             get => _codexBarVisibility;
@@ -199,35 +225,35 @@ namespace AIUsageOverlay.ViewModels
             set => SetProperty(ref _codexDotVisibility, value);
         }
 
-        /// <summary>クレジット使用率（0.0 ～ 100.0）</summary>
+        /// <summary>Codex 5時間制限使用率（0.0 ～ 100.0）</summary>
         public double CodexUsagePercent
         {
             get => _codexUsagePercent;
             set => SetProperty(ref _codexUsagePercent, value);
         }
 
-        /// <summary>クレジット使用率テキスト（例: "52%"）</summary>
+        /// <summary>Codex 5時間制限使用率テキスト（例: "52%"）</summary>
         public string CodexUsagePercentText
         {
             get => _codexUsagePercentText;
             set => SetProperty(ref _codexUsagePercentText, value);
         }
 
-        /// <summary>クレジット詳細テキスト（例: "$5.23 残高"）</summary>
+        /// <summary>Codex 5時間制限の残り時間テキスト（例: "4時間11分"）</summary>
         public string CodexDetailText
         {
             get => _codexDetailText;
             set => SetProperty(ref _codexDetailText, value);
         }
 
-        /// <summary>ステータステキスト（例: "$5.23" / "エラー"）</summary>
+        /// <summary>Codex 週間制限使用率テキスト（例: "18%" / "エラー"）</summary>
         public string CodexStatusText
         {
             get => _codexStatusText;
             set => SetProperty(ref _codexStatusText, value);
         }
 
-        /// <summary>サブテキスト（例: "今月 $3.47 使用"）</summary>
+        /// <summary>Codex 週間制限の残り時間テキスト（例: "5日9時間"）</summary>
         public string CodexSubText
         {
             get => _codexSubText;
@@ -250,7 +276,7 @@ namespace AIUsageOverlay.ViewModels
             _refreshTimer.Tick += async (_, _) => await RefreshUsageAsync();
             _refreshTimer.Start();
 
-            _ = RefreshUsageAsync();
+            _ = RefreshUsageAfterStartupDelayAsync();
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -260,32 +286,48 @@ namespace AIUsageOverlay.ViewModels
         /// <summary>全ツールの使用量を非同期で取得・更新する</summary>
         public async Task RefreshUsageAsync()
         {
-            StatusText = "取得中...";
+            if (_disposed)
+                return;
 
-            // ── Claude ──
-            var (sessionRatio, sessionRemaining, weeklyRatio, weeklyRemaining, isFromApi) =
-                await _usageService.UpdateAndGetUsageAsync();
+            if (!await _refreshGate.WaitAsync(0))
+                return;
 
-            SessionPercent      = sessionRatio * 100.0;
-            SessionPercentText  = $"{(int)(sessionRatio * 100)}%";
-            SessionRemainingText = FormatMinutes(sessionRemaining);
-            WeeklyPercent       = weeklyRatio * 100.0;
-            WeeklyPercentText   = $"{(int)(weeklyRatio * 100)}%";
-            WeeklyRemainingText = FormatMinutes(weeklyRemaining);
-
-            if (isFromApi)
-                StatusText = $"API: {DateTime.Now:HH:mm}";
-            else
+            try
             {
-                var apiError = _usageService.GetLastApiError();
-                StatusText = apiError != null ? $"エラー: {apiError}" : "接続エラー";
+                if (_disposed)
+                    return;
+
+                StatusText = "取得中...";
+
+                // ── Claude ──
+                var (sessionRatio, sessionRemaining, weeklyRatio, weeklyRemaining, isFromApi) =
+                    await _usageService.UpdateAndGetUsageAsync();
+
+                SessionPercent      = sessionRatio * 100.0;
+                SessionPercentText  = $"{(int)(sessionRatio * 100)}%";
+                SessionRemainingText = FormatMinutes(sessionRemaining);
+                WeeklyPercent       = weeklyRatio * 100.0;
+                WeeklyPercentText   = $"{(int)(weeklyRatio * 100)}%";
+                WeeklyRemainingText = FormatMinutes(weeklyRemaining);
+
+                if (isFromApi)
+                    StatusText = $"API: {DateTime.Now:HH:mm}";
+                else
+                {
+                    var apiError = _usageService.GetLastApiError();
+                    StatusText = apiError != null ? $"エラー: {apiError}" : "接続エラー";
+                }
+
+                // ── GitHub Copilot ──
+                await RefreshGitHubCopilotAsync();
+
+                // ── Codex / OpenAI ──
+                await RefreshCodexAsync();
             }
-
-            // ── GitHub Copilot ──
-            await RefreshGitHubCopilotAsync();
-
-            // ── Codex / OpenAI ──
-            await RefreshCodexAsync();
+            finally
+            {
+                _refreshGate.Release();
+            }
         }
 
         /// <summary>
@@ -358,8 +400,8 @@ namespace AIUsageOverlay.ViewModels
         }
 
         /// <summary>
-        /// OpenAI / Codex の使用状況を取得してバインディングプロパティを更新する。
-        /// クレジット残高があればプログレスバー表示。なければステータスドット表示。
+        /// Codex の使用制限状況を取得してバインディングプロパティを更新する。
+        /// 5時間制限を左側プログレスバー、週間制限を右側ステータスとして表示する。
         /// </summary>
         private async Task RefreshCodexAsync()
         {
@@ -372,59 +414,51 @@ namespace AIUsageOverlay.ViewModels
             }
 
             CodexSectionVisibility = Visibility.Visible;
-            CodexBarVisibility     = Visibility.Collapsed;
-            CodexDotVisibility     = Visibility.Visible;
 
             var data = await _usageService.FetchCodexAsync();
 
             if (data == null)
             {
-                CodexStatusText = "エラー";
-                CodexSubText    = _usageService.GetLastCodexError() ?? "接続失敗";
+                if (!_codexEverLoaded)
+                {
+                    CodexStatusText = "エラー";
+                    CodexSubText    = _usageService.GetLastCodexError() ?? "接続失敗";
+                }
                 return;
             }
 
-            if (data.HasCreditData && data.CreditTotal > 0)
+            if (data.HasSessionData)
             {
-                // クレジット残高 + 上限 → 使用率プログレスバー
+                // 5時間制限 → 左側プログレスバー
                 CodexBarVisibility  = Visibility.Visible;
                 CodexDotVisibility  = Visibility.Collapsed;
 
-                decimal used  = data.CreditTotal - data.CreditBalance;
-                double  ratio = Math.Min(1.0, (double)(used / data.CreditTotal));
-                CodexUsagePercent     = ratio * 100.0;
-                CodexUsagePercentText = $"{(int)(ratio * 100)}%";
-                CodexDetailText       = $"残 ${data.CreditBalance:F2}";
-                CodexStatusText       = $"${data.CreditBalance:F2}";
-                CodexSubText          = data.HasUsageData
-                    ? $"今月 ${data.MonthlyUsageUsd:F2} 使用"
-                    : "残高";
-            }
-            else if (data.HasCreditData)
-            {
-                // 残高のみ（上限不明）
-                CodexBarVisibility  = Visibility.Collapsed;
-                CodexDotVisibility  = Visibility.Visible;
-                CodexStatusText     = $"${data.CreditBalance:F2}";
-                CodexSubText        = "残高";
-                CodexDetailText     = "";
-            }
-            else if (data.HasUsageData)
-            {
-                // 使用額のみ
-                CodexBarVisibility  = Visibility.Collapsed;
-                CodexDotVisibility  = Visibility.Visible;
-                CodexStatusText     = "Connected";
-                CodexSubText        = $"今月 ${data.MonthlyUsageUsd:F2} 使用";
-                CodexDetailText     = "";
+                CodexUsagePercent     = data.SessionPercent;
+                CodexUsagePercentText = $"{data.SessionPercent}%";
+                CodexDetailText       = FormatNullableMinutes(data.SessionRemainingMinutes);
             }
             else
             {
+                // 5時間制限が取れない場合のみドット表示にする
+                CodexBarVisibility  = Visibility.Collapsed;
                 CodexDotVisibility  = Visibility.Visible;
-                CodexStatusText     = "Connected";
-                CodexSubText        = "取得中";
-                CodexDetailText     = "";
+                CodexUsagePercentText = "0%";
+                CodexDetailText       = "--";
             }
+
+            if (data.HasWeeklyData)
+            {
+                // 週間制限 → 右側ステータス
+                CodexStatusText = $"{data.WeeklyPercent}%";
+                CodexSubText    = FormatNullableMinutes(data.WeeklyRemainingMinutes);
+            }
+            else
+            {
+                CodexStatusText = "--";
+                CodexSubText    = "--";
+            }
+
+            _codexEverLoaded = true;
         }
 
         /// <summary>同期版リフレッシュ（後方互換用）</summary>
@@ -444,12 +478,30 @@ namespace AIUsageOverlay.ViewModels
             RefreshUsage();
         }
 
-        /// <summary>タイマーを停止してリソースを解放する</summary>
-        public void Dispose() => _refreshTimer.Stop();
+        /// <summary>タイマーを停止し、遅延中の初回更新が破棄後に走らないようにする</summary>
+        public void Dispose()
+        {
+            _disposed = true;
+            _refreshTimer.Stop();
+        }
 
         // ────────────────────────────────────────────────────────────────
         // 内部ヘルパー
         // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// アプリ起動直後の初回自動取得を少し遅らせてから実行する。
+        /// Windows スタートアップ起動時はネットワーク・WebView2 プロファイル・Cookie DB の準備が
+        /// 数秒遅れることがあるため、即時取得による初回失敗とログイン操作の競合を避ける。
+        /// </summary>
+        private async Task RefreshUsageAfterStartupDelayAsync()
+        {
+            await Task.Delay(TimeSpan.FromSeconds(InitialRefreshDelaySeconds));
+            if (_disposed)
+                return;
+
+            await RefreshUsageAsync();
+        }
 
         /// <summary>分数を "X日Y時間Z分" 形式に変換する</summary>
         private static string FormatMinutes(int totalMinutes)
@@ -466,6 +518,12 @@ namespace AIUsageOverlay.ViewModels
             if (hours > 0)              return $"{hours}時間";
             return $"{minutes}分";
         }
+
+        /// <summary>
+        /// 取得できなかった残り時間を "--" として表示し、取得済みの場合は通常の残り時間表記に変換する。
+        /// </summary>
+        private static string FormatNullableMinutes(int totalMinutes)
+            => totalMinutes >= 0 ? FormatMinutes(totalMinutes) : "--";
 
         // ────────────────────────────────────────────────────────────────
         // INotifyPropertyChanged

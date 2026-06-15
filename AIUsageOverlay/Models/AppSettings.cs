@@ -15,7 +15,7 @@ namespace AIUsageOverlay.Models
         [JsonPropertyName("gitHubCopilotEnabled")]
         public bool GitHubCopilotEnabled { get; set; } = false;
 
-        /// <summary>OpenAI / Codex セクションを表示するかどうか</summary>
+        /// <summary>Codex 使用制限セクションを表示するかどうか</summary>
         [JsonPropertyName("codexEnabled")]
         public bool CodexEnabled { get; set; } = false;
 
