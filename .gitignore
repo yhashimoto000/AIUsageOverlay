@@ -7,9 +7,11 @@ bin/
 obj/
 
 # 発行出力ディレクトリ（dotnet publish -o publish/ の出力先）
-# ただし AIUsageOverlay.exe はリリース配布用として追跡対象とする
-publish/*
-!publish/AIUsageOverlay.exe
+# exe はビルド成果物のため追跡しない。リリース配布は release.yml で GitHub Release に zip 添付する。
+publish/
+
+# build-release.bat が生成する配布用 zip
+AIUsageOverlay_*.zip
 
 # NuGet パッケージキャッシュ（packages/ 以下に展開される場合）
 packages/

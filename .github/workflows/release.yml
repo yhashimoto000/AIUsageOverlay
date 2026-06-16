@@ -55,21 +55,39 @@ jobs:
         run: dotnet restore AIUsageOverlay/AIUsageOverlay.csproj
 
       # ──────────────────────────────────────────────────────────
-      # 4. 単一 exe として発行
+      # 4. 発行
       #    --self-contained true  : .NET ランタイム同梱
-      #    PublishSingleFile=true : すべてのファイルを 1 つの exe に圧縮
-      #    IncludeNativeLibrariesForSelfExtract=true : ネイティブライブラリも同梱
+      #    PublishSingleFile=true : マネージドコードを 1 exe に圧縮
+      #    IncludeNativeLibrariesForSelfExtract は指定しない:
+      #      WebView2Loader.dll / wpfgfx_cor3.dll 等を exe 外部に出力し
+      #      exe 単体サイズを ~70MB に抑える
       # ──────────────────────────────────────────────────────────
-      - name: Publish single-file executable
+      - name: Publish executable
         run: |
           dotnet publish AIUsageOverlay/AIUsageOverlay.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
             -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:EnableCompressionInSingleFile=true `
             -o publish/
+
+      # ──────────────────────────────────────────────────────────
+      # 4b. 配布用 zip を作成
+      #     .pdb（デバッグ）/ .xml（IntelliSense）は除外する
+      # ──────────────────────────────────────────────────────────
+      - name: Create release zip
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}"
+          $zip = "AIUsageOverlay_${ver}.zip"
+          $tmp = Join-Path $env:TEMP "aiusage_zip_tmp"
+          Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item $tmp -ItemType Directory | Out-Null
+          Copy-Item "publish\*" $tmp -Recurse -Exclude @("*.pdb","*.xml")
+          Compress-Archive -Path "$tmp\*" -DestinationPath $zip -Force
+          Remove-Item $tmp -Recurse -Force
+          Write-Host "Created: $zip"
 
       # ──────────────────────────────────────────────────────────
       # 5. タグ名からバージョン番号を取得（例: v1.0.0 → 1.0.0）
@@ -92,18 +110,19 @@ jobs:
             ## AI Usage Overlay v${{ steps.version.outputs.version }}
 
             ### インストール方法
-            1. `AIUsageOverlay.exe` をダウンロード
-            2. ダウンロードしたフォルダで `AIUsageOverlay.exe` をダブルクリック
-            3. インストーラー不要・単一 exe ファイルです
+            1. `AIUsageOverlay_v${{ steps.version.outputs.version }}.zip` をダウンロード
+            2. zip を任意のフォルダに展開
+            3. `AIUsageOverlay.exe` をダブルクリック（**同じフォルダの DLL が必要**なので移動しないこと）
 
             ### 動作要件
             - Windows 10 / 11 (64-bit)
             - WebView2 Runtime（Windows 11 および Edge インストール済み環境には標準搭載）
+              - 未インストールの場合は [WebView2 Runtime](https://developer.microsoft.com/ja-jp/microsoft-edge/webview2/) を別途インストール
 
             ### 初回セットアップ
             起動後、オーバーレイを右クリック → **ログイン** から claude.ai にログインしてください。
           draft: false
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          files: publish/AIUsageOverlay.exe
+          files: AIUsageOverlay_v${{ steps.version.outputs.version }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
