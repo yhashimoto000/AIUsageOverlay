@@ -7,7 +7,7 @@ namespace AIUsageOverlay
 {
     /// <summary>
     /// SettingsWindow のコードビハインド。
-    /// 更新間隔・各ツール有効化・Windows スタートアップ登録を設定する。
+    /// TabControl（全般 / 表示項目 / 外観）で各設定を編集する。通知タブは P2（F-07）で追加予定。
     /// </summary>
     public partial class SettingsWindow : Window
     {
@@ -23,14 +23,42 @@ namespace AIUsageOverlay
             _usageService = usageService;
 
             var settings = _usageService.GetSettings();
+
+            // ── 全般 ──
             RefreshIntervalTextBox.Text = settings.RefreshIntervalSeconds.ToString();
+            StartupCheckBox.IsChecked   = IsStartupRegistered();
+
+            // ── 表示項目 ──
             GitHubCopilotCheckBox.IsChecked = settings.GitHubCopilotEnabled;
             CodexCheckBox.IsChecked         = settings.CodexEnabled;
-            StartupCheckBox.IsChecked       = IsStartupRegistered();
+            // ResetDisplayMode: index 0 = relative, 1 = absolute
+            ResetModeComboBox.SelectedIndex = settings.ResetDisplayMode == "absolute" ? 1 : 0;
+
+            // ── 外観 ──
+            // TrayIconStyle: index 0 = dualBar, 1 = donut
+            TrayStyleComboBox.SelectedIndex     = settings.TrayIconStyle == "donut" ? 1 : 0;
+            CautionThresholdTextBox.Text        = settings.CautionThresholdPercent.ToString();
+            WarningThresholdTextBox.Text        = settings.WarningThresholdPercent.ToString();
+            ShowThresholdMarkersCheckBox.IsChecked = settings.ShowThresholdMarkers;
+            OpacitySlider.Value                 = settings.WindowOpacity;
+            UpdateOpacityLabel(settings.WindowOpacity);
+        }
+
+        /// <summary>不透明度スライダーの値変更でラベルを更新する（保存は「保存」ボタンで確定）。</summary>
+        private void OpacitySlider_ValueChanged(object sender,
+            RoutedPropertyChangedEventArgs<double> e) => UpdateOpacityLabel(e.NewValue);
+
+        /// <summary>不透明度ラベルを "オーバーレイ不透明度: NN%" 形式で更新する。</summary>
+        private void UpdateOpacityLabel(double value)
+        {
+            // InitializeComponent 中の初回発火に備えて null ガードする
+            if (OpacityLabel != null)
+                OpacityLabel.Text = $"オーバーレイ不透明度: {(int)(value * 100)}%";
         }
 
         private void Save_Click(object sender, RoutedEventArgs e)
         {
+            // ── 更新間隔の検証 ──
             if (!int.TryParse(RefreshIntervalTextBox.Text, out var refreshInterval)
                 || refreshInterval < 5)
             {
@@ -40,10 +68,48 @@ namespace AIUsageOverlay
                 return;
             }
 
+            // ── 閾値の検証（0〜100、注意 < 警告）──
+            if (!int.TryParse(CautionThresholdTextBox.Text, out var caution)
+                || caution < 0 || caution > 100)
+            {
+                MessageBox.Show("注意の閾値は 0〜100 の整数で入力してください。",
+                    "入力エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
+                CautionThresholdTextBox.Focus();
+                return;
+            }
+            if (!int.TryParse(WarningThresholdTextBox.Text, out var warning)
+                || warning < 0 || warning > 100)
+            {
+                MessageBox.Show("警告の閾値は 0〜100 の整数で入力してください。",
+                    "入力エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
+                WarningThresholdTextBox.Focus();
+                return;
+            }
+            if (caution >= warning)
+            {
+                MessageBox.Show("注意の閾値は警告の閾値より小さく指定してください。",
+                    "入力エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
+                CautionThresholdTextBox.Focus();
+                return;
+            }
+
             var settings = _usageService.GetSettings();
+
+            // 全般
             settings.RefreshIntervalSeconds = refreshInterval;
+
+            // 表示項目
             settings.GitHubCopilotEnabled   = GitHubCopilotCheckBox.IsChecked == true;
             settings.CodexEnabled           = CodexCheckBox.IsChecked == true;
+            settings.ResetDisplayMode       = ResetModeComboBox.SelectedIndex == 1 ? "absolute" : "relative";
+
+            // 外観
+            settings.TrayIconStyle          = TrayStyleComboBox.SelectedIndex == 1 ? "donut" : "dualBar";
+            settings.CautionThresholdPercent = caution;
+            settings.WarningThresholdPercent = warning;
+            settings.ShowThresholdMarkers   = ShowThresholdMarkersCheckBox.IsChecked == true;
+            settings.WindowOpacity          = OpacitySlider.Value;
+
             _usageService.SaveSettings(settings);
 
             SetStartupRegistration(StartupCheckBox.IsChecked == true);

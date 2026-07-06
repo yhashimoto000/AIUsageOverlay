@@ -191,6 +191,17 @@ AIUsageOverlay/
 
 ---
 
+## 謝辞
+
+トレイアイコンの2段バーデザイン・stale 減光表現・使用率レベルの閾値色など、一部の UI ロジックは
+以下のオープンソース実装（いずれも MIT License）を参考に移植しています。
+
+- [CodexBar](https://github.com/steipete/CodexBar)（steipete 氏、macOS / Swift）
+- [Win-CodexBar](https://github.com/Finesssee/Win-CodexBar)（Finesssee 氏、Windows / Rust + Tauri）
+
+Swift / Rust コードの複製ではなくロジック（描画パラメータ・閾値）の移植であり、
+該当ファイルのヘッダに移植元を明記しています。
+
 ## ライセンス
 
 MIT License

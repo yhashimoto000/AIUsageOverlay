@@ -42,5 +42,42 @@ namespace AIUsageOverlay.Models
         /// <summary>ウィンドウ不透明度（0.1 ～ 1.0）</summary>
         [JsonPropertyName("windowOpacity")]
         public double WindowOpacity { get; set; } = 1.0;
+
+        // ────────────────────────────────────────────────────────────────
+        // P1（CodexBar 機能取込）追加設定
+        // すべて既定値ありのため、旧 settings.json は未知キー補完で後方互換を保つ。
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// トレイアイコンの形式。F-01。
+        /// "dualBar"（上=セッション/下=週間の2段バー、既定） / "donut"（従来のドーナツ+%）。
+        /// </summary>
+        [JsonPropertyName("trayIconStyle")]
+        public string TrayIconStyle { get; set; } = "dualBar";
+
+        /// <summary>
+        /// 注意（オレンジ）を開始する使用率の閾値（%）。F-03。
+        /// この値以上 WarningThresholdPercent 未満が「注意」レベル。
+        /// </summary>
+        [JsonPropertyName("cautionThresholdPercent")]
+        public int CautionThresholdPercent { get; set; } = 50;
+
+        /// <summary>
+        /// 警告（赤）を開始する使用率の閾値（%）。F-03。
+        /// この値以上が「警告」レベル。
+        /// </summary>
+        [JsonPropertyName("warningThresholdPercent")]
+        public int WarningThresholdPercent { get; set; } = 80;
+
+        /// <summary>オーバーレイのバー上に閾値マーカー（目盛）を描画するか。F-03。</summary>
+        [JsonPropertyName("showThresholdMarkers")]
+        public bool ShowThresholdMarkers { get; set; } = true;
+
+        /// <summary>
+        /// リセット時刻の表示形式。F-04。
+        /// "relative"（残り時間、既定） / "absolute"（"14:32 リセット" 形式）。
+        /// </summary>
+        [JsonPropertyName("resetDisplayMode")]
+        public string ResetDisplayMode { get; set; } = "relative";
     }
 }

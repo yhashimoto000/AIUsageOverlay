@@ -1,13 +1,12 @@
 using System.ComponentModel;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Forms;
+using AIUsageOverlay.Services;
 // WinForms / System.Drawing との名前衝突を解消するエイリアス
 using Application  = System.Windows.Application;
 using MessageBox   = System.Windows.MessageBox;
-using FontStyle    = System.Drawing.FontStyle;
 
 namespace AIUsageOverlay
 {
@@ -51,6 +50,13 @@ namespace AIUsageOverlay
         /// 次回更新時に DestroyIcon() で解放してメモリリークを防ぐ。
         /// </summary>
         private IntPtr _currentIconHandle = IntPtr.Zero;
+
+        /// <summary>
+        /// 直前にトレイへ描画した状態のキー（"session|weekly|stale|style"）。F-01。
+        /// 同一状態では再描画をスキップして GDI 負荷とちらつきを抑える
+        /// （トレイは1アイコンのため CodexBar の LRU キャッシュはキー1件で足りる）。
+        /// </summary>
+        private string? _lastTrayKey;
 
         // ────────────────────────────────────────────────────────────────
         // 公開プロパティ
@@ -233,48 +239,70 @@ namespace AIUsageOverlay
 
         /// <summary>
         /// ViewModel のプロパティ変更を検知するハンドラ。
-        /// SessionPercent または WeeklyPercent が変化したときにトレイアイコンを更新する。
+        /// SessionPercent / WeeklyPercent / IsClaudeStale が変化したときにトレイアイコンを更新する。
+        /// （F-02 で stale の変化もトリガーに追加した）
         /// </summary>
         private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            // SessionPercent か WeeklyPercent の変化のみ処理する（他プロパティは無視）
             if (e.PropertyName is not (nameof(ViewModels.MainViewModel.SessionPercent)
-                                    or nameof(ViewModels.MainViewModel.WeeklyPercent)))
+                                    or nameof(ViewModels.MainViewModel.WeeklyPercent)
+                                    or nameof(ViewModels.MainViewModel.IsClaudeStale)))
                 return;
 
             if (_mainWindow == null || _notifyIcon == null) return;
 
-            var sessionPercent = (int)_mainWindow.ViewModel.SessionPercent;
-            var weeklyPercent  = (int)_mainWindow.ViewModel.WeeklyPercent;
-
             // NotifyIcon の操作は UI スレッドから行う
-            Dispatcher.Invoke(() => UpdateTrayIcon(sessionPercent, weeklyPercent));
+            Dispatcher.Invoke(UpdateTrayIcon);
         }
 
         /// <summary>
-        /// セッション使用率に応じてトレイアイコンとツールチップを更新する。
-        ///
-        /// アイコン色の基準（セッション使用率）:
-        ///   0 〜 49%  : 緑  (#4CAF50) ← 通常
-        ///   50 〜 79% : オレンジ (#FF8C00) ← 注意
-        ///   80 〜100% : 赤  (#F44336) ← 警告
-        ///
-        /// ツールチップ（NotifyIcon.Text）: "セッション: 75%  週間: 10%"
-        /// ※ Windows の制限により最大 63 文字
+        /// 設定変更（トレイ形式・閾値色など使用率に依存しない項目）を即座にトレイへ反映する（F-01/F-03）。
+        /// 使用率が変わらないと <see cref="OnViewModelPropertyChanged"/> が走らないため、
+        /// 再描画スキップ用のキーを無効化してから強制的に再描画する。
+        /// SettingsWindow 保存後に MainWindow から呼ばれる。
         /// </summary>
-        /// <param name="sessionPercent">セッション使用率（0〜100）</param>
-        /// <param name="weeklyPercent">週間使用率（0〜100）</param>
-        private void UpdateTrayIcon(int sessionPercent, int weeklyPercent)
+        internal void RefreshTrayIcon()
         {
-            if (_notifyIcon == null) return;
+            _lastTrayKey = null;                 // 同一状態スキップを解除して確実に再描画させる
+            Dispatcher.Invoke(UpdateTrayIcon);
+        }
+
+        /// <summary>
+        /// セッション/週間使用率・stale 状態に応じてトレイアイコンとツールチップを更新する（F-01/F-02）。
+        ///
+        /// アイコン形式は <see cref="Models.AppSettings.TrayIconStyle"/> により切替:
+        ///   "dualBar"（既定）→ 上段=セッション/下段=週間の2段バー
+        ///   "donut"          → 従来のドーナツ + 中央%テキスト
+        /// 色は <see cref="UsageLevelHelper"/> の閾値で決定し、stale 時は減光する。
+        ///
+        /// ツールチップ（NotifyIcon.Text）: "セッション: 75%  週間: 10%"（最大 63 文字にクランプ）。
+        /// 同一状態（session|weekly|stale|style）では再描画をスキップする。
+        /// </summary>
+        private void UpdateTrayIcon()
+        {
+            if (_notifyIcon == null || _mainWindow == null) return;
+
+            var vm       = _mainWindow.ViewModel;
+            int session  = (int)vm.SessionPercent;
+            int weekly   = (int)vm.WeeklyPercent;
+            bool stale   = vm.IsClaudeStale;
+            var settings = vm.GetSettings();
+            string style = settings.TrayIconStyle;
+
+            // ── 再描画スキップ判定（同一状態なら何もしない）──
+            var key = $"{session}|{weekly}|{stale}|{style}";
+            if (key == _lastTrayKey) return;
+            _lastTrayKey = key;
 
             // ── ツールチップを更新する ──
-            var tooltip = $"セッション: {sessionPercent}%  週間: {weeklyPercent}%";
+            var tooltip = $"セッション: {session}%  週間: {weekly}%";
             // NotifyIcon.Text は最大 63 文字の制限があるためクランプする
             _notifyIcon.Text = tooltip.Length <= 63 ? tooltip : tooltip[..63];
 
             // ── アイコンを動的生成して更新する ──
-            using var bitmap = CreateSessionBitmap(sessionPercent);
+            using var bitmap = style == "donut"
+                ? TrayIconRenderer.RenderDonut(session, stale, settings)
+                : TrayIconRenderer.RenderDualBar(session, weekly, stale, settings);
             var newHandle = bitmap.GetHicon();
 
             // 新しいアイコンをセットする
@@ -285,66 +313,6 @@ namespace AIUsageOverlay
                 DestroyIcon(_currentIconHandle);
 
             _currentIconHandle = newHandle;
-        }
-
-        /// <summary>
-        /// セッション使用率を視覚化した 32×32 ビットマップを生成する。
-        ///
-        /// デザイン:
-        ///   - 外枠: ダーク円（#1C1C1C）
-        ///   - 進捗弧: 使用率に応じた色で -90° から時計回りに描画
-        ///   - 内枠: ダーク円で中抜き（ドーナツ形状）
-        ///   - 中央テキスト: 使用率（%）を白で表示
-        /// </summary>
-        /// <param name="sessionPercent">セッション使用率（0〜100）</param>
-        /// <returns>32×32 の ARGB ビットマップ（呼び出し元が Dispose する）</returns>
-        private static Bitmap CreateSessionBitmap(int sessionPercent)
-        {
-            const int size = 32;
-            var bmp = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-
-            using var g = Graphics.FromImage(bmp);
-            g.SmoothingMode     = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            g.Clear(Color.Transparent);
-
-            // 使用率に応じた色を決定する
-            Color progressColor = sessionPercent >= 80
-                ? Color.FromArgb(255, 244,  67,  54)   // 赤: 80% 以上（警告）
-                : sessionPercent >= 50
-                ? Color.FromArgb(255, 255, 140,   0)   // オレンジ: 50〜79%（注意）
-                : Color.FromArgb(255,  76, 175,  80);  // 緑: 0〜49%（通常）
-
-            // 外側のダーク円（背景）
-            using (var bgBrush = new SolidBrush(Color.FromArgb(255, 28, 28, 28)))
-                g.FillEllipse(bgBrush, 1, 1, size - 2, size - 2);
-
-            // 進捗弧（使用率分だけ色付き弧を描画）
-            // -90° から開始して時計回りに sweepAngle 度描く（0% = 弧なし、100% = 全周）
-            if (sessionPercent > 0)
-            {
-                float sweepAngle = Math.Min(sessionPercent, 100) * 3.6f;
-                using var progressBrush = new SolidBrush(progressColor);
-                g.FillPie(progressBrush, 2, 2, size - 4, size - 4, -90f, sweepAngle);
-            }
-
-            // 内側のダーク円（ドーナツの穴）
-            int holeSize   = size - 14;
-            int holeOffset = (size - holeSize) / 2;
-            using (var holeBrush = new SolidBrush(Color.FromArgb(255, 28, 28, 28)))
-                g.FillEllipse(holeBrush, holeOffset, holeOffset, holeSize, holeSize);
-
-            // 中央にパーセンテージテキストを描画する
-            string text      = $"{sessionPercent}%";
-            float  fontSize  = sessionPercent >= 100 ? 6.5f : 7.5f;  // 3桁のとき少し小さく
-            using var font   = new Font("Arial", fontSize, FontStyle.Bold, GraphicsUnit.Point);
-            using var brush  = new SolidBrush(Color.White);
-            var textSize     = g.MeasureString(text, font);
-            float tx         = (size - textSize.Width)  / 2f;
-            float ty         = (size - textSize.Height) / 2f;
-            g.DrawString(text, font, brush, tx, ty);
-
-            return bmp;
         }
     }
 }

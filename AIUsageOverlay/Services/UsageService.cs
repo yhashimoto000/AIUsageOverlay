@@ -79,19 +79,30 @@ namespace AIUsageOverlay.Services
             return (sessionRatio, sessionRemaining, weeklyRatio, weeklyRemaining);
         }
 
+        /// <summary>
+        /// Claude の使用量を取得する。WebView2 傍受（API）が成功すればそれを返し、
+        /// 失敗時はローカル推定値へフォールバックする。
+        ///
+        /// F-04 で戻り値に sessionResetAt / weeklyResetAt（リセット日時）を追加した。
+        /// API 経由のときのみ実値が入り、ローカルフォールバック時は null（絶対時刻表示は不可）。
+        /// isFromApi が false のとき、呼び出し側は stale（情報が古い）として扱う。
+        /// </summary>
         public async Task<(double sessionRatio, int sessionRemainingMinutes,
-                           double weeklyRatio, int weeklyRemainingMinutes, bool isFromApi)>
+                           double weeklyRatio, int weeklyRemainingMinutes, bool isFromApi,
+                           DateTime? sessionResetAt, DateTime? weeklyResetAt)>
             UpdateAndGetUsageAsync()
         {
             var scraped = await _apiClient.FetchUsageAsync();
             if (scraped != null)
             {
                 return (scraped.SessionPercent / 100.0, scraped.SessionRemainingMinutes,
-                        scraped.WeeklyPercent  / 100.0, scraped.WeeklyRemainingMinutes, true);
+                        scraped.WeeklyPercent  / 100.0, scraped.WeeklyRemainingMinutes, true,
+                        scraped.SessionResetAt, scraped.WeeklyResetAt);
             }
             var local = UpdateAndGetUsage();
+            // ローカル推定はリセット日時を持たないため null を返す（表示側で相対表示にフォールバック）
             return (local.sessionRatio, local.sessionRemainingMinutes,
-                    local.weeklyRatio,  local.weeklyRemainingMinutes, false);
+                    local.weeklyRatio,  local.weeklyRemainingMinutes, false, null, null);
         }
 
         public void ResetSession()

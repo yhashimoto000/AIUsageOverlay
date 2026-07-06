@@ -5,11 +5,63 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="設定 - AI Usage Overlay"
-        Width="400" Height="520"
+        Width="480" Height="560"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="#1C1C1C"
         Foreground="White">
+
+    <Window.Resources>
+        <!--
+            共通のダーク配色チェックボックススタイル（F-03 の設定画面再構成で共通化）。
+            アクセント色はアプリ標準の #FF8C00 に統一する。
+        -->
+        <Style x:Key="DarkCheckBox" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal">
+                            <Border x:Name="CBox" Width="16" Height="16"
+                                    Background="#2E2E2E" BorderBrush="#555555"
+                                    BorderThickness="1" CornerRadius="3"
+                                    VerticalAlignment="Center" Margin="0,0,8,0">
+                                <TextBlock x:Name="CMark" Text="&#10003;"
+                                           Foreground="#FF8C00" FontSize="11" FontWeight="Bold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Visibility="Collapsed"/>
+                            </Border>
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CMark" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="CBox" Property="BorderBrush" Value="#FF8C00"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- セクション見出し用の共通スタイル -->
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#AAAAAA"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+
+        <!-- 補足説明用の共通スタイル -->
+        <Style x:Key="HintLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#555555"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Margin" Value="24,4,0,0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </Window.Resources>
 
     <Grid Margin="24,20,24,20">
         <Grid.RowDefinitions>
@@ -19,139 +71,131 @@
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row="0" Text="設定" FontSize="18" FontWeight="Bold"
-                   Foreground="White" Margin="0,0,0,20"/>
+                   Foreground="White" Margin="0,0,0,16"/>
 
-        <StackPanel Grid.Row="1">
+        <!--
+            TabControl による再構成（§7.2）。
+            P1 では 全般 / 表示項目 / 外観 の 3 タブ。通知タブは P2（F-07）で追加する。
+            各タブ内は ScrollViewer で将来の項目増に耐える構成。
+        -->
+        <TabControl Grid.Row="1" Background="#1C1C1C" BorderBrush="#3D3D3D">
 
-            <!-- 更新間隔 -->
-            <StackPanel Margin="0,0,0,20">
-                <TextBlock Text="更新間隔（秒）" Foreground="#AAAAAA" FontSize="12" Margin="0,0,0,4"/>
-                <TextBox x:Name="RefreshIntervalTextBox"
-                         Background="#2E2E2E" Foreground="White" CaretBrush="White"
-                         BorderBrush="#555555" BorderThickness="1" Padding="8,6"
-                         FontSize="14" Width="100" HorizontalAlignment="Left"
-                         ToolTip="デフォルト: 30（秒）"/>
-            </StackPanel>
+            <!-- ============ 全般 ============ -->
+            <TabItem Header="全般">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="4,16,4,4">
 
-            <!-- GitHub Copilot -->
-            <StackPanel Margin="0,0,0,20">
-                <TextBlock Text="GitHub Copilot" Foreground="#58A6FF" FontSize="13"
-                           FontWeight="SemiBold" Margin="0,0,0,8"/>
-                <CheckBox x:Name="GitHubCopilotCheckBox"
-                          Content="GitHub Copilot の使用状況を表示する"
-                          Foreground="White" FontSize="13" Cursor="Hand">
-                    <CheckBox.Style>
-                        <Style TargetType="CheckBox">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="CheckBox">
-                                        <StackPanel Orientation="Horizontal">
-                                            <Border x:Name="CBorderGH" Width="16" Height="16"
-                                                    Background="#2E2E2E" BorderBrush="#555555"
-                                                    BorderThickness="1" CornerRadius="3"
-                                                    VerticalAlignment="Center" Margin="0,0,8,0">
-                                                <TextBlock x:Name="CMarkGH" Text="&#10003;"
-                                                           Foreground="#58A6FF" FontSize="11" FontWeight="Bold"
-                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                           Visibility="Collapsed"/>
-                                            </Border>
-                                            <ContentPresenter VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="CMarkGH" Property="Visibility" Value="Visible"/>
-                                                <Setter TargetName="CBorderGH" Property="BorderBrush" Value="#58A6FF"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </CheckBox.Style>
-                </CheckBox>
-                <TextBlock Text="有効後、右クリック → ログイン - GitHub からログインしてください"
-                           Foreground="#555555" FontSize="10" Margin="24,4,0,0"/>
-            </StackPanel>
+                        <StackPanel Margin="0,0,0,20">
+                            <TextBlock Text="更新間隔（秒）" Style="{StaticResource SectionLabel}"/>
+                            <TextBox x:Name="RefreshIntervalTextBox"
+                                     Background="#2E2E2E" Foreground="White" CaretBrush="White"
+                                     BorderBrush="#555555" BorderThickness="1" Padding="8,6"
+                                     FontSize="14" Width="100" HorizontalAlignment="Left"
+                                     ToolTip="デフォルト: 30（秒）。5 以上を指定"/>
+                        </StackPanel>
 
-            <!-- Codex -->
-            <StackPanel Margin="0,0,0,20">
-                <TextBlock Text="Codex" Foreground="#10A37F" FontSize="13"
-                           FontWeight="SemiBold" Margin="0,0,0,8"/>
-                <CheckBox x:Name="CodexCheckBox"
-                          Content="Codex の使用制限を表示する"
-                          Foreground="White" FontSize="13" Cursor="Hand">
-                    <CheckBox.Style>
-                        <Style TargetType="CheckBox">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="CheckBox">
-                                        <StackPanel Orientation="Horizontal">
-                                            <Border x:Name="CBorderOAI" Width="16" Height="16"
-                                                    Background="#2E2E2E" BorderBrush="#555555"
-                                                    BorderThickness="1" CornerRadius="3"
-                                                    VerticalAlignment="Center" Margin="0,0,8,0">
-                                                <TextBlock x:Name="CMarkOAI" Text="&#10003;"
-                                                           Foreground="#10A37F" FontSize="11" FontWeight="Bold"
-                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                           Visibility="Collapsed"/>
-                                            </Border>
-                                            <ContentPresenter VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="CMarkOAI" Property="Visibility" Value="Visible"/>
-                                                <Setter TargetName="CBorderOAI" Property="BorderBrush" Value="#10A37F"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </CheckBox.Style>
-                </CheckBox>
-                <TextBlock Text="有効後、右クリック → ログイン - Codex からログインしてください"
-                           Foreground="#555555" FontSize="10" Margin="24,4,0,0"/>
-            </StackPanel>
+                        <StackPanel>
+                            <CheckBox x:Name="StartupCheckBox" Style="{StaticResource DarkCheckBox}"
+                                      Content="Windows 起動時に自動で起動する"/>
+                            <TextBlock Text="レジストリ（HKCU\...\Run）に登録します"
+                                       Style="{StaticResource HintLabel}"/>
+                        </StackPanel>
 
-            <!-- スタートアップ登録 -->
-            <StackPanel>
-                <CheckBox x:Name="StartupCheckBox"
-                          Content="Windows 起動時に自動で起動する"
-                          Foreground="White" FontSize="13" Cursor="Hand">
-                    <CheckBox.Style>
-                        <Style TargetType="CheckBox">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="CheckBox">
-                                        <StackPanel Orientation="Horizontal">
-                                            <Border x:Name="CBorderSU" Width="16" Height="16"
-                                                    Background="#2E2E2E" BorderBrush="#555555"
-                                                    BorderThickness="1" CornerRadius="3"
-                                                    VerticalAlignment="Center" Margin="0,0,8,0">
-                                                <TextBlock x:Name="CMarkSU" Text="&#10003;"
-                                                           Foreground="#FF8C00" FontSize="11" FontWeight="Bold"
-                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                           Visibility="Collapsed"/>
-                                            </Border>
-                                            <ContentPresenter VerticalAlignment="Center"/>
-                                        </StackPanel>
-                                        <ControlTemplate.Triggers>
-                                            <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="CMarkSU" Property="Visibility" Value="Visible"/>
-                                                <Setter TargetName="CBorderSU" Property="BorderBrush" Value="#FF8C00"/>
-                                            </Trigger>
-                                        </ControlTemplate.Triggers>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                        </Style>
-                    </CheckBox.Style>
-                </CheckBox>
-                <TextBlock Text="レジストリ（HKCU\...\Run）に登録します"
-                           Foreground="#555555" FontSize="10" Margin="24,4,0,0"/>
-            </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
 
-        </StackPanel>
+            <!-- ============ 表示項目 ============ -->
+            <TabItem Header="表示項目">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="4,16,4,4">
+
+                        <StackPanel Margin="0,0,0,16">
+                            <TextBlock Text="GitHub Copilot" Foreground="#58A6FF" FontSize="13"
+                                       FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <CheckBox x:Name="GitHubCopilotCheckBox" Style="{StaticResource DarkCheckBox}"
+                                      Content="GitHub Copilot の使用状況を表示する"/>
+                            <TextBlock Text="有効後、右クリック → ログイン - GitHub からログインしてください"
+                                       Style="{StaticResource HintLabel}"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <TextBlock Text="Codex" Foreground="#10A37F" FontSize="13"
+                                       FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <CheckBox x:Name="CodexCheckBox" Style="{StaticResource DarkCheckBox}"
+                                      Content="Codex の使用制限を表示する"/>
+                            <TextBlock Text="有効後、右クリック → ログイン - Codex からログインしてください"
+                                       Style="{StaticResource HintLabel}"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,8">
+                            <TextBlock Text="リセット時刻の表示形式" Style="{StaticResource SectionLabel}"/>
+                            <ComboBox x:Name="ResetModeComboBox"
+                                      Width="240" HorizontalAlignment="Left"
+                                      Background="#2E2E2E" Foreground="Black" FontSize="13">
+                                <ComboBoxItem Content="相対（残り 1時間13分）"/>
+                                <ComboBoxItem Content="絶対（16:00 リセット）"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ 外観 ============ -->
+            <TabItem Header="外観">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="4,16,4,4">
+
+                        <StackPanel Margin="0,0,0,16">
+                            <TextBlock Text="トレイアイコン形式" Style="{StaticResource SectionLabel}"/>
+                            <ComboBox x:Name="TrayStyleComboBox"
+                                      Width="240" HorizontalAlignment="Left"
+                                      Background="#2E2E2E" Foreground="Black" FontSize="13">
+                                <ComboBoxItem Content="2段バー（上=セッション / 下=週間）"/>
+                                <ComboBoxItem Content="ドーナツ（従来）"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <TextBlock Text="色の閾値（%）" Style="{StaticResource SectionLabel}"/>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="注意" Foreground="#FF8C00" FontSize="12"
+                                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBox x:Name="CautionThresholdTextBox"
+                                         Background="#2E2E2E" Foreground="White" CaretBrush="White"
+                                         BorderBrush="#555555" BorderThickness="1" Padding="8,6"
+                                         FontSize="14" Width="70" ToolTip="この値以上でオレンジ（既定 50）"/>
+                                <TextBlock Text="警告" Foreground="#F44336" FontSize="12"
+                                           VerticalAlignment="Center" Margin="16,0,6,0"/>
+                                <TextBox x:Name="WarningThresholdTextBox"
+                                         Background="#2E2E2E" Foreground="White" CaretBrush="White"
+                                         BorderBrush="#555555" BorderThickness="1" Padding="8,6"
+                                         FontSize="14" Width="70" ToolTip="この値以上で赤（既定 80）"/>
+                            </StackPanel>
+                            <TextBlock Text="注意% は警告% 未満で指定してください（CodexBar 既定は 70/80/90）"
+                                       Style="{StaticResource HintLabel}" Margin="0,6,0,0"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <CheckBox x:Name="ShowThresholdMarkersCheckBox" Style="{StaticResource DarkCheckBox}"
+                                      Content="バー上に閾値マーカーを表示する"/>
+                        </StackPanel>
+
+                        <StackPanel>
+                            <TextBlock x:Name="OpacityLabel" Text="オーバーレイ不透明度: 100%"
+                                       Style="{StaticResource SectionLabel}"/>
+                            <Slider x:Name="OpacitySlider" Minimum="0.1" Maximum="1.0"
+                                    Width="240" HorizontalAlignment="Left"
+                                    TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                    ValueChanged="OpacitySlider_ValueChanged"/>
+                        </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+        </TabControl>
 
         <!-- ボタン行 -->
         <StackPanel Grid.Row="2" Orientation="Horizontal"

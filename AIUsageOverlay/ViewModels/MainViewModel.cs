@@ -31,6 +31,9 @@ namespace AIUsageOverlay.ViewModels
         /// </summary>
         private const int InitialRefreshDelaySeconds = 5;
 
+        /// <summary>stale（取得失敗で情報が古い）時のセクション不透明度（F-02。CodexBar と同値の 55%）。</summary>
+        private const double StaleOpacity = 0.55;
+
         /// <summary>
         /// 定期更新・手動更新・設定保存後更新が同時に走らないようにする排他制御。
         /// WebView2 は同一インスタンスで複数 Navigate を重ねると状態が壊れやすいため、
@@ -52,6 +55,21 @@ namespace AIUsageOverlay.ViewModels
         private string _weeklyPercentText = "0%";
         private string _weeklyRemainingText = "--";
         private string _statusText = "取得中...";
+
+        /// <summary>
+        /// 直近取得時のセッション/週間リセット日時（ローカル）。F-04 の絶対時刻表示に使う。
+        /// API 経由取得時のみ実値が入り、ローカルフォールバック・未使用時は null。
+        /// </summary>
+        private DateTime? _sessionResetAt;
+        private DateTime? _weeklyResetAt;
+
+        // ── stale（取得失敗で情報が古い）状態と、それに応じたセクション不透明度（F-02）──
+        // Claude のみトレイ減光（App.xaml.cs）で bool を参照するため IsClaudeStale として公開する。
+        // GitHub / Codex は不透明度（ClaudeSectionOpacity 等）のみで表現するため bool は持たない。
+        private bool       _claudeStale;
+        private double     _claudeSectionOpacity = 1.0;
+        private double     _gitHubSectionOpacity = 1.0;
+        private double     _codexSectionOpacity  = 1.0;
 
         // GitHub Copilot バッキングフィールド
         private Visibility _gitHubSectionVisibility       = Visibility.Collapsed;
@@ -138,6 +156,39 @@ namespace AIUsageOverlay.ViewModels
         {
             get => _statusText;
             set => SetProperty(ref _statusText, value);
+        }
+
+        // ── stale 状態（F-02）──────────────────────────────────────────
+
+        /// <summary>
+        /// Claude の取得が失敗（API 傍受不成立でローカル値にフォールバック）しているか。
+        /// トレイアイコンの減光判定（App.xaml.cs）が参照するため公開する。
+        /// </summary>
+        public bool IsClaudeStale
+        {
+            get => _claudeStale;
+            private set => SetProperty(ref _claudeStale, value);
+        }
+
+        /// <summary>Claude セクションの不透明度。stale のとき 0.55、通常 1.0。</summary>
+        public double ClaudeSectionOpacity
+        {
+            get => _claudeSectionOpacity;
+            private set => SetProperty(ref _claudeSectionOpacity, value);
+        }
+
+        /// <summary>GitHub Copilot セクションの不透明度。stale のとき 0.55、通常 1.0。</summary>
+        public double GitHubSectionOpacity
+        {
+            get => _gitHubSectionOpacity;
+            private set => SetProperty(ref _gitHubSectionOpacity, value);
+        }
+
+        /// <summary>Codex セクションの不透明度。stale のとき 0.55、通常 1.0。</summary>
+        public double CodexSectionOpacity
+        {
+            get => _codexSectionOpacity;
+            private set => SetProperty(ref _codexSectionOpacity, value);
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -300,15 +351,25 @@ namespace AIUsageOverlay.ViewModels
                 StatusText = "取得中...";
 
                 // ── Claude ──
-                var (sessionRatio, sessionRemaining, weeklyRatio, weeklyRemaining, isFromApi) =
+                var (sessionRatio, sessionRemaining, weeklyRatio, weeklyRemaining, isFromApi,
+                     sessionResetAt, weeklyResetAt) =
                     await _usageService.UpdateAndGetUsageAsync();
+
+                // F-04: リセット日時を保持し、表示形式（相対/絶対）に応じて残り時間テキストを組み立てる
+                _sessionResetAt = sessionResetAt;
+                _weeklyResetAt  = weeklyResetAt;
+                var mode = _usageService.GetSettings().ResetDisplayMode;
 
                 SessionPercent      = sessionRatio * 100.0;
                 SessionPercentText  = $"{(int)(sessionRatio * 100)}%";
-                SessionRemainingText = FormatMinutes(sessionRemaining);
+                SessionRemainingText = BuildResetText(mode, sessionRemaining, sessionResetAt);
                 WeeklyPercent       = weeklyRatio * 100.0;
                 WeeklyPercentText   = $"{(int)(weeklyRatio * 100)}%";
-                WeeklyRemainingText = FormatMinutes(weeklyRemaining);
+                WeeklyRemainingText = BuildResetText(mode, weeklyRemaining, weeklyResetAt);
+
+                // F-02: API 取得成功なら通常表示、失敗（ローカルフォールバック）なら stale として減光する
+                IsClaudeStale        = !isFromApi;
+                ClaudeSectionOpacity = isFromApi ? 1.0 : StaleOpacity;
 
                 if (isFromApi)
                     StatusText = $"API: {DateTime.Now:HH:mm}";
@@ -365,6 +426,11 @@ namespace AIUsageOverlay.ViewModels
                     GitHubStatusText = "エラー";
                     GitHubUserText   = _usageService.GetLastGitHubError() ?? "接続失敗";
                 }
+                else
+                {
+                    // F-02: 前回値を保持しつつ「情報が古い」ことを減光で示す
+                    GitHubSectionOpacity = StaleOpacity;
+                }
                 return;
             }
 
@@ -397,6 +463,8 @@ namespace AIUsageOverlay.ViewModels
 
             // 取得成功を記録（以降の一時的失敗では前回表示を維持する）
             _gitHubEverLoaded = true;
+            // F-02: 取得成功で通常不透明度へ戻す
+            GitHubSectionOpacity = 1.0;
         }
 
         /// <summary>
@@ -424,8 +492,16 @@ namespace AIUsageOverlay.ViewModels
                     CodexStatusText = "エラー";
                     CodexSubText    = _usageService.GetLastCodexError() ?? "接続失敗";
                 }
+                else
+                {
+                    // F-02: 前回値を保持しつつ減光で古さを示す
+                    CodexSectionOpacity = StaleOpacity;
+                }
                 return;
             }
+
+            // F-04: 絶対表示モードでは Codex が保持済みのリセット時刻テキストを優先する
+            var absolute = _usageService.GetSettings().ResetDisplayMode == "absolute";
 
             if (data.HasSessionData)
             {
@@ -435,7 +511,9 @@ namespace AIUsageOverlay.ViewModels
 
                 CodexUsagePercent     = data.SessionPercent;
                 CodexUsagePercentText = $"{data.SessionPercent}%";
-                CodexDetailText       = FormatNullableMinutes(data.SessionRemainingMinutes);
+                CodexDetailText       = absolute && !string.IsNullOrEmpty(data.SessionResetText)
+                    ? $"{data.SessionResetText} リセット"
+                    : FormatNullableMinutes(data.SessionRemainingMinutes);
             }
             else
             {
@@ -450,7 +528,9 @@ namespace AIUsageOverlay.ViewModels
             {
                 // 週間制限 → 右側ステータス
                 CodexStatusText = $"{data.WeeklyPercent}%";
-                CodexSubText    = FormatNullableMinutes(data.WeeklyRemainingMinutes);
+                CodexSubText    = absolute && !string.IsNullOrEmpty(data.WeeklyResetText)
+                    ? $"{data.WeeklyResetText} リセット"
+                    : FormatNullableMinutes(data.WeeklyRemainingMinutes);
             }
             else
             {
@@ -459,6 +539,8 @@ namespace AIUsageOverlay.ViewModels
             }
 
             _codexEverLoaded = true;
+            // F-02: 取得成功で通常不透明度へ戻す
+            CodexSectionOpacity = 1.0;
         }
 
         /// <summary>同期版リフレッシュ（後方互換用）</summary>
@@ -470,6 +552,11 @@ namespace AIUsageOverlay.ViewModels
             var settings = _usageService.GetSettings();
             _refreshTimer.Interval = TimeSpan.FromSeconds(settings.RefreshIntervalSeconds);
         }
+
+        /// <summary>
+        /// 現在の設定を取得する（トレイ描画・色判定のため App.xaml.cs / MainWindow が参照する）。
+        /// </summary>
+        public Models.AppSettings GetSettings() => _usageService.GetSettings();
 
         /// <summary>セッションをリセットして表示を即時更新する</summary>
         public void ResetSession()
@@ -524,6 +611,34 @@ namespace AIUsageOverlay.ViewModels
         /// </summary>
         private static string FormatNullableMinutes(int totalMinutes)
             => totalMinutes >= 0 ? FormatMinutes(totalMinutes) : "--";
+
+        /// <summary>
+        /// F-04: リセット時刻を表示形式（相対/絶対）に応じて文字列化する。
+        ///
+        /// - "absolute" かつ resetAt が非 null: 当日中なら "14:32 リセット"、
+        ///   翌日以降なら "7/8 14:32 リセット"。
+        /// - それ以外（"relative" もしくは resetAt が null）: 残り分数を相対表記へ（従来動作）。
+        ///
+        /// resetAt が null になるのは未使用アカウント（API が resets_at を返さない）や
+        /// ローカルフォールバック時で、その場合は相対表示へフォールバックする。
+        /// </summary>
+        /// <param name="mode">表示モード（"relative" / "absolute"）</param>
+        /// <param name="remainingMinutes">リセットまでの残り分数（相対表示・フォールバック用）</param>
+        /// <param name="resetAt">リセット日時（ローカル）。null なら相対へフォールバック</param>
+        private static string BuildResetText(string mode, int remainingMinutes, DateTime? resetAt)
+        {
+            if (mode == "absolute" && resetAt.HasValue)
+            {
+                var r = resetAt.Value;
+                // 当日中は時刻のみ、日付が変わる場合は "M/d HH:mm" を付ける
+                return r.Date == DateTime.Now.Date
+                    ? $"{r:HH:mm} リセット"
+                    : $"{r:M/d HH:mm} リセット";
+            }
+
+            // 相対表示（従来動作）
+            return FormatMinutes(remainingMinutes);
+        }
 
         // ────────────────────────────────────────────────────────────────
         // INotifyPropertyChanged
