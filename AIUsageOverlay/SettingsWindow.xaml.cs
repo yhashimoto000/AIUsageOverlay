@@ -42,6 +42,15 @@ namespace AIUsageOverlay
             ShowThresholdMarkersCheckBox.IsChecked = settings.ShowThresholdMarkers;
             OpacitySlider.Value                 = settings.WindowOpacity;
             UpdateOpacityLabel(settings.WindowOpacity);
+
+            // 表示項目（ペース・F-06）
+            PaceEnabledCheckBox.IsChecked = settings.PaceEnabled;
+
+            // ── 通知（F-07）──
+            NotificationsEnabledCheckBox.IsChecked = settings.NotificationsEnabled;
+            NotificationThresholdsTextBox.Text     = string.Join(", ", settings.NotificationThresholds);
+            NotifyOnResetCheckBox.IsChecked        = settings.NotifyOnReset;
+            NotifyOnExhaustedCheckBox.IsChecked    = settings.NotifyOnExhausted;
         }
 
         /// <summary>不透明度スライダーの値変更でラベルを更新する（保存は「保存」ボタンで確定）。</summary>
@@ -93,6 +102,32 @@ namespace AIUsageOverlay
                 return;
             }
 
+            // ── 通知閾値のパース（カンマ区切り・0〜100 の整数。空欄は「閾値通知なし」）──
+            int[] notificationThresholds;
+            var thresholdsRaw = NotificationThresholdsTextBox.Text.Trim();
+            if (thresholdsRaw.Length == 0)
+            {
+                notificationThresholds = Array.Empty<int>();
+            }
+            else
+            {
+                var parts = thresholdsRaw.Split(',',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var parsed = new List<int>();
+                foreach (var part in parts)
+                {
+                    if (!int.TryParse(part, out var t) || t < 0 || t > 100)
+                    {
+                        MessageBox.Show("通知閾値は 0〜100 の整数をカンマ区切りで入力してください（例: 70, 90）。",
+                            "入力エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        NotificationThresholdsTextBox.Focus();
+                        return;
+                    }
+                    parsed.Add(t);
+                }
+                notificationThresholds = parsed.ToArray();
+            }
+
             var settings = _usageService.GetSettings();
 
             // 全般
@@ -109,6 +144,15 @@ namespace AIUsageOverlay
             settings.WarningThresholdPercent = warning;
             settings.ShowThresholdMarkers   = ShowThresholdMarkersCheckBox.IsChecked == true;
             settings.WindowOpacity          = OpacitySlider.Value;
+
+            // ペース（F-06）
+            settings.PaceEnabled            = PaceEnabledCheckBox.IsChecked == true;
+
+            // 通知（F-07）
+            settings.NotificationsEnabled   = NotificationsEnabledCheckBox.IsChecked == true;
+            settings.NotificationThresholds = notificationThresholds;
+            settings.NotifyOnReset          = NotifyOnResetCheckBox.IsChecked == true;
+            settings.NotifyOnExhausted      = NotifyOnExhaustedCheckBox.IsChecked == true;
 
             _usageService.SaveSettings(settings);
 

@@ -615,4 +615,3 @@ P4  F-10 適応更新 / F-11 スヌーズ / F-12 ステータス監視（相互�
 ## 11. ライセンス表記
 
 CodexBar（steipete 氏）・Win-CodexBar（Finesssee 氏）はいずれも MIT License。本仕様はロジック（ペース計算式・閾値・描画パラメータ）の移植であり Swift / Rust コードの複製ではないが、移植元を明示するコメント（例: `// CodexBar (MIT, steipete) UsagePace.swift / Win-CodexBar (MIT, Finesssee) usage_pace.rs を参考に移植`）をファイルヘッダに付与し、README の謝辞に両リポジトリへのリンクを追加する。
-

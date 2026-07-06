@@ -108,6 +108,10 @@ namespace AIUsageOverlay
 
             // ViewModel の使用率変化を購読してトレイアイコンを動的更新する
             _mainWindow.ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+
+            // F-07: 通知の送出先として NotifyIcon を ViewModel（NotificationService）へ注入する
+            if (_notifyIcon != null)
+                _mainWindow.ViewModel.AttachNotifier(_notifyIcon);
         }
 
         /// <summary>
