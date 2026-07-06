@@ -5,6 +5,9 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using AIUsageOverlay.Services;
+// UseWindowsForms 有効化で System.Drawing.Brush が暗黙 using に入るため、
+// ペース色に使う WPF のブラシはエイリアスで衝突を回避する（CS0104 予防）。
+using MediaBrush = System.Windows.Media.Brush;
 
 namespace AIUsageOverlay.ViewModels
 {
@@ -21,6 +24,9 @@ namespace AIUsageOverlay.ViewModels
 
         /// <summary>使用量データの取得・保存を担当するサービス</summary>
         private readonly UsageService _usageService;
+
+        /// <summary>閾値超過・リセット・上限到達の通知を担うサービス（F-07）。NotifyIcon は App から注入。</summary>
+        private readonly NotificationService _notificationService = new();
 
         /// <summary>定期更新用タイマー</summary>
         private readonly DispatcherTimer _refreshTimer;
@@ -70,6 +76,20 @@ namespace AIUsageOverlay.ViewModels
         private double     _claudeSectionOpacity = 1.0;
         private double     _gitHubSectionOpacity = 1.0;
         private double     _codexSectionOpacity  = 1.0;
+
+        // ── ペース表示（F-06）──────────────────────────────────────
+        private string     _sessionPaceText = "";
+        private MediaBrush _sessionPaceBrush = PaceGray;
+        private Visibility _sessionPaceVisibility = Visibility.Collapsed;
+        private string     _codexPaceText = "";
+        private MediaBrush _codexPaceBrush = PaceGray;
+        private Visibility _codexPaceVisibility = Visibility.Collapsed;
+
+        // ペース表示色（凍結済みブラシを共有）
+        private static readonly MediaBrush PaceGray   = HexBrush("#888888"); // 順調
+        private static readonly MediaBrush PaceOrange = HexBrush("#FF8C00"); // 先行（持つ）
+        private static readonly MediaBrush PaceRed    = HexBrush("#F44336"); // 先行（枯渇予測）
+        private static readonly MediaBrush PaceGreen  = HexBrush("#4CAF50"); // 余裕
 
         // GitHub Copilot バッキングフィールド
         private Visibility _gitHubSectionVisibility       = Visibility.Collapsed;
@@ -189,6 +209,50 @@ namespace AIUsageOverlay.ViewModels
         {
             get => _codexSectionOpacity;
             private set => SetProperty(ref _codexSectionOpacity, value);
+        }
+
+        // ── ペース表示（F-06）──────────────────────────────────────
+
+        /// <summary>Claude セッションのペース表示テキスト（例: "ペース: 予定比 +8%"）。</summary>
+        public string SessionPaceText
+        {
+            get => _sessionPaceText;
+            private set => SetProperty(ref _sessionPaceText, value);
+        }
+
+        /// <summary>Claude セッションのペース表示色。</summary>
+        public MediaBrush SessionPaceBrush
+        {
+            get => _sessionPaceBrush;
+            private set => SetProperty(ref _sessionPaceBrush, value);
+        }
+
+        /// <summary>Claude セッションのペース行の表示/非表示（計算不能・ゲート未達・OFF・stale で Collapsed）。</summary>
+        public Visibility SessionPaceVisibility
+        {
+            get => _sessionPaceVisibility;
+            private set => SetProperty(ref _sessionPaceVisibility, value);
+        }
+
+        /// <summary>Codex のペース表示テキスト（5時間枠優先、OnTrack のときのみ週間枠）。</summary>
+        public string CodexPaceText
+        {
+            get => _codexPaceText;
+            private set => SetProperty(ref _codexPaceText, value);
+        }
+
+        /// <summary>Codex のペース表示色。</summary>
+        public MediaBrush CodexPaceBrush
+        {
+            get => _codexPaceBrush;
+            private set => SetProperty(ref _codexPaceBrush, value);
+        }
+
+        /// <summary>Codex のペース行の表示/非表示。</summary>
+        public Visibility CodexPaceVisibility
+        {
+            get => _codexPaceVisibility;
+            private set => SetProperty(ref _codexPaceVisibility, value);
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -371,6 +435,34 @@ namespace AIUsageOverlay.ViewModels
                 IsClaudeStale        = !isFromApi;
                 ClaudeSectionOpacity = isFromApi ? 1.0 : StaleOpacity;
 
+                // ── F-06: ペース計算・表示（PaceEnabled かつ API 取得成功時のみ。stale では誤解を避け非表示）──
+                if (_usageService.GetSettings().PaceEnabled && isFromApi)
+                {
+                    // Claude セッション（5時間=300分固定）
+                    var sessionPace = UsagePaceCalculator.Compute(sessionRatio * 100.0, 300, sessionRemaining);
+                    ApplyPace(sessionPace,
+                        v => SessionPaceText = v, b => SessionPaceBrush = b, vis => SessionPaceVisibility = vis);
+
+                    // Claude 週間（10080分固定）は行を増やさず WeeklyRemainingText 末尾へ予定比を付加
+                    var weeklyPace = UsagePaceCalculator.Compute(weeklyRatio * 100.0, 10080, weeklyRemaining);
+                    if (weeklyPace != null && weeklyPace.Stage != Models.PaceStage.OnTrack)
+                        WeeklyRemainingText += $"（{FormatSignedDelta(weeklyPace.DeltaPercent)}）";
+                }
+                else
+                {
+                    SessionPaceVisibility = Visibility.Collapsed;
+                }
+
+                // ── F-07: 通知判定（API 取得成功時のみ。stale では誤発火防止のためスキップ）──
+                if (isFromApi)
+                {
+                    var ns = _usageService.GetSettings();
+                    _notificationService.Evaluate(UsageWindowKey.ClaudeSession,
+                        (int)Math.Round(sessionRatio * 100.0), sessionResetAt, ns);
+                    _notificationService.Evaluate(UsageWindowKey.ClaudeWeekly,
+                        (int)Math.Round(weeklyRatio * 100.0), weeklyResetAt, ns);
+                }
+
                 if (isFromApi)
                     StatusText = $"API: {DateTime.Now:HH:mm}";
                 else
@@ -497,6 +589,8 @@ namespace AIUsageOverlay.ViewModels
                     // F-02: 前回値を保持しつつ減光で古さを示す
                     CodexSectionOpacity = StaleOpacity;
                 }
+                // F-06: stale 時はペースを非表示（古いデータで誤解を与えない）
+                CodexPaceVisibility = Visibility.Collapsed;
                 return;
             }
 
@@ -541,6 +635,35 @@ namespace AIUsageOverlay.ViewModels
             _codexEverLoaded = true;
             // F-02: 取得成功で通常不透明度へ戻す
             CodexSectionOpacity = 1.0;
+
+            // ── F-06: Codex ペース（5時間枠優先、5時間が OnTrack のときのみ週間枠を表示）──
+            if (settings.PaceEnabled)
+            {
+                Models.UsagePace? codexPace = null;
+                if (data.HasSessionData && data.SessionRemainingMinutes >= 0)
+                    codexPace = UsagePaceCalculator.Compute(data.SessionPercent, 300, data.SessionRemainingMinutes);
+
+                // 5時間が計算不能 or 順調なら、週間枠のペースがあればそちらを表示する
+                if ((codexPace == null || codexPace.Stage == Models.PaceStage.OnTrack)
+                    && data.HasWeeklyData && data.WeeklyRemainingMinutes >= 0)
+                {
+                    var weekly = UsagePaceCalculator.Compute(data.WeeklyPercent, 10080, data.WeeklyRemainingMinutes);
+                    if (weekly != null) codexPace = weekly;
+                }
+
+                ApplyPace(codexPace,
+                    v => CodexPaceText = v, b => CodexPaceBrush = b, vis => CodexPaceVisibility = vis);
+            }
+            else
+            {
+                CodexPaceVisibility = Visibility.Collapsed;
+            }
+
+            // ── F-07: Codex の通知判定（リセット時刻は DateTime 未保持のため null＝急落で代替検知）──
+            if (data.HasSessionData)
+                _notificationService.Evaluate(UsageWindowKey.CodexSession, data.SessionPercent, null, settings);
+            if (data.HasWeeklyData)
+                _notificationService.Evaluate(UsageWindowKey.CodexWeekly, data.WeeklyPercent, null, settings);
         }
 
         /// <summary>同期版リフレッシュ（後方互換用）</summary>
@@ -557,6 +680,10 @@ namespace AIUsageOverlay.ViewModels
         /// 現在の設定を取得する（トレイ描画・色判定のため App.xaml.cs / MainWindow が参照する）。
         /// </summary>
         public Models.AppSettings GetSettings() => _usageService.GetSettings();
+
+        /// <summary>通知の送出先 NotifyIcon を注入する（F-07。App から起動時に呼ぶ）。</summary>
+        public void AttachNotifier(System.Windows.Forms.NotifyIcon icon)
+            => _notificationService.Attach(icon);
 
         /// <summary>セッションをリセットして表示を即時更新する</summary>
         public void ResetSession()
@@ -638,6 +765,85 @@ namespace AIUsageOverlay.ViewModels
 
             // 相対表示（従来動作）
             return FormatMinutes(remainingMinutes);
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // ペース表示ヘルパー（F-06）
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// ペース計算結果を表示テキスト・色・可否へ変換して、渡された setter 経由で反映する。
+        /// null（計算不能・ゲート未達）なら行を非表示にする。
+        /// </summary>
+        private void ApplyPace(Models.UsagePace? pace,
+            Action<string> setText, Action<MediaBrush> setBrush, Action<Visibility> setVisibility)
+        {
+            if (pace == null)
+            {
+                setVisibility(Visibility.Collapsed);
+                return;
+            }
+
+            string text;
+            MediaBrush brush;
+
+            if (pace.Stage == Models.PaceStage.OnTrack)
+            {
+                text  = "ペース: 順調";
+                brush = PaceGray;
+            }
+            else if (pace.DeltaPercent >= 0)
+            {
+                // 先行（予定より速い）
+                if (!pace.WillLastToReset && pace.Eta.HasValue)
+                {
+                    text  = $"ペース: 予定比 {FormatSignedDelta(pace.DeltaPercent)} ・ {FormatEtaClock(pace.Eta.Value)} 上限";
+                    brush = PaceRed;
+                }
+                else
+                {
+                    text  = $"ペース: 予定比 {FormatSignedDelta(pace.DeltaPercent)}";
+                    brush = PaceOrange;
+                }
+            }
+            else
+            {
+                // 余裕（予定より遅い）
+                text  = $"ペース: 予定比 {FormatSignedDelta(pace.DeltaPercent)} ・ リセットまで余裕";
+                brush = PaceGreen;
+            }
+
+            setText(text);
+            setBrush(brush);
+            setVisibility(Visibility.Visible);
+        }
+
+        /// <summary>予定比を符号付き整数％へ整形する（例: +8% / -12%）。</summary>
+        private static string FormatSignedDelta(double delta)
+        {
+            long r = (long)Math.Round(delta);
+            return (r >= 0 ? "+" : "") + r + "%";
+        }
+
+        /// <summary>
+        /// 枯渇予測時刻を "16:40頃"（当日）/ "明日 9:20頃"（翌日）/ "7/8 9:20頃"（それ以降）へ整形する。
+        /// </summary>
+        private static string FormatEtaClock(TimeSpan eta)
+        {
+            var t     = DateTime.Now + eta;
+            var today = DateTime.Now.Date;
+            if (t.Date == today)             return $"{t:HH:mm}頃";
+            if (t.Date == today.AddDays(1))  return $"明日 {t:H:mm}頃";
+            return $"{t:M/d H:mm}頃";
+        }
+
+        /// <summary>16進表記から凍結済み WPF ブラシを生成する（ペース色の共有用）。</summary>
+        private static MediaBrush HexBrush(string hex)
+        {
+            var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex);
+            var brush = new System.Windows.Media.SolidColorBrush(color);
+            brush.Freeze();
+            return brush;
         }
 
         // ────────────────────────────────────────────────────────────────

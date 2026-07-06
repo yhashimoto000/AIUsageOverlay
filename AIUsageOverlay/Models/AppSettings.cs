@@ -79,5 +79,32 @@ namespace AIUsageOverlay.Models
         /// </summary>
         [JsonPropertyName("resetDisplayMode")]
         public string ResetDisplayMode { get; set; } = "relative";
+
+        // ────────────────────────────────────────────────────────────────
+        // P2（ペースと通知）追加設定
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>ペース行（F-05/F-06）を表示するか。既定 true。OFF で計算もスキップ。</summary>
+        [JsonPropertyName("paceEnabled")]
+        public bool PaceEnabled { get; set; } = true;
+
+        /// <summary>閾値超過・リセット・上限到達の通知（F-07）を出すか。既定 true。</summary>
+        [JsonPropertyName("notificationsEnabled")]
+        public bool NotificationsEnabled { get; set; } = true;
+
+        /// <summary>
+        /// 通知する使用率の閾値（%）。F-07。既定 [70, 90]（Win-CodexBar と一致）。
+        /// 各窓ごとに「前回値 &lt; 閾値 ≤ 今回値」の跨ぎを 1 回通知する。
+        /// </summary>
+        [JsonPropertyName("notificationThresholds")]
+        public int[] NotificationThresholds { get; set; } = new[] { 70, 90 };
+
+        /// <summary>セッション/週間枠のリセット完了を通知するか。F-07。既定 true。</summary>
+        [JsonPropertyName("notifyOnReset")]
+        public bool NotifyOnReset { get; set; } = true;
+
+        /// <summary>100% 到達（上限）を閾値設定と独立に通知するか。F-07。既定 true。</summary>
+        [JsonPropertyName("notifyOnExhausted")]
+        public bool NotifyOnExhausted { get; set; } = true;
     }
 }

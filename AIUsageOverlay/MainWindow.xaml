@@ -53,13 +53,17 @@
 
             <!-- Row 0: Claude （F-02: stale 時はセクション全体を減光） -->
             <Grid Grid.Row="0" Margin="14,8" Opacity="{Binding ClaudeSectionOpacity}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="5*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="3*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <Grid Grid.Column="0" Margin="0,0,12,0">
+                <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,12,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="4"/>
@@ -134,6 +138,11 @@
                     </Button.Template>
                     <TextBlock Text="↺" FontSize="16" Foreground="#888888"/>
                 </Button>
+                <!-- F-06: ペース行（フル幅・セッション基準） -->
+                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
+                           Text="{Binding SessionPaceText}" Foreground="{Binding SessionPaceBrush}"
+                           Visibility="{Binding SessionPaceVisibility}"
+                           FontSize="10" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
             </Grid>
 
             <!-- Row 2: GitHub Copilot （F-02: stale 時は減光） -->
@@ -200,12 +209,16 @@
             <!-- Row 4: Codex （F-02: stale 時は減光） -->
             <Grid Grid.Row="4" Margin="14,6,14,6" Visibility="{Binding CodexSectionVisibility}"
                   Opacity="{Binding CodexSectionOpacity}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="5*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="3*"/>
                 </Grid.ColumnDefinitions>
-                <Grid Grid.Column="0" Margin="0,0,12,0">
+                <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,12,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="4"/>
@@ -263,6 +276,11 @@
                                    Foreground="#888888" FontSize="11"/>
                     </Grid>
                 </Grid>
+                <!-- F-06: Codex ペース行（フル幅） -->
+                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                           Text="{Binding CodexPaceText}" Foreground="{Binding CodexPaceBrush}"
+                           Visibility="{Binding CodexPaceVisibility}"
+                           FontSize="10" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
             </Grid>
 
         </Grid>

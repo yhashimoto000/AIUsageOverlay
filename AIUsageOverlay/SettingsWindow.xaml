@@ -128,7 +128,7 @@
                                        Style="{StaticResource HintLabel}"/>
                         </StackPanel>
 
-                        <StackPanel Margin="0,0,0,8">
+                        <StackPanel Margin="0,0,0,16">
                             <TextBlock Text="リセット時刻の表示形式" Style="{StaticResource SectionLabel}"/>
                             <ComboBox x:Name="ResetModeComboBox"
                                       Width="240" HorizontalAlignment="Left"
@@ -136,6 +136,14 @@
                                 <ComboBoxItem Content="相対（残り 1時間13分）"/>
                                 <ComboBoxItem Content="絶対（16:00 リセット）"/>
                             </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel>
+                            <TextBlock Text="ペース" Style="{StaticResource SectionLabel}"/>
+                            <CheckBox x:Name="PaceEnabledCheckBox" Style="{StaticResource DarkCheckBox}"
+                                      Content="ペース行（予定比・枯渇予測）を表示する"/>
+                            <TextBlock Text="OFF のとき計算もスキップします。"
+                                       Style="{StaticResource HintLabel}"/>
                         </StackPanel>
 
                     </StackPanel>
@@ -190,6 +198,39 @@
                                     TickFrequency="0.05" IsSnapToTickEnabled="True"
                                     ValueChanged="OpacitySlider_ValueChanged"/>
                         </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============ 通知 ============ -->
+            <TabItem Header="通知">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="4,16,4,4">
+
+                        <StackPanel Margin="0,0,0,16">
+                            <CheckBox x:Name="NotificationsEnabledCheckBox" Style="{StaticResource DarkCheckBox}"
+                                      Content="通知を有効にする"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,16">
+                            <TextBlock Text="通知閾値（カンマ区切り、例: 70, 90）" Style="{StaticResource SectionLabel}"/>
+                            <TextBox x:Name="NotificationThresholdsTextBox"
+                                     Background="#2E2E2E" Foreground="White" CaretBrush="White"
+                                     BorderBrush="#555555" BorderThickness="1" Padding="8,6"
+                                     FontSize="14" Width="200" HorizontalAlignment="Left"
+                                     ToolTip="0〜100 の整数をカンマ区切りで。既定 70, 90"/>
+                        </StackPanel>
+
+                        <StackPanel Margin="0,0,0,8">
+                            <CheckBox x:Name="NotifyOnResetCheckBox" Style="{StaticResource DarkCheckBox}"
+                                      Content="リセット完了を通知する"/>
+                            <CheckBox x:Name="NotifyOnExhaustedCheckBox" Style="{StaticResource DarkCheckBox}"
+                                      Content="100% 到達（上限）を通知する"/>
+                        </StackPanel>
+
+                        <TextBlock Text="※ Windows の「フォーカスアシスト（応答不可）」設定中は通知が表示されないことがあります。"
+                                   Style="{StaticResource HintLabel}" Margin="0,4,0,0"/>
 
                     </StackPanel>
                 </ScrollViewer>
