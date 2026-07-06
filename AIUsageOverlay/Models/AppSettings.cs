@@ -106,5 +106,16 @@ namespace AIUsageOverlay.Models
         /// <summary>100% 到達（上限）を閾値設定と独立に通知するか。F-07。既定 true。</summary>
         [JsonPropertyName("notifyOnExhausted")]
         public bool NotifyOnExhausted { get; set; } = true;
+
+        // ────────────────────────────────────────────────────────────────
+        // P4（運用改善）追加設定
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 適応更新間隔（F-10）を有効にするか。既定 true。
+        /// OFF のときは従来どおり <see cref="RefreshIntervalSeconds"/> の固定間隔で更新する。
+        /// </summary>
+        [JsonPropertyName("adaptiveRefreshEnabled")]
+        public bool AdaptiveRefreshEnabled { get; set; } = true;
     }
 }

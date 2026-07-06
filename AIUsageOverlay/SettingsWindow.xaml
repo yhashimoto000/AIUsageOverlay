@@ -94,6 +94,13 @@
                                      ToolTip="デフォルト: 30（秒）。5 以上を指定"/>
                         </StackPanel>
 
+                        <StackPanel Margin="0,0,0,16">
+                            <CheckBox x:Name="AdaptiveRefreshCheckBox" Style="{StaticResource DarkCheckBox}"
+                                      Content="適応更新間隔（放置時に自動で間隔を延長）"/>
+                            <TextBlock Text="OFF のとき常に上の更新間隔で更新します。ON では操作直後は短く、放置・非表示・電源制約時は長くなります。"
+                                       Style="{StaticResource HintLabel}"/>
+                        </StackPanel>
+
                         <StackPanel>
                             <CheckBox x:Name="StartupCheckBox" Style="{StaticResource DarkCheckBox}"
                                       Content="Windows 起動時に自動で起動する"/>

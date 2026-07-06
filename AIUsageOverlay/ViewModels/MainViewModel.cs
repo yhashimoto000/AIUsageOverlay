@@ -53,6 +53,15 @@ namespace AIUsageOverlay.ViewModels
         /// </summary>
         private bool _disposed;
 
+        // ── F-10 適応更新間隔 ─────────────────────────────────────────
+        /// <summary>最後にユーザー操作があった時刻。放置時間に応じた間隔延長に使う。</summary>
+        private DateTime _lastInteractionAt = DateTime.Now;
+
+        // ── F-11 スヌーズ ────────────────────────────────────────────
+        /// <summary>この時刻まで自動更新を一時停止する（null=停止なし）。永続化しない。</summary>
+        private DateTime? _snoozeUntil;
+        private bool _isSnoozing;
+
         // Claude バッキングフィールド
         private double _sessionPercent;
         private string _sessionPercentText = "0%";
@@ -388,7 +397,12 @@ namespace AIUsageOverlay.ViewModels
             {
                 Interval = TimeSpan.FromSeconds(settings.RefreshIntervalSeconds)
             };
-            _refreshTimer.Tick += async (_, _) => await RefreshUsageAsync();
+            // F-10: タイマー Tick の先頭で適応間隔を再計算してから取得する
+            _refreshTimer.Tick += async (_, _) =>
+            {
+                UpdateAdaptiveInterval();
+                await RefreshUsageAsync();
+            };
             _refreshTimer.Start();
 
             _ = RefreshUsageAfterStartupDelayAsync();
@@ -411,6 +425,13 @@ namespace AIUsageOverlay.ViewModels
             {
                 if (_disposed)
                     return;
+
+                // F-11: スヌーズ中は取得をスキップ（手動更新は ClearSnooze 後に呼ばれるため実行される）
+                if (_snoozeUntil.HasValue && _snoozeUntil.Value > DateTime.Now)
+                {
+                    StatusText = $"一時停止中（〜{_snoozeUntil.Value:HH:mm}）";
+                    return;
+                }
 
                 StatusText = "取得中...";
 
@@ -669,11 +690,92 @@ namespace AIUsageOverlay.ViewModels
         /// <summary>同期版リフレッシュ（後方互換用）</summary>
         public void RefreshUsage() => _ = RefreshUsageAsync();
 
-        /// <summary>タイマー間隔を設定変更後に再設定する</summary>
+        /// <summary>
+        /// オーバーレイが表示中か（MainWindow が IsVisibleChanged で更新）。F-10 の間隔判定に使う。
+        /// </summary>
+        public bool IsOverlayVisible { get; set; } = true;
+
+        /// <summary>スヌーズ（更新一時停止）中か。トレイ減光判定（App.xaml.cs）が参照する。F-11。</summary>
+        public bool IsSnoozing
+        {
+            get => _isSnoozing;
+            private set => SetProperty(ref _isSnoozing, value);
+        }
+
+        /// <summary>タイマー間隔を設定変更後に再設定する（適応更新 OFF 時の固定間隔にも使う）。</summary>
         public void UpdateRefreshInterval()
         {
             var settings = _usageService.GetSettings();
-            _refreshTimer.Interval = TimeSpan.FromSeconds(settings.RefreshIntervalSeconds);
+            // 適応更新が有効ならその場で適応間隔を算出、無効なら固定間隔
+            if (settings.AdaptiveRefreshEnabled)
+                UpdateAdaptiveInterval();
+            else
+                _refreshTimer.Interval = TimeSpan.FromSeconds(settings.RefreshIntervalSeconds);
+        }
+
+        /// <summary>
+        /// ユーザー操作を記録する（F-10）。手動更新・ドラッグ・設定保存・表示切替・ログイン等から呼ぶ。
+        /// 操作直後は間隔を基準値へ戻すため、その場で適応間隔を再計算する。
+        /// </summary>
+        public void NotifyUserInteraction()
+        {
+            _lastInteractionAt = DateTime.Now;
+            UpdateAdaptiveInterval();
+        }
+
+        /// <summary>
+        /// 適応更新間隔（F-10）を現在状況から再計算してタイマーへ適用する。
+        /// 適応更新が無効なら固定間隔（RefreshIntervalSeconds）にする。
+        /// </summary>
+        public void UpdateAdaptiveInterval()
+        {
+            var settings = _usageService.GetSettings();
+            if (!settings.AdaptiveRefreshEnabled)
+            {
+                _refreshTimer.Interval = TimeSpan.FromSeconds(settings.RefreshIntervalSeconds);
+                return;
+            }
+
+            _refreshTimer.Interval = AdaptiveRefreshPolicy.Compute(
+                DateTime.Now, _lastInteractionAt, IsOverlayVisible,
+                settings.RefreshIntervalSeconds, IsPowerConstrained());
+        }
+
+        /// <summary>
+        /// 電源制約下か（バッテリー駆動かつ残量 20% 未満）を判定する（F-10）。
+        /// 注意: Windows の「バッテリー節約機能」自体を直接判定する簡易 API が無いため、
+        ///       残量ベースの近似とする（省電力モード検出は本実装ではスコープ外）。
+        /// </summary>
+        private static bool IsPowerConstrained()
+        {
+            try
+            {
+                var ps = System.Windows.Forms.SystemInformation.PowerStatus;
+                bool onBattery = ps.PowerLineStatus == System.Windows.Forms.PowerLineStatus.Offline;
+                float battery  = ps.BatteryLifePercent; // 0.0〜1.0（不明時は 255 相当の大きな値）
+                return onBattery && battery >= 0f && battery <= 0.20f;
+            }
+            catch
+            {
+                return false; // 取得不能時は制約なし扱い
+            }
+        }
+
+        /// <summary>
+        /// 指定時間だけ自動更新を一時停止する（F-11）。トレイメニューから呼ぶ。永続化しない。
+        /// </summary>
+        public void SnoozeFor(TimeSpan duration)
+        {
+            _snoozeUntil = DateTime.Now + duration;
+            IsSnoozing   = true;
+            StatusText   = $"一時停止中（〜{_snoozeUntil.Value:HH:mm}）";
+        }
+
+        /// <summary>スヌーズを解除する（F-11。手動更新・再開メニューから呼ぶ）。</summary>
+        public void ClearSnooze()
+        {
+            _snoozeUntil = null;
+            IsSnoozing   = false;
         }
 
         /// <summary>

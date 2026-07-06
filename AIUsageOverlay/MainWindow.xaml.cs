@@ -44,6 +44,10 @@ namespace AIUsageOverlay
             // 設定のオーバーレイ不透明度を適用する（設定画面でスライダー UI 化した項目）
             Opacity = _usageService.GetSettings().WindowOpacity;
 
+            // F-10: 表示/非表示の変化を ViewModel へ伝える（適応間隔の判定に使う）
+            _viewModel.IsOverlayVisible = IsVisible;
+            IsVisibleChanged += (_, _) => _viewModel.IsOverlayVisible = IsVisible;
+
             RestoreWindowPosition();
         }
 
@@ -51,12 +55,14 @@ namespace AIUsageOverlay
         {
             DragMove();
             SaveWindowPosition();
+            _viewModel.NotifyUserInteraction();   // F-10: ドラッグは操作扱い
         }
 
         private async void Settings_Click(object sender, RoutedEventArgs e)
         {
             var settingsWindow = new SettingsWindow(_usageService) { Owner = this };
             settingsWindow.ShowDialog();
+            _viewModel.NotifyUserInteraction();   // F-10: 設定操作は操作扱い
             _viewModel.UpdateRefreshInterval();
 
             // F-03: 閾値・マーカー表示設定の変更をマーカーと現在色へ即時反映する
@@ -94,6 +100,9 @@ namespace AIUsageOverlay
             tb.Text       = "⟳";
             tb.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FF8C00"));
 
+            // F-11: 手動更新はスヌーズを解除して実行する。F-10: 操作として記録
+            _viewModel.ClearSnooze();
+            _viewModel.NotifyUserInteraction();
             await _viewModel.RefreshUsageAsync();
 
             tb.Text       = "↺";

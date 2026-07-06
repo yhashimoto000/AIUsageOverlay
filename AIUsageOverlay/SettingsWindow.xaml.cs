@@ -25,8 +25,9 @@ namespace AIUsageOverlay
             var settings = _usageService.GetSettings();
 
             // ── 全般 ──
-            RefreshIntervalTextBox.Text = settings.RefreshIntervalSeconds.ToString();
-            StartupCheckBox.IsChecked   = IsStartupRegistered();
+            RefreshIntervalTextBox.Text     = settings.RefreshIntervalSeconds.ToString();
+            AdaptiveRefreshCheckBox.IsChecked = settings.AdaptiveRefreshEnabled;
+            StartupCheckBox.IsChecked       = IsStartupRegistered();
 
             // ── 表示項目 ──
             GitHubCopilotCheckBox.IsChecked = settings.GitHubCopilotEnabled;
@@ -132,6 +133,7 @@ namespace AIUsageOverlay
 
             // 全般
             settings.RefreshIntervalSeconds = refreshInterval;
+            settings.AdaptiveRefreshEnabled = AdaptiveRefreshCheckBox.IsChecked == true;
 
             // 表示項目
             settings.GitHubCopilotEnabled   = GitHubCopilotCheckBox.IsChecked == true;
