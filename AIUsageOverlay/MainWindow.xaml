@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:AIUsageOverlay"
+        xmlns:ctrl="clr-namespace:AIUsageOverlay.Controls"
         mc:Ignorable="d"
         Title="AI Usage Overlay"
         Width="460"
@@ -50,15 +51,19 @@
             <Rectangle Grid.Row="3" Height="1" Fill="#2A2A2A" Margin="10,0"
                        Visibility="{Binding CodexSectionVisibility}"/>
 
-            <!-- Row 0: Claude -->
-            <Grid Grid.Row="0" Margin="14,8">
+            <!-- Row 0: Claude （F-02: stale 時はセクション全体を減光） -->
+            <Grid Grid.Row="0" Margin="14,8" Opacity="{Binding ClaudeSectionOpacity}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="5*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="3*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <Grid Grid.Column="0" Margin="0,0,12,0">
+                <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,12,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="4"/>
@@ -69,10 +74,14 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <ProgressBar Grid.Column="0" Value="{Binding SessionPercent}" Maximum="100"
+                        <ProgressBar x:Name="SessionProgressBar" Grid.Column="0"
+                                     Value="{Binding SessionPercent}" Maximum="100"
                                      Height="11" Foreground="#FF8C00" VerticalAlignment="Center"
                                      Style="{StaticResource RoundProgressBarStyle}"/>
-                        <TextBlock Grid.Column="1" Text="{Binding SessionPercentText}"
+                        <!-- F-03: 閾値マーカー（バーと同セルに重ねる）。閾値と表示可否は code-behind で設定 -->
+                        <ctrl:ThresholdMarkerOverlay x:Name="SessionMarkers" Grid.Column="0"
+                                     Height="11" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                        <TextBlock x:Name="SessionPercentBlock" Grid.Column="1" Text="{Binding SessionPercentText}"
                                    Foreground="#FF8C00" FontSize="15" FontWeight="Bold"
                                    Margin="8,0,0,0" VerticalAlignment="Center"/>
                     </Grid>
@@ -129,10 +138,16 @@
                     </Button.Template>
                     <TextBlock Text="↺" FontSize="16" Foreground="#888888"/>
                 </Button>
+                <!-- F-06: ペース行（フル幅・セッション基準） -->
+                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
+                           Text="{Binding SessionPaceText}" Foreground="{Binding SessionPaceBrush}"
+                           Visibility="{Binding SessionPaceVisibility}"
+                           FontSize="10" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
             </Grid>
 
-            <!-- Row 2: GitHub Copilot -->
-            <Grid Grid.Row="2" Margin="14,6,14,6" Visibility="{Binding GitHubSectionVisibility}">
+            <!-- Row 2: GitHub Copilot （F-02: stale 時は減光） -->
+            <Grid Grid.Row="2" Margin="14,6,14,6" Visibility="{Binding GitHubSectionVisibility}"
+                  Opacity="{Binding GitHubSectionOpacity}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="5*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -153,6 +168,10 @@
                                      Height="11" Foreground="#58A6FF" VerticalAlignment="Center"
                                      Visibility="{Binding GitHubOrgBarVisibility}"
                                      Style="{StaticResource RoundProgressBarStyle}"/>
+                        <!-- F-03: 閾値マーカー（バー表示時のみ意味を持つため同 Visibility を共有） -->
+                        <ctrl:ThresholdMarkerOverlay x:Name="GitHubMarkers" Grid.Column="0"
+                                     Height="11" VerticalAlignment="Center" IsHitTestVisible="False"
+                                     Visibility="{Binding GitHubOrgBarVisibility}"/>
                         <Ellipse Grid.Column="0" Width="10" Height="10" Fill="#58A6FF"
                                  HorizontalAlignment="Left" VerticalAlignment="Center"
                                  Visibility="{Binding GitHubIndividualDotVisibility}"/>
@@ -187,14 +206,19 @@
                 </Grid>
             </Grid>
 
-            <!-- Row 4: Codex -->
-            <Grid Grid.Row="4" Margin="14,6,14,6" Visibility="{Binding CodexSectionVisibility}">
+            <!-- Row 4: Codex （F-02: stale 時は減光） -->
+            <Grid Grid.Row="4" Margin="14,6,14,6" Visibility="{Binding CodexSectionVisibility}"
+                  Opacity="{Binding CodexSectionOpacity}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="5*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="3*"/>
                 </Grid.ColumnDefinitions>
-                <Grid Grid.Column="0" Margin="0,0,12,0">
+                <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,12,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="4"/>
@@ -209,6 +233,10 @@
                                      Height="11" Foreground="#10A37F" VerticalAlignment="Center"
                                      Visibility="{Binding CodexBarVisibility}"
                                      Style="{StaticResource RoundProgressBarStyle}"/>
+                        <!-- F-03: 閾値マーカー（バー表示時のみ） -->
+                        <ctrl:ThresholdMarkerOverlay x:Name="CodexMarkers" Grid.Column="0"
+                                     Height="11" VerticalAlignment="Center" IsHitTestVisible="False"
+                                     Visibility="{Binding CodexBarVisibility}"/>
                         <Ellipse Grid.Column="0" Width="10" Height="10" Fill="#10A37F"
                                  HorizontalAlignment="Left" VerticalAlignment="Center"
                                  Visibility="{Binding CodexDotVisibility}"/>
@@ -248,6 +276,11 @@
                                    Foreground="#888888" FontSize="11"/>
                     </Grid>
                 </Grid>
+                <!-- F-06: Codex ペース行（フル幅） -->
+                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
+                           Text="{Binding CodexPaceText}" Foreground="{Binding CodexPaceBrush}"
+                           Visibility="{Binding CodexPaceVisibility}"
+                           FontSize="10" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
             </Grid>
 
         </Grid>

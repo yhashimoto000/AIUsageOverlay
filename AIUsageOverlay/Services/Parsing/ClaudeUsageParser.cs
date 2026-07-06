@@ -103,7 +103,12 @@ namespace AIUsageOverlay.Services.Parsing
                     SessionPercent          = (int)Math.Round(resp.FiveHour.Utilization),
                     SessionRemainingMinutes = sessionRemainingMinutes,
                     WeeklyPercent           = (int)Math.Round(resp.SevenDay.Utilization),
-                    WeeklyRemainingMinutes  = weeklyRemainingMinutes
+                    WeeklyRemainingMinutes  = weeklyRemainingMinutes,
+                    // F-04: 残り分数への変換に加えて、リセット日時そのものをローカル時刻で保持する。
+                    // resets_at が null（未使用）のときは絶対表示できないため null のまま渡し、
+                    // 表示側（MainViewModel）で相対表示へフォールバックさせる。
+                    SessionResetAt = resp.FiveHour.ResetsAt?.LocalDateTime,
+                    WeeklyResetAt  = resp.SevenDay.ResetsAt?.LocalDateTime
                 };
             }
             catch

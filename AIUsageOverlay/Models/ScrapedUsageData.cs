@@ -29,5 +29,19 @@ namespace AIUsageOverlay.Models
         /// "23:59 (土)にリセット" などのテキストをパースして現在時刻との差分を算出する。
         /// </summary>
         public int WeeklyRemainingMinutes { get; set; }
+
+        /// <summary>
+        /// セッション（5時間枠）のリセット日時（ローカル時刻）。
+        /// API の resets_at をそのまま保持する。F-04 の絶対時刻表示、
+        /// および後続の F-05（ペース計算）/ F-07（リセット検知）が参照する基盤値。
+        /// 未使用（resets_at が null）のときは null。
+        /// </summary>
+        public DateTime? SessionResetAt { get; set; }
+
+        /// <summary>
+        /// 週間枠のリセット日時（ローカル時刻）。
+        /// 未使用（resets_at が null）のときは null。
+        /// </summary>
+        public DateTime? WeeklyResetAt { get; set; }
     }
 }
