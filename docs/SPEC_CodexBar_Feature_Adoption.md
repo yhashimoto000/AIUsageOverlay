@@ -86,6 +86,16 @@ CodexBar には Windows 移植版 **Win-CodexBar**（Rust + Tauri、winget: `Fin
 
 ## 4. 変更方針とスコープ
 
+> **【実装状況メモ（2026-07-06 更新）】**
+> - **P1: 実装済み**（master 反映）。F-01〜F-04。
+> - **P3: 非対応（shelved・未マージ）**。F-08/F-09 を `feat/p3-cost-usage` で試作したが、
+>   本機能が集計できるのは Claude Code / Codex の **CLI ローカルログのみ**で、
+>   **Claude Desktop / claude.ai の利用はローカルにトークン・コスト明細が残らず集計不可**。
+>   利用実態が Desktop 中心のためトークン表示は「一旦非対応」とし、master へはマージしない。
+>   将来 CLI を常用する場合は同ブランチ（Codex パーサ修正済み）から再開可能。詳細は
+>   `docs/REVIEW_P3_CodexBar.md` / `docs/TEST_P3_CodexBar.md`（ブランチ側）参照。
+> - **P2 / P4: 未着手**。
+
 ### 4.1 スコープ（フェーズ構成）
 
 | フェーズ | 機能 | 狙い |
