@@ -227,14 +227,33 @@ namespace AIUsageOverlay
             var showHideItem = new ToolStripMenuItem("表示 / 非表示");
             showHideItem.Click += (_, _) => ToggleMainWindow();
 
+            // F-11: 更新を一時停止（スヌーズ）サブメニュー
+            var snoozeItem = new ToolStripMenuItem("更新を一時停止");
+            AddSnoozeMenuItem(snoozeItem, "30分", TimeSpan.FromMinutes(30));
+            AddSnoozeMenuItem(snoozeItem, "1時間", TimeSpan.FromHours(1));
+            AddSnoozeMenuItem(snoozeItem, "3時間", TimeSpan.FromHours(3));
+            snoozeItem.DropDownItems.Add(new ToolStripSeparator());
+            var resumeItem = new ToolStripMenuItem("再開");
+            resumeItem.Click += (_, _) => _mainWindow?.ViewModel.ClearSnooze();
+            snoozeItem.DropDownItems.Add(resumeItem);
+
             var exitItem = new ToolStripMenuItem("終了");
             exitItem.Click += (_, _) => ExitApplication();
 
             menu.Items.Add(showHideItem);
+            menu.Items.Add(snoozeItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(exitItem);
 
             return menu;
+        }
+
+        /// <summary>スヌーズのサブメニュー項目を 1 つ追加する（F-11）。</summary>
+        private void AddSnoozeMenuItem(ToolStripMenuItem parent, string label, TimeSpan duration)
+        {
+            var item = new ToolStripMenuItem(label);
+            item.Click += (_, _) => _mainWindow?.ViewModel.SnoozeFor(duration);
+            parent.DropDownItems.Add(item);
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -250,7 +269,8 @@ namespace AIUsageOverlay
         {
             if (e.PropertyName is not (nameof(ViewModels.MainViewModel.SessionPercent)
                                     or nameof(ViewModels.MainViewModel.WeeklyPercent)
-                                    or nameof(ViewModels.MainViewModel.IsClaudeStale)))
+                                    or nameof(ViewModels.MainViewModel.IsClaudeStale)
+                                    or nameof(ViewModels.MainViewModel.IsSnoozing)))
                 return;
 
             if (_mainWindow == null || _notifyIcon == null) return;
@@ -289,7 +309,8 @@ namespace AIUsageOverlay
             var vm       = _mainWindow.ViewModel;
             int session  = (int)vm.SessionPercent;
             int weekly   = (int)vm.WeeklyPercent;
-            bool stale   = vm.IsClaudeStale;
+            // F-11: スヌーズ中も stale と同じ減光でトレイに表す
+            bool stale   = vm.IsClaudeStale || vm.IsSnoozing;
             var settings = vm.GetSettings();
             string style = settings.TrayIconStyle;
 
