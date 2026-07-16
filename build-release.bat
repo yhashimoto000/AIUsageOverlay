@@ -3,12 +3,14 @@ setlocal
 
 REM ----------------------------------------------------------------
 REM build-release.bat
-REM Publishes AIUsageOverlay as a self-contained exe + native DLLs.
-REM Output: publish\                     (exe + DLLs)
+REM Publishes AIUsageOverlay as a framework-dependent exe.
+REM Output: publish\                     (exe + native DLLs)
 REM         AIUsageOverlay_release.zip   (distribution zip)
 REM
-REM Native libraries (WebView2 / WPF DLLs) are placed beside the exe.
-REM This reduces exe size from ~156MB to ~70MB.
+REM Framework-dependent: the .NET runtime is NOT bundled, so the exe
+REM is small (~1-2MB instead of ~70MB). The target PC must have the
+REM ".NET 9 Desktop Runtime" installed. install-runtime.bat (bundled
+REM in the zip) installs it on the first run if missing.
 REM ----------------------------------------------------------------
 
 set ROOT=%~dp0
@@ -78,9 +80,9 @@ echo [INFO] Publishing...
 dotnet publish "%PROJECT%" ^
   -c Release ^
   -r win-x64 ^
-  --self-contained true ^
+  --self-contained false ^
   -p:PublishSingleFile=true ^
-  -p:EnableCompressionInSingleFile=true ^
+  -p:DebugType=none ^
   -o "%OUTPUT%"
 
 if %ERRORLEVEL% neq 0 (
@@ -105,6 +107,7 @@ powershell -NoProfile -Command ^
   "Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue;" ^
   "New-Item $tmp -ItemType Directory | Out-Null;" ^
   "Copy-Item '%OUTPUT%\*' $tmp -Recurse -Exclude @('*.pdb','*.xml');" ^
+  "Copy-Item '%ROOT%install-runtime.bat' $tmp;" ^
   "Compress-Archive -Path \"$tmp\*\" -DestinationPath '%ZIPNAME%' -Force;" ^
   "Remove-Item $tmp -Recurse -Force;" ^
   "Write-Host '[INFO] Zip created successfully.'"

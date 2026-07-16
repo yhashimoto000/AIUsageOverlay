@@ -7,9 +7,7 @@
         xmlns:ctrl="clr-namespace:AIUsageOverlay.Controls"
         mc:Ignorable="d"
         Title="AI Usage Overlay"
-        Width="460"
-        SizeToContent="Height"
-        MinWidth="360"
+        SizeToContent="WidthAndHeight"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -17,6 +15,14 @@
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         MouseLeftButtonDown="Window_MouseLeftButtonDown">
+
+    <!--
+        デザイン刷新: オーバーレイ表示形式を 1a ⇔ 1b で切り替える。
+          1a（LayoutList）  : 縦積みリスト型＋スパークライン（幅 300px 固定）
+          1b（CompactPill / ExpandedPanel）: コンパクト⇔詳細のクリック切替型
+        表示切替は code-behind の ApplyOverlayLayout() が設定値に応じて Visibility を制御する。
+        色・面はデザイントークン（App.xaml の Brush.*）を参照する。
+    -->
 
     <Window.ContextMenu>
         <ContextMenu Background="#2A2A2A" BorderBrush="#484848" Foreground="White">
@@ -32,257 +38,411 @@
         </ContextMenu>
     </Window.ContextMenu>
 
-    <Border Background="#1C1C1C" CornerRadius="8" BorderBrush="#3D3D3D" BorderThickness="1">
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+    <!-- 3 つのレイアウトを重ね、ApplyOverlayLayout() で 1 つだけ表示する -->
+    <Grid Background="Transparent">
 
-            <TextBlock Grid.Row="5" Text="{Binding StatusText}" Foreground="#555555"
-                       FontSize="9" HorizontalAlignment="Right" Margin="0,0,10,4"/>
+        <!-- ================= 1a: 縦積みリスト型（既定） ================= -->
+        <Border x:Name="LayoutList" Width="300"
+                Background="{StaticResource Brush.Surface}" CornerRadius="10"
+                BorderBrush="{StaticResource Brush.OverlayBorder}" BorderThickness="1"
+                Padding="14,12,14,10">
+            <StackPanel>
 
-            <Rectangle Grid.Row="1" Height="1" Fill="#2A2A2A" Margin="10,0"
-                       Visibility="{Binding GitHubSectionVisibility}"/>
-            <Rectangle Grid.Row="3" Height="1" Fill="#2A2A2A" Margin="10,0"
-                       Visibility="{Binding CodexSectionVisibility}"/>
+                <!-- ヘッダー行 -->
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="AI USAGE" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{StaticResource Brush.HeaderLabel}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="9"
+                               Foreground="{StaticResource Brush.Text3}" VerticalAlignment="Center"
+                               Margin="0,0,8,0"/>
+                    <Button x:Name="RefreshButton" Grid.Column="3" VerticalAlignment="Center"
+                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                            ToolTip="今すぐ更新" Click="Refresh_Click" Padding="2">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="BB" Background="Transparent" CornerRadius="4" Padding="2">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="BB" Property="Background" Value="#2E2E33"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock Text="↺" FontSize="13" Foreground="#8A8A92"/>
+                    </Button>
+                </Grid>
 
-            <!-- Row 0: Claude （F-02: stale 時はセクション全体を減光） -->
-            <Grid Grid.Row="0" Margin="14,8" Opacity="{Binding ClaudeSectionOpacity}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="5*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="3*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,12,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="4"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <Grid Grid.Row="0">
+                <!-- Claude ブロック -->
+                <StackPanel Opacity="{Binding ClaudeSectionOpacity}">
+                    <Grid Margin="0,0,0,3">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <ProgressBar x:Name="SessionProgressBar" Grid.Column="0"
-                                     Value="{Binding SessionPercent}" Maximum="100"
-                                     Height="11" Foreground="#FF8C00" VerticalAlignment="Center"
+                        <Ellipse x:Name="ClaudeDot" Grid.Column="0" Width="6" Height="6"
+                                 Fill="{StaticResource Brush.Claude}" VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock Grid.Column="1" Text="Claude" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Brush.Text1}" VerticalAlignment="Center"/>
+                        <Border Grid.Column="2" Background="{StaticResource Brush.Chip}" CornerRadius="4"
+                                Padding="6,1" Margin="7,0,0,0" VerticalAlignment="Center"
+                                Visibility="{Binding WeeklyChipVisibility}">
+                            <TextBlock Text="{Binding WeeklyChipText}" FontSize="10"
+                                       Foreground="{StaticResource Brush.HeaderLabel}"/>
+                        </Border>
+                        <TextBlock x:Name="SessionPercentBlock" Grid.Column="4" Text="{Binding SessionPercentText}"
+                                   FontSize="16" FontWeight="Bold" Foreground="{StaticResource Brush.Claude}"
+                                   VerticalAlignment="Center"/>
+                    </Grid>
+                    <Polyline x:Name="ClaudeSparkline" Stroke="{StaticResource Brush.Claude}"
+                              StrokeThickness="1.6" StrokeLineJoin="Round" Height="20"
+                              HorizontalAlignment="Stretch" Margin="0,3,0,2"
+                              SizeChanged="Sparkline_SizeChanged"/>
+                    <Grid>
+                        <ProgressBar x:Name="SessionProgressBar" Value="{Binding SessionPercent}" Maximum="100"
+                                     Height="6" Foreground="{StaticResource Brush.Claude}"
                                      Style="{StaticResource RoundProgressBarStyle}"/>
-                        <!-- F-03: 閾値マーカー（バーと同セルに重ねる）。閾値と表示可否は code-behind で設定 -->
-                        <ctrl:ThresholdMarkerOverlay x:Name="SessionMarkers" Grid.Column="0"
-                                     Height="11" VerticalAlignment="Center" IsHitTestVisible="False"/>
-                        <TextBlock x:Name="SessionPercentBlock" Grid.Column="1" Text="{Binding SessionPercentText}"
-                                   Foreground="#FF8C00" FontSize="15" FontWeight="Bold"
-                                   Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        <ctrl:ThresholdMarkerOverlay x:Name="SessionMarkers" Height="6"
+                                     IsHitTestVisible="False"/>
                     </Grid>
-                    <Grid Grid.Row="2">
+                    <TextBlock x:Name="ClaudeMeta" FontSize="10" Foreground="{StaticResource Brush.Text2}"
+                               Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+
+                <!-- GitHub Copilot ブロック -->
+                <StackPanel Margin="0,13,0,0" Visibility="{Binding GitHubSectionVisibility}"
+                            Opacity="{Binding GitHubSectionOpacity}">
+                    <Grid Margin="0,0,0,3">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="セッション" Foreground="#888888" FontSize="11"/>
-                        <TextBlock Grid.Column="2" Text="{Binding SessionRemainingText}" Foreground="#888888" FontSize="11"/>
-                    </Grid>
-                </Grid>
-                <Rectangle Grid.Column="1" Width="1" Fill="#404040" Margin="0,3"/>
-                <Grid Grid.Column="2" Margin="12,0,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="4"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse x:Name="WeeklyIndicatorDot" Width="10" Height="10" Fill="#4CAF50"
+                        <Ellipse Grid.Column="0" Width="6" Height="6" Fill="{StaticResource Brush.Copilot}"
                                  VerticalAlignment="Center" Margin="0,0,7,0"/>
-                        <TextBlock x:Name="WeeklyPercentBlock" Text="{Binding WeeklyPercentText}"
-                                   Foreground="#4CAF50" FontSize="15" FontWeight="Bold" VerticalAlignment="Center"/>
-                    </StackPanel>
-                    <Grid Grid.Row="2">
+                        <TextBlock Grid.Column="1" Text="GitHub Copilot" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Brush.Text1}" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="3" Text="{Binding GitHubSeatsPercentText}"
+                                   FontSize="16" FontWeight="Bold" Foreground="{StaticResource Brush.Copilot}"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding GitHubOrgBarVisibility}"/>
+                    </Grid>
+                    <Polyline x:Name="CopilotSparkline" Stroke="{StaticResource Brush.Copilot}"
+                              StrokeThickness="1.6" StrokeLineJoin="Round" Height="20"
+                              HorizontalAlignment="Stretch" Margin="0,3,0,2"
+                              SizeChanged="Sparkline_SizeChanged"/>
+                    <Grid Visibility="{Binding GitHubOrgBarVisibility}">
+                        <ProgressBar Value="{Binding GitHubSeatsPercent}" Maximum="100"
+                                     Height="6" Foreground="{StaticResource Brush.Copilot}"
+                                     Style="{StaticResource RoundProgressBarStyle}"/>
+                        <ctrl:ThresholdMarkerOverlay x:Name="GitHubMarkers" Height="6"
+                                     IsHitTestVisible="False"/>
+                    </Grid>
+                    <TextBlock x:Name="CopilotMeta" Text="{Binding CopilotMetaText}"
+                               FontSize="10" Foreground="{StaticResource Brush.Text2}"
+                               Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+
+                <!-- Codex ブロック -->
+                <StackPanel Margin="0,13,0,0" Visibility="{Binding CodexSectionVisibility}"
+                            Opacity="{Binding CodexSectionOpacity}">
+                    <Grid Margin="0,0,0,3">
                         <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="週間" Foreground="#888888" FontSize="11"/>
-                        <TextBlock Grid.Column="2" Text="{Binding WeeklyRemainingText}" Foreground="#888888" FontSize="11"/>
+                        <Ellipse Grid.Column="0" Width="6" Height="6" Fill="{StaticResource Brush.Codex}"
+                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock Grid.Column="1" Text="Codex" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Brush.Text1}" VerticalAlignment="Center"/>
+                        <Border Grid.Column="2" Background="{StaticResource Brush.Chip}" CornerRadius="4"
+                                Padding="6,1" Margin="7,0,0,0" VerticalAlignment="Center"
+                                Visibility="{Binding CodexWeeklyChipVisibility}">
+                            <TextBlock Text="{Binding CodexWeeklyChipText}" FontSize="10"
+                                       Foreground="{StaticResource Brush.HeaderLabel}"/>
+                        </Border>
+                        <TextBlock Grid.Column="4" Text="{Binding CodexUsagePercentText}"
+                                   FontSize="16" FontWeight="Bold" Foreground="{StaticResource Brush.Codex}"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding CodexBarVisibility}"/>
                     </Grid>
-                </Grid>
-                <Button x:Name="RefreshButton" Grid.Column="3" Width="22" Height="22"
-                        Margin="8,0,0,0" VerticalAlignment="Center" Background="Transparent"
-                        BorderThickness="0" Cursor="Hand" ToolTip="今すぐ更新" Click="Refresh_Click">
+                    <Polyline x:Name="CodexSparkline" Stroke="{StaticResource Brush.Codex}"
+                              StrokeThickness="1.6" StrokeLineJoin="Round" Height="20"
+                              HorizontalAlignment="Stretch" Margin="0,3,0,2"
+                              SizeChanged="Sparkline_SizeChanged"/>
+                    <Grid Visibility="{Binding CodexBarVisibility}">
+                        <ProgressBar Value="{Binding CodexUsagePercent}" Maximum="100"
+                                     Height="6" Foreground="{StaticResource Brush.Codex}"
+                                     Style="{StaticResource RoundProgressBarStyle}"/>
+                        <ctrl:ThresholdMarkerOverlay x:Name="CodexMarkers" Height="6"
+                                     IsHitTestVisible="False"/>
+                    </Grid>
+                    <TextBlock x:Name="CodexMeta" FontSize="10" Foreground="{StaticResource Brush.Text2}"
+                               Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+
+            </StackPanel>
+        </Border>
+
+        <!-- ================= 1b: コンパクト（ピル） ================= -->
+        <Border x:Name="CompactPill" Visibility="Collapsed"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                Background="#1C1C1F" CornerRadius="20"
+                BorderBrush="#333333" BorderThickness="1" Padding="14,8">
+            <StackPanel Orientation="Horizontal">
+                <!-- Claude -->
+                <TextBlock Text="C" FontSize="10" FontWeight="Bold" Foreground="#8A8A92"
+                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ProgressBar x:Name="CompactClaudeBar" Width="34" Height="5" Value="{Binding SessionPercent}"
+                             Maximum="100" Foreground="{StaticResource Brush.Claude}"
+                             Style="{StaticResource RoundProgressBarStyle}" VerticalAlignment="Center"/>
+                <TextBlock x:Name="CompactClaudePercent" Text="{Binding SessionPercentText}" FontSize="11"
+                           FontWeight="Bold" Foreground="{StaticResource Brush.Claude}"
+                           VerticalAlignment="Center" Margin="6,0,0,0"/>
+                <!-- 区切り -->
+                <Border Width="1" Height="14" Background="#333333" Margin="10,0"
+                        Visibility="{Binding GitHubSectionVisibility}"/>
+                <!-- GitHub -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                            Visibility="{Binding GitHubSectionVisibility}">
+                    <TextBlock Text="G" FontSize="10" FontWeight="Bold" Foreground="#8A8A92"
+                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ProgressBar Width="34" Height="5" Value="{Binding GitHubSeatsPercent}" Maximum="100"
+                                 Foreground="{StaticResource Brush.Copilot}"
+                                 Style="{StaticResource RoundProgressBarStyle}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding GitHubSeatsPercentText}" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource Brush.Copilot}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                </StackPanel>
+                <!-- 区切り -->
+                <Border Width="1" Height="14" Background="#333333" Margin="10,0"
+                        Visibility="{Binding CodexSectionVisibility}"/>
+                <!-- Codex -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                            Visibility="{Binding CodexSectionVisibility}">
+                    <TextBlock Text="X" FontSize="10" FontWeight="Bold" Foreground="#8A8A92"
+                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ProgressBar Width="34" Height="5" Value="{Binding CodexUsagePercent}" Maximum="100"
+                                 Foreground="{StaticResource Brush.Codex}"
+                                 Style="{StaticResource RoundProgressBarStyle}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding CodexUsagePercentText}" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource Brush.Codex}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                </StackPanel>
+                <!-- 展開ボタン -->
+                <Button VerticalAlignment="Center" Margin="10,0,0,0" Background="Transparent"
+                        BorderThickness="0" Cursor="Hand" ToolTip="詳細を表示" Click="ToggleExpand_Click" Padding="2">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="BB" Background="Transparent" CornerRadius="4">
+                            <Border x:Name="BB" Background="Transparent" CornerRadius="4" Padding="2">
                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="BB" Property="Background" Value="#333333"/>
-                                </Trigger>
-                                <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="BB" Property="Background" Value="#444444"/>
+                                    <Setter TargetName="BB" Property="Background" Value="#2E2E33"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Button.Template>
-                    <TextBlock Text="↺" FontSize="16" Foreground="#888888"/>
+                    <TextBlock Text="▾" FontSize="10" Foreground="#8A8A92"/>
                 </Button>
-                <!-- F-06: ペース行（フル幅・セッション基準） -->
-                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4"
-                           Text="{Binding SessionPaceText}" Foreground="{Binding SessionPaceBrush}"
-                           Visibility="{Binding SessionPaceVisibility}"
-                           FontSize="10" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
-            </Grid>
+            </StackPanel>
+        </Border>
 
-            <!-- Row 2: GitHub Copilot （F-02: stale 時は減光） -->
-            <Grid Grid.Row="2" Margin="14,6,14,6" Visibility="{Binding GitHubSectionVisibility}"
-                  Opacity="{Binding GitHubSectionOpacity}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="5*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="3*"/>
-                </Grid.ColumnDefinitions>
-                <Grid Grid.Column="0" Margin="0,0,12,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="4"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <Grid Grid.Row="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <ProgressBar Grid.Column="0" Value="{Binding GitHubSeatsPercent}" Maximum="100"
-                                     Height="11" Foreground="#58A6FF" VerticalAlignment="Center"
-                                     Visibility="{Binding GitHubOrgBarVisibility}"
+        <!-- ================= 1b: 詳細パネル ================= -->
+        <Border x:Name="ExpandedPanel" Visibility="Collapsed" Width="380"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                Background="#1C1C1F" CornerRadius="12"
+                BorderBrush="#333333" BorderThickness="1" Padding="16,12,16,10">
+            <StackPanel>
+                <!-- ヘッダー -->
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="AI USAGE" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{StaticResource Brush.HeaderLabel}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="9"
+                               Foreground="{StaticResource Brush.Text3}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Button x:Name="RefreshButtonExpanded" Grid.Column="3" VerticalAlignment="Center"
+                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                            ToolTip="今すぐ更新" Click="Refresh_Click" Padding="2" Margin="0,0,4,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="BB" Background="Transparent" CornerRadius="4" Padding="2">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="BB" Property="Background" Value="#2E2E33"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock Text="↺" FontSize="13" Foreground="#8A8A92"/>
+                    </Button>
+                    <Button Grid.Column="4" VerticalAlignment="Center" Background="Transparent"
+                            BorderThickness="0" Cursor="Hand" ToolTip="コンパクト表示へ"
+                            Click="ToggleExpand_Click" Padding="2">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="BB" Background="Transparent" CornerRadius="4" Padding="2">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="BB" Property="Background" Value="#2E2E33"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock Text="▴" FontSize="11" Foreground="#8A8A92"/>
+                    </Button>
+                </Grid>
+
+                <!-- Claude セッション -->
+                <Grid Margin="0,0,0,8" Opacity="{Binding ClaudeSectionOpacity}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Claude セッション" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="#9A9AA2"/>
+                            <TextBlock Grid.Column="1" Text="{Binding SessionRemainingText}" FontSize="10"
+                                       Foreground="{StaticResource Brush.HeaderLabel}"/>
+                        </Grid>
+                        <ProgressBar x:Name="ExpandedSessionBar" Value="{Binding SessionPercent}" Maximum="100"
+                                     Height="9" Foreground="{StaticResource Brush.Claude}"
                                      Style="{StaticResource RoundProgressBarStyle}"/>
-                        <!-- F-03: 閾値マーカー（バー表示時のみ意味を持つため同 Visibility を共有） -->
-                        <ctrl:ThresholdMarkerOverlay x:Name="GitHubMarkers" Grid.Column="0"
-                                     Height="11" VerticalAlignment="Center" IsHitTestVisible="False"
+                    </StackPanel>
+                    <TextBlock x:Name="ExpandedSessionPercent" Grid.Column="1" Text="{Binding SessionPercentText}"
+                               FontSize="17" FontWeight="Bold" Foreground="{StaticResource Brush.Claude}"
+                               VerticalAlignment="Center" MinWidth="44" TextAlignment="Right"/>
+                </Grid>
+
+                <!-- Claude 週間 -->
+                <Grid Margin="0,0,0,8" Opacity="{Binding ClaudeSectionOpacity}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Claude 週間" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="#9A9AA2"/>
+                            <TextBlock Grid.Column="1" Text="{Binding WeeklyRemainingText}" FontSize="10"
+                                       Foreground="{StaticResource Brush.HeaderLabel}"/>
+                        </Grid>
+                        <ProgressBar x:Name="ExpandedWeeklyBar" Value="{Binding WeeklyPercent}" Maximum="100"
+                                     Height="9" Foreground="{StaticResource Brush.Claude}"
+                                     Style="{StaticResource RoundProgressBarStyle}"/>
+                    </StackPanel>
+                    <TextBlock x:Name="ExpandedWeeklyPercent" Grid.Column="1" Text="{Binding WeeklyPercentText}"
+                               FontSize="17" FontWeight="Bold" Foreground="{StaticResource Brush.Claude}"
+                               VerticalAlignment="Center" MinWidth="44" TextAlignment="Right"/>
+                </Grid>
+
+                <!-- GitHub Copilot -->
+                <Grid Margin="0,0,0,8" Visibility="{Binding GitHubSectionVisibility}"
+                      Opacity="{Binding GitHubSectionOpacity}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="GitHub Copilot" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="#9A9AA2"/>
+                            <TextBlock Grid.Column="1" Text="{Binding CopilotMetaText}" FontSize="10"
+                                       Foreground="{StaticResource Brush.HeaderLabel}"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                        <ProgressBar Value="{Binding GitHubSeatsPercent}" Maximum="100"
+                                     Height="9" Foreground="{StaticResource Brush.Copilot}"
+                                     Style="{StaticResource RoundProgressBarStyle}"
                                      Visibility="{Binding GitHubOrgBarVisibility}"/>
-                        <Ellipse Grid.Column="0" Width="10" Height="10" Fill="#58A6FF"
-                                 HorizontalAlignment="Left" VerticalAlignment="Center"
-                                 Visibility="{Binding GitHubIndividualDotVisibility}"/>
-                        <TextBlock Grid.Column="1" Text="{Binding GitHubSeatsPercentText}"
-                                   Foreground="#58A6FF" FontSize="15" FontWeight="Bold"
-                                   Margin="8,0,0,0" VerticalAlignment="Center"
-                                   Visibility="{Binding GitHubOrgBarVisibility}"/>
-                    </Grid>
-                    <Grid Grid.Row="2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="GitHub Copilot" Foreground="#888888" FontSize="11"/>
-                        <TextBlock Grid.Column="2" Text="{Binding GitHubSeatsText}"
-                                   Foreground="#888888" FontSize="11"
-                                   Visibility="{Binding GitHubOrgBarVisibility}"/>
-                    </Grid>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding GitHubSeatsPercentText}"
+                               FontSize="17" FontWeight="Bold" Foreground="{StaticResource Brush.Copilot}"
+                               VerticalAlignment="Center" MinWidth="44" TextAlignment="Right"
+                               Visibility="{Binding GitHubOrgBarVisibility}"/>
                 </Grid>
-                <Rectangle Grid.Column="1" Width="1" Fill="#404040" Margin="0,3"/>
-                <Grid Grid.Column="2" Margin="12,0,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="4"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="{Binding GitHubStatusText}"
-                               Foreground="#58A6FF" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"/>
-                    <TextBlock Grid.Row="2" Text="{Binding GitHubUserText}"
-                               Foreground="#888888" FontSize="11"/>
-                </Grid>
-            </Grid>
 
-            <!-- Row 4: Codex （F-02: stale 時は減光） -->
-            <Grid Grid.Row="4" Margin="14,6,14,6" Visibility="{Binding CodexSectionVisibility}"
-                  Opacity="{Binding CodexSectionOpacity}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="5*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="3*"/>
-                </Grid.ColumnDefinitions>
-                <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,12,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="4"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <Grid Grid.Row="0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <ProgressBar Grid.Column="0" Value="{Binding CodexUsagePercent}" Maximum="100"
-                                     Height="11" Foreground="#10A37F" VerticalAlignment="Center"
-                                     Visibility="{Binding CodexBarVisibility}"
-                                     Style="{StaticResource RoundProgressBarStyle}"/>
-                        <!-- F-03: 閾値マーカー（バー表示時のみ） -->
-                        <ctrl:ThresholdMarkerOverlay x:Name="CodexMarkers" Grid.Column="0"
-                                     Height="11" VerticalAlignment="Center" IsHitTestVisible="False"
+                <!-- Codex -->
+                <Grid Margin="0,0,0,8" Visibility="{Binding CodexSectionVisibility}"
+                      Opacity="{Binding CodexSectionOpacity}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Codex 5時間" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="#9A9AA2"/>
+                            <TextBlock Grid.Column="1" Text="{Binding CodexDetailText}" FontSize="10"
+                                       Foreground="{StaticResource Brush.HeaderLabel}"/>
+                        </Grid>
+                        <ProgressBar Value="{Binding CodexUsagePercent}" Maximum="100"
+                                     Height="9" Foreground="{StaticResource Brush.Codex}"
+                                     Style="{StaticResource RoundProgressBarStyle}"
                                      Visibility="{Binding CodexBarVisibility}"/>
-                        <Ellipse Grid.Column="0" Width="10" Height="10" Fill="#10A37F"
-                                 HorizontalAlignment="Left" VerticalAlignment="Center"
-                                 Visibility="{Binding CodexDotVisibility}"/>
-                        <TextBlock Grid.Column="1" Text="{Binding CodexUsagePercentText}"
-                                   Foreground="#10A37F" FontSize="15" FontWeight="Bold"
-                                   Margin="8,0,0,0" VerticalAlignment="Center"
-                                   Visibility="{Binding CodexBarVisibility}"/>
-                    </Grid>
-                    <Grid Grid.Row="2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Codex 5時間" Foreground="#888888" FontSize="11"/>
-                        <TextBlock Grid.Column="2" Text="{Binding CodexDetailText}"
-                                   Foreground="#888888" FontSize="11"/>
-                    </Grid>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding CodexUsagePercentText}"
+                               FontSize="17" FontWeight="Bold" Foreground="{StaticResource Brush.Codex}"
+                               VerticalAlignment="Center" MinWidth="44" TextAlignment="Right"
+                               Visibility="{Binding CodexBarVisibility}"/>
                 </Grid>
-                <Rectangle Grid.Column="1" Width="1" Fill="#404040" Margin="0,3"/>
-                <Grid Grid.Column="2" Margin="12,0,0,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="4"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Grid.Row="0" Text="{Binding CodexStatusText}"
-                               Foreground="#10A37F" FontSize="13" FontWeight="Bold" VerticalAlignment="Center"/>
-                    <Grid Grid.Row="2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="週間" Foreground="#888888" FontSize="11"/>
-                        <TextBlock Grid.Column="2" Text="{Binding CodexSubText}"
-                                   Foreground="#888888" FontSize="11"/>
-                    </Grid>
-                </Grid>
-                <!-- F-06: Codex ペース行（フル幅） -->
-                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"
-                           Text="{Binding CodexPaceText}" Foreground="{Binding CodexPaceBrush}"
-                           Visibility="{Binding CodexPaceVisibility}"
-                           FontSize="10" Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
-            </Grid>
 
-        </Grid>
-    </Border>
+                <!-- ペースチップ行 -->
+                <WrapPanel Margin="0,2,0,0">
+                    <Border Background="{StaticResource Brush.Chip}" CornerRadius="9" Padding="8,2"
+                            Margin="0,0,6,0" Visibility="{Binding SessionPaceVisibility}">
+                        <TextBlock Text="{Binding SessionPaceText}" Foreground="{Binding SessionPaceBrush}"
+                                   FontSize="9.5"/>
+                    </Border>
+                    <Border Background="{StaticResource Brush.Chip}" CornerRadius="9" Padding="8,2"
+                            Visibility="{Binding CodexPaceVisibility}">
+                        <TextBlock Text="{Binding CodexPaceText}" Foreground="{Binding CodexPaceBrush}"
+                                   FontSize="9.5"/>
+                    </Border>
+                </WrapPanel>
+
+            </StackPanel>
+        </Border>
+
+    </Grid>
 </Window>

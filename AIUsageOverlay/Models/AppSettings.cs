@@ -49,11 +49,12 @@ namespace AIUsageOverlay.Models
         // ────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// トレイアイコンの形式。F-01。
-        /// "dualBar"（上=セッション/下=週間の2段バー、既定） / "donut"（従来のドーナツ+%）。
+        /// トレイアイコンの形式。F-01 / デザイン刷新（1e）。
+        /// "ring"（ストローク弧+中央%、既定） / "dualBar"（上=セッション/下=週間の2段バー改） /
+        /// "donut"（従来のドーナツ+%） / "numeric"（%数値+ミニバー）。
         /// </summary>
         [JsonPropertyName("trayIconStyle")]
-        public string TrayIconStyle { get; set; } = "dualBar";
+        public string TrayIconStyle { get; set; } = "ring";
 
         /// <summary>
         /// 注意（オレンジ）を開始する使用率の閾値（%）。F-03。
@@ -117,5 +118,32 @@ namespace AIUsageOverlay.Models
         /// </summary>
         [JsonPropertyName("adaptiveRefreshEnabled")]
         public bool AdaptiveRefreshEnabled { get; set; } = true;
+
+        // ────────────────────────────────────────────────────────────────
+        // デザイン刷新（オーバーレイ 2b）追加設定
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// オーバーレイのサービス行にスパークライン（使用率%の自己記録推移）を表示するか。既定 true。
+        /// OFF のとき履歴の記録は継続するが描画のみ省く。点が 2 未満のときは自動的に非表示。
+        /// スパークラインは表示形式 "list"（1a）でのみ描画する。
+        /// </summary>
+        [JsonPropertyName("showSparkline")]
+        public bool ShowSparkline { get; set; } = true;
+
+        /// <summary>
+        /// オーバーレイの表示形式。デザイン刷新（1a⇔1b 切替）。
+        /// "list"（1a: 縦積みリスト型＋スパークライン、既定） /
+        /// "compact"（1b: コンパクト⇔詳細のクリック切替型）。
+        /// </summary>
+        [JsonPropertyName("overlayLayout")]
+        public string OverlayLayout { get; set; } = "list";
+
+        /// <summary>
+        /// 表示形式 "compact"（1b）のときの詳細パネル展開状態。既定 true（展開）。
+        /// クリックのたびに反転して永続化し、次回起動時に前回の状態を復元する。
+        /// </summary>
+        [JsonPropertyName("overlayExpanded")]
+        public bool OverlayExpanded { get; set; } = true;
     }
 }

@@ -8,19 +8,45 @@
 
         <!--
             ========================================================
+            デザイントークン（デザイン刷新・引継ぎ資料 §2）
+            ========================================================
+            WPF は oklch 非対応のため hex 近似値を使用する。
+            サービスアクセントは彩度・明度を揃えて統一感を出した低彩度版。
+            レベル色（通常/注意/警告）は UsageLevelHelper 側の定義と一致させる。
+        -->
+        <!--  面・枠・トラック  -->
+        <SolidColorBrush x:Key="Brush.Surface"       Color="#18181B" /><!--  オーバーレイ背景  -->
+        <SolidColorBrush x:Key="Brush.OverlayBorder" Color="#2E2E33" /><!--  外枠 1px  -->
+        <SolidColorBrush x:Key="Brush.Track"         Color="#26262B" /><!--  バー未使用部  -->
+        <SolidColorBrush x:Key="Brush.Chip"          Color="#232327" /><!--  週間チップ背景  -->
+        <!--  テキスト階調  -->
+        <SolidColorBrush x:Key="Brush.Text1"       Color="#D4D4D8" /><!--  サービス名  -->
+        <SolidColorBrush x:Key="Brush.Text2"       Color="#77777F" /><!--  メタ行  -->
+        <SolidColorBrush x:Key="Brush.Text3"       Color="#55555C" /><!--  ステータス  -->
+        <SolidColorBrush x:Key="Brush.HeaderLabel" Color="#6B6B73" /><!--  "AI USAGE" ラベル・週チップ文字  -->
+        <!--  サービスアクセント（低彩度版）  -->
+        <SolidColorBrush x:Key="Brush.Claude"  Color="#EA9440" /><!--  oklch 0.75 0.14 60   -->
+        <SolidColorBrush x:Key="Brush.Copilot" Color="#85AADC" /><!--  oklch 0.75 0.10 250  -->
+        <SolidColorBrush x:Key="Brush.Codex"   Color="#4CBD97" /><!--  oklch 0.72 0.12 165  -->
+        <!--  設定アクセント（トグル ON・選択セグメント・保存ボタン）  -->
+        <SolidColorBrush x:Key="Brush.Accent"  Color="#FF8C00" />
+
+        <!--
+            ========================================================
             丸角プログレスバー 共通スタイル
             ========================================================
             使い方: Style="{StaticResource RoundProgressBarStyle}"
             Foreground="色" で塗りつぶし色を指定する
             Background で未使用トラックの色を指定する
+            デザイン刷新（2b）に合わせて既定高さ 6px・角丸 3・トラック #26262B へ変更。
         -->
         <Style x:Key="RoundProgressBarStyle" TargetType="ProgressBar">
             <!--  トラック背景色（未使用部分）  -->
-            <Setter Property="Background" Value="#2E2E2E" />
+            <Setter Property="Background" Value="#26262B" />
             <!--  枠線なし  -->
             <Setter Property="BorderThickness" Value="0" />
-            <!--  デフォルト高さ  -->
-            <Setter Property="Height" Value="10" />
+            <!--  デフォルト高さ（2b: 6px）  -->
+            <Setter Property="Height" Value="6" />
             <Setter Property="Template">
                 <Setter.Value>
                     <!--
@@ -34,7 +60,7 @@
                         <Border
                             Background="{TemplateBinding Background}"
                             ClipToBounds="True"
-                            CornerRadius="5">
+                            CornerRadius="3">
                             <!--  PART_Track: WPF ProgressBar が参照する必須名称のグリッド  -->
                             <Grid x:Name="PART_Track">
                                 <!--
@@ -47,8 +73,8 @@
                                     x:Name="PART_Indicator"
                                     HorizontalAlignment="Left"
                                     Fill="{TemplateBinding Foreground}"
-                                    RadiusX="5"
-                                    RadiusY="5" />
+                                    RadiusX="3"
+                                    RadiusY="3" />
                             </Grid>
                         </Border>
                     </ControlTemplate>

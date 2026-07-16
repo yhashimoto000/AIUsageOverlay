@@ -5,41 +5,75 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="設定 - AI Usage Overlay"
-        Width="480" Height="560"
+        Width="620" Height="440"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        Background="#1C1C1C"
+        Background="#1A1A1D"
         Foreground="White">
 
+    <!--
+        デザイン刷新（設定 1d: サイドバーナビ + トグルスイッチ + セグメントコントロール）。
+        TabControl を廃止し、左サイドバー（全般/表示項目/外観/通知）でコンテンツパネルを切り替える。
+    -->
+
     <Window.Resources>
-        <!--
-            共通のダーク配色チェックボックススタイル（F-03 の設定画面再構成で共通化）。
-            アクセント色はアプリ標準の #FF8C00 に統一する。
-        -->
-        <Style x:Key="DarkCheckBox" TargetType="CheckBox">
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Cursor" Value="Hand"/>
+        <!-- ナビ選択（RadioButton.IsChecked）→ コンテンツパネルの表示切替に使う標準コンバータ -->
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- ラベル・本文・ヒントの共通スタイル -->
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#9A9AA2"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style x:Key="BodyText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#D4D4D8"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style x:Key="HintLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#6B6B73"/>
+            <Setter Property="FontSize" Value="10"/>
             <Setter Property="Margin" Value="0,4,0,0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+
+        <!-- 角丸ダークテキストボックス（背景 #232327・枠 #3A3A40・角丸6） -->
+        <Style x:Key="DarkTextBox" TargetType="TextBox">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="CaretBrush" Value="White"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="#232327" BorderBrush="#3A3A40" BorderThickness="1" CornerRadius="6">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="8,6" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!--
+            トグルスイッチ（CheckBox 再テンプレート）: 38×21・角丸11・OFF #2E2E33 / ON #FF8C00・ノブ16 白。
+            Content は表示しない（ラベルは行レイアウト側の TextBlock で置く）。
+        -->
+        <Style x:Key="ToggleSwitch" TargetType="CheckBox">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
-                        <StackPanel Orientation="Horizontal">
-                            <Border x:Name="CBox" Width="16" Height="16"
-                                    Background="#2E2E2E" BorderBrush="#555555"
-                                    BorderThickness="1" CornerRadius="3"
-                                    VerticalAlignment="Center" Margin="0,0,8,0">
-                                <TextBlock x:Name="CMark" Text="&#10003;"
-                                           Foreground="#FF8C00" FontSize="11" FontWeight="Bold"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           Visibility="Collapsed"/>
-                            </Border>
-                            <ContentPresenter VerticalAlignment="Center"/>
-                        </StackPanel>
+                        <Border x:Name="Track" Width="38" Height="21" CornerRadius="10.5"
+                                Background="#2E2E33">
+                            <Ellipse x:Name="Knob" Width="16" Height="16" Fill="White"
+                                     HorizontalAlignment="Left" VerticalAlignment="Center"
+                                     Margin="3,0,0,0"/>
+                        </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="CMark" Property="Visibility" Value="Visible"/>
-                                <Setter TargetName="CBox" Property="BorderBrush" Value="#FF8C00"/>
+                                <Setter TargetName="Track" Property="Background" Value="#FF8C00"/>
+                                <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right"/>
+                                <Setter TargetName="Knob" Property="Margin" Value="0,0,3,0"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -47,155 +81,276 @@
             </Setter>
         </Style>
 
-        <!-- セクション見出し用の共通スタイル -->
-        <Style x:Key="SectionLabel" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#AAAAAA"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Margin" Value="0,0,0,4"/>
+        <!-- サイドバーのナビ項目（RadioButton・角丸7pxピル） -->
+        <Style x:Key="NavItem" TargetType="RadioButton">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,0,0,2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Pill" CornerRadius="7" Padding="10,8" Background="Transparent">
+                            <TextBlock x:Name="Txt" Text="{TemplateBinding Content}"
+                                       FontSize="12" Foreground="#9A9AA2"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Pill" Property="Background" Value="#1F1F23"/>
+                                <Setter TargetName="Txt" Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Pill" Property="Background" Value="#26262B"/>
+                                <Setter TargetName="Txt" Property="Foreground" Value="White"/>
+                                <Setter TargetName="Txt" Property="FontWeight" Value="SemiBold"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
-        <!-- 補足説明用の共通スタイル -->
-        <Style x:Key="HintLabel" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#555555"/>
-            <Setter Property="FontSize" Value="10"/>
-            <Setter Property="Margin" Value="24,4,0,0"/>
-            <Setter Property="TextWrapping" Value="Wrap"/>
+        <!-- セグメントコントロールの各セグメント（RadioButton・選択時 #FF8C00 背景 / #111 文字） -->
+        <Style x:Key="SegmentItem" TargetType="RadioButton">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Seg" CornerRadius="6" Padding="12,5" Background="Transparent">
+                            <TextBlock x:Name="Txt" Text="{TemplateBinding Content}"
+                                       FontSize="11" Foreground="#9A9AA2" HorizontalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Txt" Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Seg" Property="Background" Value="#FF8C00"/>
+                                <Setter TargetName="Txt" Property="Foreground" Value="#111111"/>
+                                <Setter TargetName="Txt" Property="FontWeight" Value="SemiBold"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- フッターボタン共通（角丸7・padding 8,20） -->
+        <Style x:Key="FlatButton" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" CornerRadius="7" Background="{TemplateBinding Background}"
+                                Padding="20,8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
 
-    <Grid Margin="24,20,24,20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="168"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Row="0" Text="設定" FontSize="18" FontWeight="Bold"
-                   Foreground="White" Margin="0,0,0,16"/>
+        <!-- ===== サイドバー ===== -->
+        <Border Grid.Column="0" Background="#141416" BorderBrush="#26262B" BorderThickness="0,0,1,0">
+            <DockPanel Margin="10,16">
+                <TextBlock DockPanel.Dock="Top" Text="設定" FontSize="14" FontWeight="Bold"
+                           Foreground="#F0F0F2" Margin="10,0,10,14"/>
+                <TextBlock x:Name="VersionLabel" DockPanel.Dock="Bottom" Text="AI Usage Overlay"
+                           FontSize="9" Foreground="#55555C" Margin="10,0,10,0"/>
+                <StackPanel DockPanel.Dock="Top">
+                    <RadioButton x:Name="NavGeneral"    Content="全般"     Style="{StaticResource NavItem}"
+                                 GroupName="Nav" IsChecked="True"/>
+                    <RadioButton x:Name="NavDisplay"    Content="表示項目" Style="{StaticResource NavItem}"
+                                 GroupName="Nav"/>
+                    <RadioButton x:Name="NavAppearance" Content="外観"     Style="{StaticResource NavItem}"
+                                 GroupName="Nav"/>
+                    <RadioButton x:Name="NavNotify"     Content="通知"     Style="{StaticResource NavItem}"
+                                 GroupName="Nav"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
 
-        <!--
-            TabControl による再構成（§7.2）。
-            P1 では 全般 / 表示項目 / 外観 の 3 タブ。通知タブは P2（F-07）で追加する。
-            各タブ内は ScrollViewer で将来の項目増に耐える構成。
-        -->
-        <TabControl Grid.Row="1" Background="#1C1C1C" BorderBrush="#3D3D3D">
+        <!-- ===== コンテンツ ===== -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
 
-            <!-- ============ 全般 ============ -->
-            <TabItem Header="全般">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="4,16,4,4">
+            <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                <Grid Margin="24,20">
 
-                        <StackPanel Margin="0,0,0,20">
+                    <!-- ============ 全般 ============ -->
+                    <StackPanel Visibility="{Binding IsChecked, ElementName=NavGeneral, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Margin="0,0,0,18">
                             <TextBlock Text="更新間隔（秒）" Style="{StaticResource SectionLabel}"/>
-                            <TextBox x:Name="RefreshIntervalTextBox"
-                                     Background="#2E2E2E" Foreground="White" CaretBrush="White"
-                                     BorderBrush="#555555" BorderThickness="1" Padding="8,6"
-                                     FontSize="14" Width="100" HorizontalAlignment="Left"
+                            <TextBox x:Name="RefreshIntervalTextBox" Style="{StaticResource DarkTextBox}"
+                                     Width="100" HorizontalAlignment="Left"
                                      ToolTip="デフォルト: 30（秒）。5 以上を指定"/>
                         </StackPanel>
 
-                        <StackPanel Margin="0,0,0,16">
-                            <CheckBox x:Name="AdaptiveRefreshCheckBox" Style="{StaticResource DarkCheckBox}"
-                                      Content="適応更新間隔（放置時に自動で間隔を延長）"/>
-                            <TextBlock Text="OFF のとき常に上の更新間隔で更新します。ON では操作直後は短く、放置・非表示・電源制約時は長くなります。"
-                                       Style="{StaticResource HintLabel}"/>
-                        </StackPanel>
+                        <Grid Margin="0,0,0,18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="適応更新間隔（放置時に自動で間隔を延長）" Style="{StaticResource BodyText}"/>
+                                <TextBlock Text="OFF のとき常に上の更新間隔で更新します。ON では操作直後は短く、放置・非表示・電源制約時は長くなります。"
+                                           Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                            <CheckBox x:Name="AdaptiveRefreshCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
 
-                        <StackPanel>
-                            <CheckBox x:Name="StartupCheckBox" Style="{StaticResource DarkCheckBox}"
-                                      Content="Windows 起動時に自動で起動する"/>
-                            <TextBlock Text="レジストリ（HKCU\...\Run）に登録します"
-                                       Style="{StaticResource HintLabel}"/>
-                        </StackPanel>
-
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="Windows 起動時に自動で起動する" Style="{StaticResource BodyText}"/>
+                                <TextBlock Text="レジストリ（HKCU\...\Run）に登録します" Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                            <CheckBox x:Name="StartupCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
                     </StackPanel>
-                </ScrollViewer>
-            </TabItem>
 
-            <!-- ============ 表示項目 ============ -->
-            <TabItem Header="表示項目">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="4,16,4,4">
+                    <!-- ============ 表示項目 ============ -->
+                    <StackPanel Visibility="{Binding IsChecked, ElementName=NavDisplay, Converter={StaticResource BoolToVis}}">
+                        <Grid Margin="0,0,0,18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="GitHub Copilot の使用状況を表示する" Style="{StaticResource BodyText}"/>
+                                <TextBlock Text="有効後、右クリック → ログイン - GitHub からログインしてください"
+                                           Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                            <CheckBox x:Name="GitHubCopilotCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
 
-                        <StackPanel Margin="0,0,0,16">
-                            <TextBlock Text="GitHub Copilot" Foreground="#58A6FF" FontSize="13"
-                                       FontWeight="SemiBold" Margin="0,0,0,4"/>
-                            <CheckBox x:Name="GitHubCopilotCheckBox" Style="{StaticResource DarkCheckBox}"
-                                      Content="GitHub Copilot の使用状況を表示する"/>
-                            <TextBlock Text="有効後、右クリック → ログイン - GitHub からログインしてください"
-                                       Style="{StaticResource HintLabel}"/>
-                        </StackPanel>
+                        <Grid Margin="0,0,0,18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="Codex の使用制限を表示する" Style="{StaticResource BodyText}"/>
+                                <TextBlock Text="有効後、右クリック → ログイン - Codex からログインしてください"
+                                           Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                            <CheckBox x:Name="CodexCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
 
-                        <StackPanel Margin="0,0,0,16">
-                            <TextBlock Text="Codex" Foreground="#10A37F" FontSize="13"
-                                       FontWeight="SemiBold" Margin="0,0,0,4"/>
-                            <CheckBox x:Name="CodexCheckBox" Style="{StaticResource DarkCheckBox}"
-                                      Content="Codex の使用制限を表示する"/>
-                            <TextBlock Text="有効後、右クリック → ログイン - Codex からログインしてください"
-                                       Style="{StaticResource HintLabel}"/>
-                        </StackPanel>
-
-                        <StackPanel Margin="0,0,0,16">
+                        <StackPanel Margin="0,0,0,18">
                             <TextBlock Text="リセット時刻の表示形式" Style="{StaticResource SectionLabel}"/>
-                            <ComboBox x:Name="ResetModeComboBox"
-                                      Width="240" HorizontalAlignment="Left"
-                                      Background="#2E2E2E" Foreground="Black" FontSize="13">
-                                <ComboBoxItem Content="相対（残り 1時間13分）"/>
-                                <ComboBoxItem Content="絶対（16:00 リセット）"/>
-                            </ComboBox>
+                            <Border Background="#232327" CornerRadius="8" Padding="3" HorizontalAlignment="Left">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="ResetRelative" Content="相対（残り 1時間13分）"
+                                                 Style="{StaticResource SegmentItem}" GroupName="Reset" IsChecked="True"/>
+                                    <RadioButton x:Name="ResetAbsolute" Content="絶対（16:00 リセット）"
+                                                 Style="{StaticResource SegmentItem}" GroupName="Reset"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
 
-                        <StackPanel>
-                            <TextBlock Text="ペース" Style="{StaticResource SectionLabel}"/>
-                            <CheckBox x:Name="PaceEnabledCheckBox" Style="{StaticResource DarkCheckBox}"
-                                      Content="ペース行（予定比・枯渇予測）を表示する"/>
-                            <TextBlock Text="OFF のとき計算もスキップします。"
+                        <Grid Margin="0,0,0,18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="ペース行（予定比・枯渇予測）を表示する" Style="{StaticResource BodyText}"/>
+                                <TextBlock Text="OFF のとき計算もスキップします。" Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                            <CheckBox x:Name="PaceEnabledCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="スパークライン（使用率推移）を表示する" Style="{StaticResource BodyText}"/>
+                                <TextBlock Text="取得した使用率%をアプリが自己記録し、直近の推移を折れ線で描きます。"
+                                           Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                            <CheckBox x:Name="ShowSparklineCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- ============ 外観 ============ -->
+                    <StackPanel Visibility="{Binding IsChecked, ElementName=NavAppearance, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Margin="0,0,0,18">
+                            <TextBlock Text="オーバーレイ表示形式" Style="{StaticResource SectionLabel}"/>
+                            <Border Background="#232327" CornerRadius="8" Padding="3" HorizontalAlignment="Left">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="OverlayLayoutList"    Content="縦積み"
+                                                 Style="{StaticResource SegmentItem}" GroupName="Layout" IsChecked="True"/>
+                                    <RadioButton x:Name="OverlayLayoutCompact" Content="コンパクト⇔詳細"
+                                                 Style="{StaticResource SegmentItem}" GroupName="Layout"/>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Text="縦積み=1a（スパークライン付き）／ コンパクト⇔詳細=1b（クリックで展開）"
                                        Style="{StaticResource HintLabel}"/>
                         </StackPanel>
 
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-
-            <!-- ============ 外観 ============ -->
-            <TabItem Header="外観">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="4,16,4,4">
-
-                        <StackPanel Margin="0,0,0,16">
+                        <StackPanel Margin="0,0,0,18">
                             <TextBlock Text="トレイアイコン形式" Style="{StaticResource SectionLabel}"/>
-                            <ComboBox x:Name="TrayStyleComboBox"
-                                      Width="240" HorizontalAlignment="Left"
-                                      Background="#2E2E2E" Foreground="Black" FontSize="13">
-                                <ComboBoxItem Content="2段バー（上=セッション / 下=週間）"/>
-                                <ComboBoxItem Content="ドーナツ（従来）"/>
-                            </ComboBox>
+                            <Border Background="#232327" CornerRadius="8" Padding="3" HorizontalAlignment="Left">
+                                <StackPanel Orientation="Horizontal">
+                                    <RadioButton x:Name="TrayRing"    Content="リング"   Style="{StaticResource SegmentItem}"
+                                                 GroupName="Tray" IsChecked="True"/>
+                                    <RadioButton x:Name="TrayDualBar" Content="2段バー"  Style="{StaticResource SegmentItem}"
+                                                 GroupName="Tray"/>
+                                    <RadioButton x:Name="TrayDonut"   Content="ドーナツ" Style="{StaticResource SegmentItem}"
+                                                 GroupName="Tray"/>
+                                    <RadioButton x:Name="TrayNumeric" Content="数字"     Style="{StaticResource SegmentItem}"
+                                                 GroupName="Tray"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
 
-                        <StackPanel Margin="0,0,0,16">
+                        <StackPanel Margin="0,0,0,18">
                             <TextBlock Text="色の閾値（%）" Style="{StaticResource SectionLabel}"/>
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="注意" Foreground="#FF8C00" FontSize="12"
-                                           VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                <TextBox x:Name="CautionThresholdTextBox"
-                                         Background="#2E2E2E" Foreground="White" CaretBrush="White"
-                                         BorderBrush="#555555" BorderThickness="1" Padding="8,6"
-                                         FontSize="14" Width="70" ToolTip="この値以上でオレンジ（既定 50）"/>
-                                <TextBlock Text="警告" Foreground="#F44336" FontSize="12"
-                                           VerticalAlignment="Center" Margin="16,0,6,0"/>
-                                <TextBox x:Name="WarningThresholdTextBox"
-                                         Background="#2E2E2E" Foreground="White" CaretBrush="White"
-                                         BorderBrush="#555555" BorderThickness="1" Padding="8,6"
-                                         FontSize="14" Width="70" ToolTip="この値以上で赤（既定 80）"/>
+                                <Ellipse Width="8" Height="8" Fill="#FF8C00" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="注意" Style="{StaticResource BodyText}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBox x:Name="CautionThresholdTextBox" Style="{StaticResource DarkTextBox}"
+                                         Width="60" ToolTip="この値以上でオレンジ（既定 50）"/>
+                                <Ellipse Width="8" Height="8" Fill="#F44336" VerticalAlignment="Center" Margin="20,0,6,0"/>
+                                <TextBlock Text="警告" Style="{StaticResource BodyText}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBox x:Name="WarningThresholdTextBox" Style="{StaticResource DarkTextBox}"
+                                         Width="60" ToolTip="この値以上で赤（既定 80）"/>
                             </StackPanel>
                             <TextBlock Text="注意% は警告% 未満で指定してください（CodexBar 既定は 70/80/90）"
-                                       Style="{StaticResource HintLabel}" Margin="0,6,0,0"/>
+                                       Style="{StaticResource HintLabel}"/>
                         </StackPanel>
 
-                        <StackPanel Margin="0,0,0,16">
-                            <CheckBox x:Name="ShowThresholdMarkersCheckBox" Style="{StaticResource DarkCheckBox}"
-                                      Content="バー上に閾値マーカーを表示する"/>
-                        </StackPanel>
+                        <Grid Margin="0,0,0,18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="バー上に閾値マーカーを表示する"
+                                       Style="{StaticResource BodyText}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            <CheckBox x:Name="ShowThresholdMarkersCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
 
                         <StackPanel>
                             <TextBlock x:Name="OpacityLabel" Text="オーバーレイ不透明度: 100%"
@@ -203,58 +358,71 @@
                             <Slider x:Name="OpacitySlider" Minimum="0.1" Maximum="1.0"
                                     Width="240" HorizontalAlignment="Left"
                                     TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                    Foreground="#FF8C00"
                                     ValueChanged="OpacitySlider_ValueChanged"/>
                         </StackPanel>
-
                     </StackPanel>
-                </ScrollViewer>
-            </TabItem>
 
-            <!-- ============ 通知 ============ -->
-            <TabItem Header="通知">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="4,16,4,4">
+                    <!-- ============ 通知 ============ -->
+                    <StackPanel Visibility="{Binding IsChecked, ElementName=NavNotify, Converter={StaticResource BoolToVis}}">
+                        <Grid Margin="0,0,0,18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="通知を有効にする"
+                                       Style="{StaticResource BodyText}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            <CheckBox x:Name="NotificationsEnabledCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
 
-                        <StackPanel Margin="0,0,0,16">
-                            <CheckBox x:Name="NotificationsEnabledCheckBox" Style="{StaticResource DarkCheckBox}"
-                                      Content="通知を有効にする"/>
-                        </StackPanel>
-
-                        <StackPanel Margin="0,0,0,16">
+                        <StackPanel Margin="0,0,0,18">
                             <TextBlock Text="通知閾値（カンマ区切り、例: 70, 90）" Style="{StaticResource SectionLabel}"/>
-                            <TextBox x:Name="NotificationThresholdsTextBox"
-                                     Background="#2E2E2E" Foreground="White" CaretBrush="White"
-                                     BorderBrush="#555555" BorderThickness="1" Padding="8,6"
-                                     FontSize="14" Width="200" HorizontalAlignment="Left"
+                            <TextBox x:Name="NotificationThresholdsTextBox" Style="{StaticResource DarkTextBox}"
+                                     Width="200" HorizontalAlignment="Left"
                                      ToolTip="0〜100 の整数をカンマ区切りで。既定 70, 90"/>
                         </StackPanel>
 
-                        <StackPanel Margin="0,0,0,8">
-                            <CheckBox x:Name="NotifyOnResetCheckBox" Style="{StaticResource DarkCheckBox}"
-                                      Content="リセット完了を通知する"/>
-                            <CheckBox x:Name="NotifyOnExhaustedCheckBox" Style="{StaticResource DarkCheckBox}"
-                                      Content="100% 到達（上限）を通知する"/>
-                        </StackPanel>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="リセット完了を通知する"
+                                       Style="{StaticResource BodyText}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            <CheckBox x:Name="NotifyOnResetCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="100% 到達（上限）を通知する"
+                                       Style="{StaticResource BodyText}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                            <CheckBox x:Name="NotifyOnExhaustedCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
 
                         <TextBlock Text="※ Windows の「フォーカスアシスト（応答不可）」設定中は通知が表示されないことがあります。"
-                                   Style="{StaticResource HintLabel}" Margin="0,4,0,0"/>
-
+                                   Style="{StaticResource HintLabel}"/>
                     </StackPanel>
-                </ScrollViewer>
-            </TabItem>
 
-        </TabControl>
+                </Grid>
+            </ScrollViewer>
 
-        <!-- ボタン行 -->
-        <StackPanel Grid.Row="2" Orientation="Horizontal"
-                    HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button Content="キャンセル" Width="90" Height="34" Margin="0,0,10,0"
-                    Background="#333333" Foreground="White" BorderBrush="#555555"
-                    BorderThickness="1" Cursor="Hand" Click="Cancel_Click"/>
-            <Button Content="保存" Width="90" Height="34"
-                    Background="#FF8C00" Foreground="White" BorderThickness="0"
-                    FontWeight="SemiBold" Cursor="Hand" Click="Save_Click"/>
-        </StackPanel>
-
+            <!-- ===== フッター ===== -->
+            <Border Grid.Row="1" BorderBrush="#26262B" BorderThickness="0,1,0,0">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="24,14">
+                    <Button Content="キャンセル" Style="{StaticResource FlatButton}"
+                            Background="#26262B" Foreground="#D4D4D8" Margin="0,0,10,0"
+                            Click="Cancel_Click"/>
+                    <Button Content="保存" Style="{StaticResource FlatButton}"
+                            Background="#FF8C00" Foreground="#111111" FontWeight="Bold"
+                            Click="Save_Click"/>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

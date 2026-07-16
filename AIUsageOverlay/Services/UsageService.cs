@@ -25,6 +25,12 @@ namespace AIUsageOverlay.Services
         private readonly GitHubWebScraper _gitHubScraper = new();
         private readonly CodexWebScraper  _codexScraper  = new();
 
+        /// <summary>
+        /// 使用率%の自己記録（スパークライン用）。統合窓口としてここに内包し、
+        /// 記録・取得は本クラス経由で ViewModel へ提供する（データ取得は各サービスとの直接通信のみ）。
+        /// </summary>
+        private readonly UsageHistoryService _history = new();
+
         public UsageService()
         {
             Directory.CreateDirectory(AppDataFolder);
@@ -33,6 +39,19 @@ namespace AIUsageOverlay.Services
             _lastUpdateTime = DateTime.Now;
             ResetWeeklyIfNeeded();
         }
+
+        // ── 使用率履歴（スパークライン用）────────────────────────────
+
+        /// <summary>指定系列に使用率%を 1 点記録する（取得成功時に ViewModel から呼ぶ）。</summary>
+        /// <param name="series"><see cref="UsageHistoryService.SeriesClaude"/> 等の系列キー</param>
+        /// <param name="sessionPercent">主使用率（%）</param>
+        /// <param name="weeklyPercent">週間使用率（%、無い場合 0）</param>
+        public void RecordHistory(string series, double sessionPercent, double weeklyPercent)
+            => _history.Record(series, sessionPercent, weeklyPercent);
+
+        /// <summary>指定系列の使用率%推移（描画用に間引き済み）を古い順で取得する。</summary>
+        public IReadOnlyList<double> GetHistory(string series)
+            => _history.GetSessionSeries(series);
 
         // ── Claude ───────────────────────────────────────────────────
 
