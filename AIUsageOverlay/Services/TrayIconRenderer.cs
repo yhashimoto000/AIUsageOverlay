@@ -191,5 +191,130 @@ namespace AIUsageOverlay.Services
 
             return bmp;
         }
+
+        /// <summary>
+        /// セッション使用率をストローク弧（リング）で表すアイコンを描画する（デザイン刷新 1e・既定）。
+        ///
+        /// デザイン:
+        ///   - トラック: グレー 20%（stale 時 18%）の全周の細い円環（線幅 4px）
+        ///   - 進捗弧: 使用率に応じた閾値色で -90°（真上）から時計回りに描画（線幅 4px・丸端）
+        ///   - 中央テキスト: 使用率（%）を白 Bold で表示（100% 時はフォント縮小）
+        /// 塗りつぶし円弧（FillPie）より視認性が高く、線が細いぶん数値が読みやすい。
+        /// stale 時は弧・テキストのアルファを 55% に落として減光する。
+        /// </summary>
+        /// <param name="sessionPercent">セッション使用率（0〜100）</param>
+        /// <param name="stale">true のとき減光表示</param>
+        /// <param name="settings">閾値色の判定に使う設定</param>
+        /// <returns>32×32 の ARGB ビットマップ（呼び出し元が Dispose する）</returns>
+        public static Bitmap RenderRing(int sessionPercent, bool stale, AppSettings settings)
+        {
+            var bmp = new Bitmap(Size, Size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+            using var g = Graphics.FromImage(bmp);
+            g.SmoothingMode     = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            g.Clear(Color.Transparent);
+
+            int clamped = Math.Clamp(sessionPercent, 0, 100);
+
+            // 弧が端で切れないよう、線幅の半分＋1px を内側に取った描画矩形
+            const float penWidth = 4f;
+            float inset = penWidth / 2f + 1f;
+            var rect = new RectangleF(inset, inset, Size - inset * 2f, Size - inset * 2f);
+
+            // ── トラック（全周・グレー）──
+            int trackAlpha = stale ? StaleTrackAlpha : 51; // 51 ≒ 255 * 0.20
+            using (var trackPen = new Pen(Color.FromArgb(trackAlpha,
+                       TrackBaseColor.R, TrackBaseColor.G, TrackBaseColor.B), penWidth))
+            {
+                g.DrawEllipse(trackPen, rect);
+            }
+
+            // ── 進捗弧（-90° から時計回り、レベル色）──
+            if (clamped > 0)
+            {
+                var baseColor = ColorTranslator.FromHtml(UsageLevelHelper.GetHex(clamped, settings));
+                var arcColor  = stale
+                    ? Color.FromArgb(StaleFillAlpha, baseColor.R, baseColor.G, baseColor.B)
+                    : baseColor;
+                using var arcPen = new Pen(arcColor, penWidth)
+                {
+                    StartCap = LineCap.Round,
+                    EndCap   = LineCap.Round
+                };
+                float sweep = clamped * 3.6f; // 100% = 360°
+                g.DrawArc(arcPen, rect, -90f, sweep);
+            }
+
+            // ── 中央テキスト（%）──
+            string text     = $"{clamped}%";
+            float  fontSize = clamped >= 100 ? 8f : 9.5f; // 3 桁のとき縮小
+            using var font  = new Font("Arial", fontSize, System.Drawing.FontStyle.Bold, GraphicsUnit.Pixel);
+            var textColor   = stale ? Color.FromArgb(StaleFillAlpha, 255, 255, 255) : Color.White;
+            using var brush = new SolidBrush(textColor);
+            var ts          = g.MeasureString(text, font);
+            g.DrawString(text, font, brush, (Size - ts.Width) / 2f, (Size - ts.Height) / 2f);
+
+            return bmp;
+        }
+
+        /// <summary>
+        /// セッション使用率を「大きな%数値 ＋ 下部ミニバー」で表すアイコンを描画する（デザイン刷新 1e・選択肢）。
+        ///
+        /// デザイン:
+        ///   - 上部: 使用率（%）を Bold・レベル色で表示（100% 時はフォント縮小）
+        ///   - 下部: 幅 22 × 高さ 3 のミニバー（トラック＋レベル色フィル）
+        /// stale 時はフィル 55% / トラック 18% に減光する（全形式共通）。
+        /// </summary>
+        /// <param name="sessionPercent">セッション使用率（0〜100）</param>
+        /// <param name="stale">true のとき減光表示</param>
+        /// <param name="settings">閾値色の判定に使う設定</param>
+        /// <returns>32×32 の ARGB ビットマップ（呼び出し元が Dispose する）</returns>
+        public static Bitmap RenderNumeric(int sessionPercent, bool stale, AppSettings settings)
+        {
+            var bmp = new Bitmap(Size, Size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+            using var g = Graphics.FromImage(bmp);
+            g.SmoothingMode     = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            g.Clear(Color.Transparent);
+
+            int clamped   = Math.Clamp(sessionPercent, 0, 100);
+            var baseColor = ColorTranslator.FromHtml(UsageLevelHelper.GetHex(clamped, settings));
+            var color     = stale
+                ? Color.FromArgb(StaleFillAlpha, baseColor.R, baseColor.G, baseColor.B)
+                : baseColor;
+
+            // ── 上部: %数値 ──
+            string text     = $"{clamped}%";
+            float  fontSize = clamped >= 100 ? 12f : 15f;
+            using (var font  = new Font("Arial", fontSize, System.Drawing.FontStyle.Bold, GraphicsUnit.Pixel))
+            using (var textBrush = new SolidBrush(color))
+            {
+                var ts = g.MeasureString(text, font);
+                g.DrawString(text, font, textBrush, (Size - ts.Width) / 2f, 1f);
+            }
+
+            // ── 下部: ミニバー（幅 22 × 高さ 3、中央下）──
+            int barW = 22, barH = 3;
+            int barX = (Size - barW) / 2;
+            int barY = Size - barH - 4;
+
+            int trackAlpha = stale ? StaleTrackAlpha : NormalTrackAlpha;
+            using (var trackBrush = new SolidBrush(Color.FromArgb(trackAlpha,
+                       TrackBaseColor.R, TrackBaseColor.G, TrackBaseColor.B)))
+            using (var trackPath = RoundedRect(barX, barY, barW, barH, 1))
+                g.FillPath(trackBrush, trackPath);
+
+            int fillWidth = (int)Math.Round(barW * clamped / 100.0);
+            if (fillWidth > 0)
+            {
+                using var fillBrush = new SolidBrush(color);
+                using var fillPath  = RoundedRect(barX, barY, fillWidth, barH, 1);
+                g.FillPath(fillBrush, fillPath);
+            }
+
+            return bmp;
+        }
     }
 }

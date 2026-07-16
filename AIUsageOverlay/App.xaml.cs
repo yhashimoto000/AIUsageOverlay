@@ -294,9 +294,11 @@ namespace AIUsageOverlay
         /// <summary>
         /// セッション/週間使用率・stale 状態に応じてトレイアイコンとツールチップを更新する（F-01/F-02）。
         ///
-        /// アイコン形式は <see cref="Models.AppSettings.TrayIconStyle"/> により切替:
-        ///   "dualBar"（既定）→ 上段=セッション/下段=週間の2段バー
-        ///   "donut"          → 従来のドーナツ + 中央%テキスト
+        /// アイコン形式は <see cref="Models.AppSettings.TrayIconStyle"/> により切替（デザイン刷新 1e）:
+        ///   "ring"（既定）→ ストローク弧 + 中央%テキスト
+        ///   "dualBar"     → 上段=セッション/下段=週間の2段バー改
+        ///   "donut"       → 従来のドーナツ + 中央%テキスト
+        ///   "numeric"     → %数値 + 下部ミニバー
         /// 色は <see cref="UsageLevelHelper"/> の閾値で決定し、stale 時は減光する。
         ///
         /// ツールチップ（NotifyIcon.Text）: "セッション: 75%  週間: 10%"（最大 63 文字にクランプ）。
@@ -324,10 +326,14 @@ namespace AIUsageOverlay
             // NotifyIcon.Text は最大 63 文字の制限があるためクランプする
             _notifyIcon.Text = tooltip.Length <= 63 ? tooltip : tooltip[..63];
 
-            // ── アイコンを動的生成して更新する ──
-            using var bitmap = style == "donut"
-                ? TrayIconRenderer.RenderDonut(session, stale, settings)
-                : TrayIconRenderer.RenderDualBar(session, weekly, stale, settings);
+            // ── アイコンを動的生成して更新する（デザイン刷新 1e: 既定はリング）──
+            using var bitmap = style switch
+            {
+                "donut"   => TrayIconRenderer.RenderDonut(session, stale, settings),
+                "dualBar" => TrayIconRenderer.RenderDualBar(session, weekly, stale, settings),
+                "numeric" => TrayIconRenderer.RenderNumeric(session, stale, settings),
+                _         => TrayIconRenderer.RenderRing(session, stale, settings), // "ring"（既定）
+            };
             var newHandle = bitmap.GetHicon();
 
             // 新しいアイコンをセットする

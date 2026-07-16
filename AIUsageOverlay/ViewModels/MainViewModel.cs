@@ -94,6 +94,23 @@ namespace AIUsageOverlay.ViewModels
         private MediaBrush _codexPaceBrush = PaceGray;
         private Visibility _codexPaceVisibility = Visibility.Collapsed;
 
+        // ── メタ行・週チップ（デザイン刷新 2b）──────────────────────
+        // 縦積みレイアウトでは各サービスの「残り時間＋ペース」を 1 行のメタ行に統合し、
+        // 週間使用率は見出し行の小さなチップ（"週 12%"）で示す。
+        private string     _claudeMetaPrimary        = "--";  // 例: "残り 2時間13分" / "14:32 リセット"
+        private string     _weeklyChipText           = "";    // 例: "週 12%"
+        private Visibility  _weeklyChipVisibility     = Visibility.Collapsed;
+        private string     _codexMetaPrimary         = "--";  // 例: "残り 1時間47分" / "22:22 リセット"
+        private string     _codexWeeklyChipText      = "";    // 例: "週 34%"
+        private Visibility  _codexWeeklyChipVisibility = Visibility.Collapsed;
+        private string     _copilotMetaText          = "";    // 例: "450/1000 クレジット ・ 更新まで26日"
+
+        /// <summary>
+        /// スパークライン再描画トリガー。取得サイクル完了ごとにインクリメントし、
+        /// 使用率%が同値でも履歴点の増加を View 側の再描画に反映させる。
+        /// </summary>
+        private int _sparklineRevision;
+
         // ペース表示色（凍結済みブラシを共有）
         private static readonly MediaBrush PaceGray   = HexBrush("#888888"); // 順調
         private static readonly MediaBrush PaceOrange = HexBrush("#FF8C00"); // 先行（持つ）
@@ -262,6 +279,67 @@ namespace AIUsageOverlay.ViewModels
         {
             get => _codexPaceVisibility;
             private set => SetProperty(ref _codexPaceVisibility, value);
+        }
+
+        // ── メタ行・週チップ（デザイン刷新 2b）──────────────────────
+
+        /// <summary>Claude メタ行の主テキスト（残り時間 or 絶対リセット時刻）。ペースは別 Run で連結する。</summary>
+        public string ClaudeMetaPrimary
+        {
+            get => _claudeMetaPrimary;
+            private set => SetProperty(ref _claudeMetaPrimary, value);
+        }
+
+        /// <summary>Claude 見出し行の週間チップ文字（例: "週 12%"）。</summary>
+        public string WeeklyChipText
+        {
+            get => _weeklyChipText;
+            private set => SetProperty(ref _weeklyChipText, value);
+        }
+
+        /// <summary>Claude 週間チップの表示可否（週間データがあるときのみ表示）。</summary>
+        public Visibility WeeklyChipVisibility
+        {
+            get => _weeklyChipVisibility;
+            private set => SetProperty(ref _weeklyChipVisibility, value);
+        }
+
+        /// <summary>Codex メタ行の主テキスト（5時間枠の残り時間 or 絶対リセット時刻）。</summary>
+        public string CodexMetaPrimary
+        {
+            get => _codexMetaPrimary;
+            private set => SetProperty(ref _codexMetaPrimary, value);
+        }
+
+        /// <summary>Codex 見出し行の週間チップ文字（例: "週 34%"）。</summary>
+        public string CodexWeeklyChipText
+        {
+            get => _codexWeeklyChipText;
+            private set => SetProperty(ref _codexWeeklyChipText, value);
+        }
+
+        /// <summary>Codex 週間チップの表示可否（週間データがあるときのみ表示）。</summary>
+        public Visibility CodexWeeklyChipVisibility
+        {
+            get => _codexWeeklyChipVisibility;
+            private set => SetProperty(ref _codexWeeklyChipVisibility, value);
+        }
+
+        /// <summary>Copilot メタ行のテキスト（クレジット + 更新情報。ペースは持たない）。</summary>
+        public string CopilotMetaText
+        {
+            get => _copilotMetaText;
+            private set => SetProperty(ref _copilotMetaText, value);
+        }
+
+        /// <summary>
+        /// スパークライン再描画トリガー。取得サイクル完了ごとに変化し、View がこれを購読して
+        /// 履歴（UsageService.GetHistory）から Polyline を引き直す。
+        /// </summary>
+        public int SparklineRevision
+        {
+            get => _sparklineRevision;
+            private set => SetProperty(ref _sparklineRevision, value);
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -452,9 +530,19 @@ namespace AIUsageOverlay.ViewModels
                 WeeklyPercentText   = $"{(int)(weeklyRatio * 100)}%";
                 WeeklyRemainingText = BuildResetText(mode, weeklyRemaining, weeklyResetAt);
 
+                // デザイン刷新: メタ行の主テキスト（残り時間/絶対時刻）と週間チップを組み立てる
+                ClaudeMetaPrimary    = BuildMetaPrimary(mode, SessionRemainingText);
+                WeeklyChipText       = $"週 {(int)(weeklyRatio * 100)}%";
+                WeeklyChipVisibility = Visibility.Visible;
+
                 // F-02: API 取得成功なら通常表示、失敗（ローカルフォールバック）なら stale として減光する
                 IsClaudeStale        = !isFromApi;
                 ClaudeSectionOpacity = isFromApi ? 1.0 : StaleOpacity;
+
+                // デザイン刷新: スパークライン用に使用率%を自己記録（実測＝API 取得成功時のみ）
+                if (isFromApi)
+                    _usageService.RecordHistory(UsageHistoryService.SeriesClaude,
+                        sessionRatio * 100.0, weeklyRatio * 100.0);
 
                 // ── F-06: ペース計算・表示（PaceEnabled かつ API 取得成功時のみ。stale では誤解を避け非表示）──
                 if (_usageService.GetSettings().PaceEnabled && isFromApi)
@@ -497,6 +585,9 @@ namespace AIUsageOverlay.ViewModels
 
                 // ── Codex / OpenAI ──
                 await RefreshCodexAsync();
+
+                // デザイン刷新: 取得サイクル完了 → スパークライン再描画を促す（%同値でも履歴は伸びる）
+                SparklineRevision++;
             }
             finally
             {
@@ -565,6 +656,10 @@ namespace AIUsageOverlay.ViewModels
                 GitHubSeatsPercentText = $"{(int)(ratio * 100)}%";
                 GitHubSeatsText        = $"{data.CreditsUsed}/{data.CreditsTotal} AI credits";
                 GitHubStatusText       = $"{data.CreditsUsed}/{data.CreditsTotal}";
+
+                // デザイン刷新 2b: メタ行に「クレジット ・ 更新情報」を集約し、%を自己記録する
+                CopilotMetaText = $"{data.CreditsUsed}/{data.CreditsTotal} クレジット ・ {GitHubUserText}";
+                _usageService.RecordHistory(UsageHistoryService.SeriesCopilot, ratio * 100.0, 0);
             }
             else
             {
@@ -572,6 +667,9 @@ namespace AIUsageOverlay.ViewModels
                 GitHubOrgBarVisibility        = Visibility.Collapsed;
                 GitHubIndividualDotVisibility = Visibility.Visible;
                 GitHubStatusText              = data.IsActive ? "Active" : "Inactive";
+
+                // デザイン刷新 2b: バーが出せない個人プランは更新情報のみをメタ行に出す
+                CopilotMetaText = GitHubUserText;
             }
 
             // 取得成功を記録（以降の一時的失敗では前回表示を維持する）
@@ -629,6 +727,9 @@ namespace AIUsageOverlay.ViewModels
                 CodexDetailText       = absolute && !string.IsNullOrEmpty(data.SessionResetText)
                     ? $"{data.SessionResetText} リセット"
                     : FormatNullableMinutes(data.SessionRemainingMinutes);
+
+                // デザイン刷新 2b: メタ行の主テキスト（相対は "残り X"、絶対はリセット時刻をそのまま）
+                CodexMetaPrimary = BuildMetaPrimary(absolute ? "absolute" : "relative", CodexDetailText);
             }
             else
             {
@@ -637,6 +738,7 @@ namespace AIUsageOverlay.ViewModels
                 CodexDotVisibility  = Visibility.Visible;
                 CodexUsagePercentText = "0%";
                 CodexDetailText       = "--";
+                CodexMetaPrimary      = "--";
             }
 
             if (data.HasWeeklyData)
@@ -646,14 +748,24 @@ namespace AIUsageOverlay.ViewModels
                 CodexSubText    = absolute && !string.IsNullOrEmpty(data.WeeklyResetText)
                     ? $"{data.WeeklyResetText} リセット"
                     : FormatNullableMinutes(data.WeeklyRemainingMinutes);
+
+                // デザイン刷新 2b: 見出し行の週間チップ（例: "週 34%"）
+                CodexWeeklyChipText       = $"週 {data.WeeklyPercent}%";
+                CodexWeeklyChipVisibility = Visibility.Visible;
             }
             else
             {
                 CodexStatusText = "--";
                 CodexSubText    = "--";
+                CodexWeeklyChipVisibility = Visibility.Collapsed;
             }
 
             _codexEverLoaded = true;
+
+            // デザイン刷新: スパークライン用に 5時間枠の%を自己記録（取得成功時のみ）
+            if (data.HasSessionData)
+                _usageService.RecordHistory(UsageHistoryService.SeriesCodex,
+                    data.SessionPercent, data.HasWeeklyData ? data.WeeklyPercent : 0);
             // F-02: 取得成功で通常不透明度へ戻す
             CodexSectionOpacity = 1.0;
 
@@ -869,6 +981,20 @@ namespace AIUsageOverlay.ViewModels
             return FormatMinutes(remainingMinutes);
         }
 
+        /// <summary>
+        /// デザイン刷新 2b: メタ行の主テキストを組み立てる。
+        /// - 絶対表示（"14:32 リセット" 等）はそのまま返す。
+        /// - 相対表示は "残り " を接頭する（ただし "--" や空は接頭せずそのまま）。
+        /// </summary>
+        /// <param name="mode">表示モード（"relative" / "absolute"）</param>
+        /// <param name="resetText">BuildResetText / CodexDetailText の結果テキスト</param>
+        private static string BuildMetaPrimary(string mode, string resetText)
+        {
+            if (mode == "absolute") return resetText;
+            if (string.IsNullOrEmpty(resetText) || resetText == "--") return resetText;
+            return $"残り {resetText}";
+        }
+
         // ────────────────────────────────────────────────────────────────
         // ペース表示ヘルパー（F-06）
         // ────────────────────────────────────────────────────────────────
@@ -889,9 +1015,11 @@ namespace AIUsageOverlay.ViewModels
             string text;
             MediaBrush brush;
 
+            // デザイン刷新 2b: メタ行へ連結するため接頭辞を "ペース " に統一（コロンなし）。
+            // View 側で "残り X ・ " に続けて 1 行に表示する。
             if (pace.Stage == Models.PaceStage.OnTrack)
             {
-                text  = "ペース: 順調";
+                text  = "ペース 順調";
                 brush = PaceGray;
             }
             else if (pace.DeltaPercent >= 0)
@@ -899,19 +1027,19 @@ namespace AIUsageOverlay.ViewModels
                 // 先行（予定より速い）
                 if (!pace.WillLastToReset && pace.Eta.HasValue)
                 {
-                    text  = $"ペース: 予定比 {FormatSignedDelta(pace.DeltaPercent)} ・ {FormatEtaClock(pace.Eta.Value)} 上限";
+                    text  = $"ペース 予定比 {FormatSignedDelta(pace.DeltaPercent)} ・ {FormatEtaClock(pace.Eta.Value)} 上限";
                     brush = PaceRed;
                 }
                 else
                 {
-                    text  = $"ペース: 予定比 {FormatSignedDelta(pace.DeltaPercent)}";
+                    text  = $"ペース 予定比 {FormatSignedDelta(pace.DeltaPercent)}";
                     brush = PaceOrange;
                 }
             }
             else
             {
                 // 余裕（予定より遅い）
-                text  = $"ペース: 予定比 {FormatSignedDelta(pace.DeltaPercent)} ・ リセットまで余裕";
+                text  = $"ペース 予定比 {FormatSignedDelta(pace.DeltaPercent)} ・ 余裕";
                 brush = PaceGreen;
             }
 

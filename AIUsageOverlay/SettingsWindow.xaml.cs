@@ -32,20 +32,32 @@ namespace AIUsageOverlay
             // ── 表示項目 ──
             GitHubCopilotCheckBox.IsChecked = settings.GitHubCopilotEnabled;
             CodexCheckBox.IsChecked         = settings.CodexEnabled;
-            // ResetDisplayMode: index 0 = relative, 1 = absolute
-            ResetModeComboBox.SelectedIndex = settings.ResetDisplayMode == "absolute" ? 1 : 0;
+            // リセット表示形式（セグメント）: relative / absolute
+            if (settings.ResetDisplayMode == "absolute") ResetAbsolute.IsChecked = true;
+            else                                          ResetRelative.IsChecked = true;
+
+            // 表示項目（ペース・F-06 / スパークライン・刷新 2b）
+            PaceEnabledCheckBox.IsChecked   = settings.PaceEnabled;
+            ShowSparklineCheckBox.IsChecked = settings.ShowSparkline;
 
             // ── 外観 ──
-            // TrayIconStyle: index 0 = dualBar, 1 = donut
-            TrayStyleComboBox.SelectedIndex     = settings.TrayIconStyle == "donut" ? 1 : 0;
+            // オーバーレイ表示形式（セグメント）: list（縦積み・1a）/ compact（コンパクト⇔詳細・1b）
+            if (settings.OverlayLayout == "compact") OverlayLayoutCompact.IsChecked = true;
+            else                                      OverlayLayoutList.IsChecked   = true;
+
+            // トレイアイコン形式（セグメント）: ring（既定）/ dualBar / donut / numeric
+            switch (settings.TrayIconStyle)
+            {
+                case "donut":   TrayDonut.IsChecked   = true; break;
+                case "dualBar": TrayDualBar.IsChecked = true; break;
+                case "numeric": TrayNumeric.IsChecked = true; break;
+                default:        TrayRing.IsChecked    = true; break; // "ring"
+            }
             CautionThresholdTextBox.Text        = settings.CautionThresholdPercent.ToString();
             WarningThresholdTextBox.Text        = settings.WarningThresholdPercent.ToString();
             ShowThresholdMarkersCheckBox.IsChecked = settings.ShowThresholdMarkers;
             OpacitySlider.Value                 = settings.WindowOpacity;
             UpdateOpacityLabel(settings.WindowOpacity);
-
-            // 表示項目（ペース・F-06）
-            PaceEnabledCheckBox.IsChecked = settings.PaceEnabled;
 
             // ── 通知（F-07）──
             NotificationsEnabledCheckBox.IsChecked = settings.NotificationsEnabled;
@@ -138,17 +150,23 @@ namespace AIUsageOverlay
             // 表示項目
             settings.GitHubCopilotEnabled   = GitHubCopilotCheckBox.IsChecked == true;
             settings.CodexEnabled           = CodexCheckBox.IsChecked == true;
-            settings.ResetDisplayMode       = ResetModeComboBox.SelectedIndex == 1 ? "absolute" : "relative";
+            settings.ResetDisplayMode       = ResetAbsolute.IsChecked == true ? "absolute" : "relative";
 
-            // 外観
-            settings.TrayIconStyle          = TrayStyleComboBox.SelectedIndex == 1 ? "donut" : "dualBar";
+            // 外観（オーバーレイ表示形式・トレイ形式はセグメント選択から決定）
+            settings.OverlayLayout          = OverlayLayoutCompact.IsChecked == true ? "compact" : "list";
+            settings.TrayIconStyle          =
+                  TrayDonut.IsChecked   == true ? "donut"
+                : TrayDualBar.IsChecked == true ? "dualBar"
+                : TrayNumeric.IsChecked == true ? "numeric"
+                :                                 "ring";
             settings.CautionThresholdPercent = caution;
             settings.WarningThresholdPercent = warning;
             settings.ShowThresholdMarkers   = ShowThresholdMarkersCheckBox.IsChecked == true;
             settings.WindowOpacity          = OpacitySlider.Value;
 
-            // ペース（F-06）
+            // ペース（F-06）・スパークライン（刷新 2b）
             settings.PaceEnabled            = PaceEnabledCheckBox.IsChecked == true;
+            settings.ShowSparkline          = ShowSparklineCheckBox.IsChecked == true;
 
             // 通知（F-07）
             settings.NotificationsEnabled   = NotificationsEnabledCheckBox.IsChecked == true;
