@@ -28,13 +28,16 @@ namespace AIUsageOverlay.Services
         /// <summary>
         /// 使用率%の自己記録（スパークライン用）。統合窓口としてここに内包し、
         /// 記録・取得は本クラス経由で ViewModel へ提供する（データ取得は各サービスとの直接通信のみ）。
+        /// 保持窓は AppSettings.SparklineRetentionHours をコンストラクタで注入する（F-16）。
         /// </summary>
-        private readonly UsageHistoryService _history = new();
+        private readonly UsageHistoryService _history;
 
         public UsageService()
         {
             Directory.CreateDirectory(AppDataFolder);
             _settings       = LoadSettings();
+            // F-16: スパークライン履歴の保持窓を設定値で初期化する（_settings 確定後に生成する）
+            _history        = new UsageHistoryService(_settings.SparklineRetentionHours);
             _usageRecord    = LoadUsageRecord();
             _lastUpdateTime = DateTime.Now;
             ResetWeeklyIfNeeded();

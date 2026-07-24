@@ -145,5 +145,13 @@ namespace AIUsageOverlay.Models
         /// </summary>
         [JsonPropertyName("overlayExpanded")]
         public bool OverlayExpanded { get; set; } = true;
+
+        /// <summary>
+        /// スパークライン履歴の保持時間（時間）。F-16。既定 24h。
+        /// この窓より古い点は破棄する。旧実装は Claude/Codex の 5時間枠に合わせ 5h 固定だったが、
+        /// 断続起動でも履歴が残りグラフが表示されるよう延長・設定化した。読込時に最小 1h でガードする。
+        /// </summary>
+        [JsonPropertyName("sparklineRetentionHours")]
+        public int SparklineRetentionHours { get; set; } = 24;
     }
 }

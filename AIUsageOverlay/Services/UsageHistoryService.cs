@@ -32,8 +32,12 @@ namespace AIUsageOverlay.Services
         /// <summary>Codex 5時間枠の履歴系列キー。</summary>
         public const string SeriesCodex = "codex";
 
-        /// <summary>保持する最大の時間窓（Claude セッション枠に一致）。</summary>
-        private static readonly TimeSpan RetentionWindow = TimeSpan.FromHours(5);
+        /// <summary>
+        /// 保持する最大の時間窓（F-16）。既定は AppSettings.SparklineRetentionHours（24h）。
+        /// 旧実装は Claude/Codex の 5時間枠に合わせ 5h 固定だったが、断続起動での全点破棄
+        /// （＝グラフ非表示）を避けるため設定化・延長した。コンストラクタで注入する（最小 1h でガード）。
+        /// </summary>
+        private readonly TimeSpan _retentionWindow;
 
         /// <summary>系列あたりの最大保持点数（リングバッファ上限）。</summary>
         private const int MaxPoints = 300;
@@ -53,8 +57,18 @@ namespace AIUsageOverlay.Services
         /// <summary>系列キー → 時系列（古い順）の点列。</summary>
         private readonly Dictionary<string, List<UsageHistoryPoint>> _series;
 
-        public UsageHistoryService()
+        /// <summary>
+        /// 履歴サービスを初期化し、起動時に保持窓外の古い点を掃除する。
+        /// </summary>
+        /// <param name="retentionHours">
+        /// 履歴保持時間（時間）。<see cref="Models.AppSettings.SparklineRetentionHours"/> を渡す。
+        /// 0/負値は誤設定として最小 1h に丸める（F-16）。
+        /// </param>
+        public UsageHistoryService(int retentionHours = 24)
         {
+            // F-16: 保持窓を設定値から決定する（最小 1h でガード）
+            _retentionWindow = TimeSpan.FromHours(Math.Max(1, retentionHours));
+
             _series = Load();
             // 起動時に保持窓外の古い点を掃除する
             var now = DateTime.Now;
@@ -101,14 +115,30 @@ namespace AIUsageOverlay.Services
 
         /// <summary>
         /// 指定系列の主使用率(%)を古い順に返す。スパークライン描画用に最大 60 点へ等間隔リサンプリングする。
-        /// 点が 2 未満のときは空配列（＝スパークライン非表示）。
+        /// F-17: 返す前に保持窓 Trim を適用し、実行中と再起動で同じ窓に揃える。
+        /// F-16: 点が 1 個のときは水平線として描けるよう同値 2 点へ複製する（取得 1 回でも表示）。
+        /// 点が 0 のときのみ空配列（＝スパークライン非表示）。
         /// </summary>
         /// <param name="series">系列キー</param>
         /// <returns>0〜100 の使用率列（古い→新しい順）</returns>
         public IReadOnlyList<double> GetSessionSeries(string series)
         {
-            if (!_series.TryGetValue(series, out var list) || list.Count < 2)
+            if (!_series.TryGetValue(series, out var list) || list.Count == 0)
                 return Array.Empty<double>();
+
+            // F-17: 描画時にも保持窓 Trim を適用する。Trim が Record 内だけだと、取得停止中は
+            //       古い点がメモリ上に残り、再起動時（コンストラクタ Trim）のみ消える非対称が生じ、
+            //       「昨日は出たのに再起動したら消えた」という症状になるため揃える。
+            Trim(list, DateTime.Now);
+            if (list.Count == 0)
+                return Array.Empty<double>();
+
+            // F-16: 点が 1 個なら水平線として同値 2 点を返す（点<2 での常態非表示を回避）。
+            if (list.Count == 1)
+            {
+                var single = list[0].Session;
+                return new[] { single, single };
+            }
 
             var values = list.Select(p => p.Session).ToList();
             return Resample(values, MaxRenderPoints);
@@ -120,11 +150,12 @@ namespace AIUsageOverlay.Services
         private static double Clamp(double v) => Math.Max(0.0, Math.Min(100.0, v));
 
         /// <summary>
-        /// 保持窓（5 時間）外の古い点と、最大点数（300）超過分を先頭から削除する。
+        /// 保持窓外の古い点と、最大点数（300）超過分を先頭から削除する。
+        /// 保持窓は <see cref="_retentionWindow"/>（設定値、既定 24h）。
         /// </summary>
-        private static void Trim(List<UsageHistoryPoint> list, DateTime now)
+        private void Trim(List<UsageHistoryPoint> list, DateTime now)
         {
-            var cutoff = now - RetentionWindow;
+            var cutoff = now - _retentionWindow;
             // 5 時間より古い点を先頭から除去
             int removeCount = 0;
             while (removeCount < list.Count && list[removeCount].Timestamp < cutoff)

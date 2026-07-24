@@ -331,9 +331,9 @@ namespace AIUsageOverlay
         {
             UpdateSparkline(ClaudeSparkline,  UsageHistoryService.SeriesClaude,  sectionAllows: true);
             UpdateSparkline(CopilotSparkline, UsageHistoryService.SeriesCopilot,
-                sectionAllows: ViewModel.GitHubOrgBarVisibility == Visibility.Visible);
+                sectionAllows: ViewModel.GitHubSectionVisibility == Visibility.Visible);
             UpdateSparkline(CodexSparkline,   UsageHistoryService.SeriesCodex,
-                sectionAllows: ViewModel.CodexBarVisibility == Visibility.Visible);
+                sectionAllows: ViewModel.CodexSectionVisibility == Visibility.Visible);
         }
 
         /// <summary>Polyline のサイズ確定・変化に追従して当該スパークラインを引き直す。</summary>
@@ -343,23 +343,23 @@ namespace AIUsageOverlay
                 UpdateSparkline(ClaudeSparkline, UsageHistoryService.SeriesClaude, sectionAllows: true);
             else if (sender == CopilotSparkline)
                 UpdateSparkline(CopilotSparkline, UsageHistoryService.SeriesCopilot,
-                    sectionAllows: ViewModel.GitHubOrgBarVisibility == Visibility.Visible);
+                    sectionAllows: ViewModel.GitHubSectionVisibility == Visibility.Visible);
             else if (sender == CodexSparkline)
                 UpdateSparkline(CodexSparkline, UsageHistoryService.SeriesCodex,
-                    sectionAllows: ViewModel.CodexBarVisibility == Visibility.Visible);
+                    sectionAllows: ViewModel.CodexSectionVisibility == Visibility.Visible);
         }
 
         /// <summary>
         /// 1 本のスパークラインを、自己記録した使用率%履歴から ActualWidth 基準の実座標で描画する。
         /// Stretch=Fill を使わないのは線幅の歪みを避けるため（引継ぎ資料 §4）。
         ///
-        /// 表示条件: セクション表示中 かつ スパークライン設定 ON かつ 点が 2 以上。
+        /// 表示条件: セクション表示中 かつ スパークライン設定 ON かつ 点が 1 以上（1点は水平線）。
         /// 幅未確定（ActualWidth=0）のときは Visible にしてレイアウトを促し、SizeChanged で再描画する。
         /// 値が高いほど上（y が小さい）になるよう 0%→下端 / 100%→上端 にマップする。
         /// </summary>
         /// <param name="target">描画先 Polyline</param>
         /// <param name="series">履歴系列キー（<see cref="UsageHistoryService.SeriesClaude"/> 等）</param>
-        /// <param name="sectionAllows">当該サービスがバー表示中か（履歴があっても非表示中は描かない）</param>
+        /// <param name="sectionAllows">当該サービスのセクションが表示中か（F-15。一時的な取得失敗でバー→ドット化しても履歴があれば線を維持する）</param>
         private void UpdateSparkline(Polyline target, string series, bool sectionAllows)
         {
             var settings = _usageService.GetSettings();
