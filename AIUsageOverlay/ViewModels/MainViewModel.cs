@@ -413,7 +413,7 @@ namespace AIUsageOverlay.ViewModels
             set => SetProperty(ref _codexSectionVisibility, value);
         }
 
-        /// <summary>5時間制限使用率バーの表示/非表示</summary>
+        /// <summary>週間制限使用率バーの表示/非表示（F-13。旧5時間バーを週間バーへ転用）</summary>
         public Visibility CodexBarVisibility
         {
             get => _codexBarVisibility;
@@ -427,21 +427,21 @@ namespace AIUsageOverlay.ViewModels
             set => SetProperty(ref _codexDotVisibility, value);
         }
 
-        /// <summary>Codex 5時間制限使用率（0.0 ～ 100.0）</summary>
+        /// <summary>Codex 週間制限使用率（0.0 ～ 100.0）（F-13）</summary>
         public double CodexUsagePercent
         {
             get => _codexUsagePercent;
             set => SetProperty(ref _codexUsagePercent, value);
         }
 
-        /// <summary>Codex 5時間制限使用率テキスト（例: "52%"）</summary>
+        /// <summary>Codex 週間制限使用率テキスト（例: "52%"）（F-13）</summary>
         public string CodexUsagePercentText
         {
             get => _codexUsagePercentText;
             set => SetProperty(ref _codexUsagePercentText, value);
         }
 
-        /// <summary>Codex 5時間制限の残り時間テキスト（例: "4時間11分"）</summary>
+        /// <summary>Codex 週間制限の残り時間/リセット時刻テキスト（例: "5日9時間"）（F-13）</summary>
         public string CodexDetailText
         {
             get => _codexDetailText;
@@ -680,7 +680,8 @@ namespace AIUsageOverlay.ViewModels
 
         /// <summary>
         /// Codex の使用制限状況を取得してバインディングプロパティを更新する。
-        /// 5時間制限を左側プログレスバー、週間制限を右側ステータスとして表示する。
+        /// Codex は 5時間制限を廃止し週間制限のみ運用のため、週間制限をメインバー＋大数値として
+        /// 表示する（F-13）。5時間枠のデータ層は据え置きだが、表示・記録・通知では参照しない。
         /// </summary>
         private async Task RefreshCodexAsync()
         {
@@ -716,73 +717,59 @@ namespace AIUsageOverlay.ViewModels
             // F-04: 絶対表示モードでは Codex が保持済みのリセット時刻テキストを優先する
             var absolute = _usageService.GetSettings().ResetDisplayMode == "absolute";
 
-            if (data.HasSessionData)
+            // F-13: Codex は 5時間制限を廃止し週間制限のみ運用となったため、週間枠(HasWeeklyData)を
+            //       主軸に表示する。週間データがあればメインバー＋大数値、無ければ状態ドットへ落とす。
+            //       （5時間枠 data.Session* は据え置き。将来復活しても壊れないよう参照しないだけに留める）
+            if (data.HasWeeklyData)
             {
-                // 5時間制限 → 左側プログレスバー
+                // 週間制限 → メインプログレスバー＋大数値
                 CodexBarVisibility  = Visibility.Visible;
                 CodexDotVisibility  = Visibility.Collapsed;
 
-                CodexUsagePercent     = data.SessionPercent;
-                CodexUsagePercentText = $"{data.SessionPercent}%";
-                CodexDetailText       = absolute && !string.IsNullOrEmpty(data.SessionResetText)
-                    ? $"{data.SessionResetText} リセット"
-                    : FormatNullableMinutes(data.SessionRemainingMinutes);
+                CodexUsagePercent     = data.WeeklyPercent;
+                CodexUsagePercentText = $"{data.WeeklyPercent}%";
+                CodexDetailText       = absolute && !string.IsNullOrEmpty(data.WeeklyResetText)
+                    ? $"{data.WeeklyResetText} リセット"
+                    : FormatNullableMinutes(data.WeeklyRemainingMinutes);
 
                 // デザイン刷新 2b: メタ行の主テキスト（相対は "残り X"、絶対はリセット時刻をそのまま）
                 CodexMetaPrimary = BuildMetaPrimary(absolute ? "absolute" : "relative", CodexDetailText);
+
+                // 旧デザイン互換の右側ステータス（CodexStatusText/CodexSubText）も週間値で更新しておく
+                CodexStatusText = $"{data.WeeklyPercent}%";
+                CodexSubText    = CodexDetailText;
             }
             else
             {
-                // 5時間制限が取れない場合のみドット表示にする
+                // 週間制限が取れない場合はドット表示にする
                 CodexBarVisibility  = Visibility.Collapsed;
                 CodexDotVisibility  = Visibility.Visible;
                 CodexUsagePercentText = "0%";
                 CodexDetailText       = "--";
                 CodexMetaPrimary      = "--";
+                CodexStatusText       = "--";
+                CodexSubText          = "--";
             }
 
-            if (data.HasWeeklyData)
-            {
-                // 週間制限 → 右側ステータス
-                CodexStatusText = $"{data.WeeklyPercent}%";
-                CodexSubText    = absolute && !string.IsNullOrEmpty(data.WeeklyResetText)
-                    ? $"{data.WeeklyResetText} リセット"
-                    : FormatNullableMinutes(data.WeeklyRemainingMinutes);
-
-                // デザイン刷新 2b: 見出し行の週間チップ（例: "週 34%"）
-                CodexWeeklyChipText       = $"週 {data.WeeklyPercent}%";
-                CodexWeeklyChipVisibility = Visibility.Visible;
-            }
-            else
-            {
-                CodexStatusText = "--";
-                CodexSubText    = "--";
-                CodexWeeklyChipVisibility = Visibility.Collapsed;
-            }
+            // F-13: 週間%をメインバーへ昇格したため、見出しの週間チップは重複となる。常に非表示にする。
+            CodexWeeklyChipVisibility = Visibility.Collapsed;
 
             _codexEverLoaded = true;
 
-            // デザイン刷新: スパークライン用に 5時間枠の%を自己記録（取得成功時のみ）
-            if (data.HasSessionData)
+            // F-14: スパークライン用に週間枠の%を自己記録（週間データ取得時のみ）。
+            //       記録値・ゲートを週間へ変更したことで Codex スパークラインが週間推移で描画される。
+            if (data.HasWeeklyData)
                 _usageService.RecordHistory(UsageHistoryService.SeriesCodex,
-                    data.SessionPercent, data.HasWeeklyData ? data.WeeklyPercent : 0);
+                    data.WeeklyPercent, data.WeeklyPercent);
             // F-02: 取得成功で通常不透明度へ戻す
             CodexSectionOpacity = 1.0;
 
-            // ── F-06: Codex ペース（5時間枠優先、5時間が OnTrack のときのみ週間枠を表示）──
+            // ── F-06/F-13: Codex ペース（週間枠 10080分 のみ。5時間枠の優先計算は撤去）──
             if (settings.PaceEnabled)
             {
                 Models.UsagePace? codexPace = null;
-                if (data.HasSessionData && data.SessionRemainingMinutes >= 0)
-                    codexPace = UsagePaceCalculator.Compute(data.SessionPercent, 300, data.SessionRemainingMinutes);
-
-                // 5時間が計算不能 or 順調なら、週間枠のペースがあればそちらを表示する
-                if ((codexPace == null || codexPace.Stage == Models.PaceStage.OnTrack)
-                    && data.HasWeeklyData && data.WeeklyRemainingMinutes >= 0)
-                {
-                    var weekly = UsagePaceCalculator.Compute(data.WeeklyPercent, 10080, data.WeeklyRemainingMinutes);
-                    if (weekly != null) codexPace = weekly;
-                }
+                if (data.HasWeeklyData && data.WeeklyRemainingMinutes >= 0)
+                    codexPace = UsagePaceCalculator.Compute(data.WeeklyPercent, 10080, data.WeeklyRemainingMinutes);
 
                 ApplyPace(codexPace,
                     v => CodexPaceText = v, b => CodexPaceBrush = b, vis => CodexPaceVisibility = vis);
@@ -792,9 +779,7 @@ namespace AIUsageOverlay.ViewModels
                 CodexPaceVisibility = Visibility.Collapsed;
             }
 
-            // ── F-07: Codex の通知判定（リセット時刻は DateTime 未保持のため null＝急落で代替検知）──
-            if (data.HasSessionData)
-                _notificationService.Evaluate(UsageWindowKey.CodexSession, data.SessionPercent, null, settings);
+            // ── F-07/F-13: Codex の通知判定（週間枠のみ。5時間枠 CodexSession の通知は撤去）──
             if (data.HasWeeklyData)
                 _notificationService.Evaluate(UsageWindowKey.CodexWeekly, data.WeeklyPercent, null, settings);
         }

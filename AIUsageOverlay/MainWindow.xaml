@@ -411,7 +411,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Codex 5時間" FontSize="11" FontWeight="SemiBold"
+                            <TextBlock Grid.Column="0" Text="Codex 週間" FontSize="11" FontWeight="SemiBold"
                                        Foreground="#9A9AA2"/>
                             <TextBlock Grid.Column="1" Text="{Binding CodexDetailText}" FontSize="10"
                                        Foreground="{StaticResource Brush.HeaderLabel}"/>
