@@ -15,12 +15,14 @@ namespace AIUsageOverlay.Services
     ///
     /// 仕様:
     ///   - サービスごと（Claude / Copilot / Codex）に (timestamp, session%, weekly%) を記録。
-    ///   - 保持は直近 5 時間 / 最大 300 点のリングバッファ（Claude セッション枠に一致）。
+    ///   - 保持は設定の保持窓（既定 24h、F-16）/ 保持窓を基準間隔で満たす点数のリングバッファ。
     ///   - 永続化は %AppData%\AIUsageOverlay\history.json（settings.json / usage.json とは分離）。
-    ///   - 起動時に読み込み、5 時間より古い点は破棄する。
+    ///   - 起動時に読み込み、保持窓より古い点は破棄する。
     ///   - リセット（%の大きな下落）時も履歴は継続記録する（グラフに崖として出るのが正しい挙動）。
     ///
-    /// スレッド前提: 呼び出しは UI スレッド（DispatcherTimer 経由の取得処理）からのみ。
+    /// スレッド前提: 呼び出しは UI スレッド（DispatcherTimer 経由の取得・描画処理）からのみ。
+    ///   Record と GetSessionSeries はいずれも内部リストを Trim で破壊的に変更する（F-17）ため、
+    ///   非 UI スレッドから呼ぶと List が非スレッドセーフである点に注意（現状は UI 直列で安全）。
     /// </summary>
     public class UsageHistoryService
     {
@@ -29,7 +31,7 @@ namespace AIUsageOverlay.Services
         public const string SeriesClaude = "claude";
         /// <summary>GitHub Copilot（クレジット）の履歴系列キー。</summary>
         public const string SeriesCopilot = "copilot";
-        /// <summary>Codex 5時間枠の履歴系列キー。</summary>
+        /// <summary>Codex 週間枠の履歴系列キー（F-13 で 5時間枠から週間枠へ変更）。</summary>
         public const string SeriesCodex = "codex";
 
         /// <summary>
@@ -39,8 +41,13 @@ namespace AIUsageOverlay.Services
         /// </summary>
         private readonly TimeSpan _retentionWindow;
 
-        /// <summary>系列あたりの最大保持点数（リングバッファ上限）。</summary>
-        private const int MaxPoints = 300;
+        /// <summary>
+        /// 系列あたりの最大保持点数（リングバッファ上限）。F-16。
+        /// 保持窓を「点数」ではなく「時間」で律速させるため、保持窓を基準取得間隔で満たすのに
+        /// 必要な点数＋マージンをコンストラクタで算出する（旧実装は 300 固定で、24h 保持でも
+        /// 先頭が切られ実効窓が縮んでいた）。メモリ/JSON 肥大を防ぐ絶対上限を設ける。
+        /// </summary>
+        private readonly int _maxPoints;
 
         /// <summary>スパークライン描画時に間引く最大点数。</summary>
         private const int MaxRenderPoints = 60;
@@ -62,12 +69,22 @@ namespace AIUsageOverlay.Services
         /// </summary>
         /// <param name="retentionHours">
         /// 履歴保持時間（時間）。<see cref="Models.AppSettings.SparklineRetentionHours"/> を渡す。
-        /// 0/負値は誤設定として最小 1h に丸める（F-16）。
+        /// 誤設定・オーバーフロー防止のため 1h〜30日(720h) にクランプする（F-16）。
         /// </param>
-        public UsageHistoryService(int retentionHours = 24)
+        /// <param name="baseIntervalSeconds">
+        /// 基準取得間隔（秒）。<see cref="Models.AppSettings.RefreshIntervalSeconds"/> を渡す。
+        /// 保持窓を満たすのに必要な最大点数の算出に使う。最小 5 秒でガードする。
+        /// </param>
+        public UsageHistoryService(int retentionHours = 24, int baseIntervalSeconds = 30)
         {
-            // F-16: 保持窓を設定値から決定する（最小 1h でガード）
-            _retentionWindow = TimeSpan.FromHours(Math.Max(1, retentionHours));
+            // F-16: 保持窓を設定値から決定する（1h〜30日でクランプし TimeSpan オーバーフロー・暴走を防ぐ）
+            int hours = Math.Clamp(retentionHours, 1, 24 * 30);
+            _retentionWindow = TimeSpan.FromHours(hours);
+
+            // F-16: 保持窓を「点数上限」ではなく「時間」で律速させる。保持窓を基準間隔で満たす点数＋
+            //       マージン(60)を上限とし、絶対上限 20000 点でメモリ/JSON サイズの暴走を防ぐ。
+            int interval = Math.Max(5, baseIntervalSeconds);
+            _maxPoints = Math.Min(20000, (int)Math.Ceiling(hours * 3600.0 / interval) + 60);
 
             _series = Load();
             // 起動時に保持窓外の古い点を掃除する
@@ -150,13 +167,13 @@ namespace AIUsageOverlay.Services
         private static double Clamp(double v) => Math.Max(0.0, Math.Min(100.0, v));
 
         /// <summary>
-        /// 保持窓外の古い点と、最大点数（300）超過分を先頭から削除する。
+        /// 保持窓外の古い点と、最大点数（<see cref="_maxPoints"/>）超過分を先頭から削除する。
         /// 保持窓は <see cref="_retentionWindow"/>（設定値、既定 24h）。
         /// </summary>
         private void Trim(List<UsageHistoryPoint> list, DateTime now)
         {
             var cutoff = now - _retentionWindow;
-            // 5 時間より古い点を先頭から除去
+            // 保持窓より古い点を先頭から除去
             int removeCount = 0;
             while (removeCount < list.Count && list[removeCount].Timestamp < cutoff)
                 removeCount++;
@@ -164,8 +181,8 @@ namespace AIUsageOverlay.Services
                 list.RemoveRange(0, removeCount);
 
             // 最大点数を超える分を先頭から除去
-            if (list.Count > MaxPoints)
-                list.RemoveRange(0, list.Count - MaxPoints);
+            if (list.Count > _maxPoints)
+                list.RemoveRange(0, list.Count - _maxPoints);
         }
 
         /// <summary>

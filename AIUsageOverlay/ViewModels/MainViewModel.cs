@@ -735,7 +735,8 @@ namespace AIUsageOverlay.ViewModels
                 // デザイン刷新 2b: メタ行の主テキスト（相対は "残り X"、絶対はリセット時刻をそのまま）
                 CodexMetaPrimary = BuildMetaPrimary(absolute ? "absolute" : "relative", CodexDetailText);
 
-                // 旧デザイン互換の右側ステータス（CodexStatusText/CodexSubText）も週間値で更新しておく
+                // CodexStatusText/CodexSubText は現行 XAML では未バインド（1a 刷新で右側ステータス撤去済み）。
+                // 後方互換のため週間値で更新のみ行う（表示には影響しない）。
                 CodexStatusText = $"{data.WeeklyPercent}%";
                 CodexSubText    = CodexDetailText;
             }
@@ -744,6 +745,7 @@ namespace AIUsageOverlay.ViewModels
                 // 週間制限が取れない場合はドット表示にする
                 CodexBarVisibility  = Visibility.Collapsed;
                 CodexDotVisibility  = Visibility.Visible;
+                CodexUsagePercent     = 0;   // compact ピルのバー塗り（CodexBarVisibility 非連動）と "0%" テキストを揃える
                 CodexUsagePercentText = "0%";
                 CodexDetailText       = "--";
                 CodexMetaPrimary      = "--";

@@ -365,7 +365,9 @@ namespace AIUsageOverlay
             var settings = _usageService.GetSettings();
             IReadOnlyList<double> data = _usageService.GetHistory(series);
 
-            // 表示条件を満たさない（セクション非表示・OFF・点不足）→ 隠す
+            // 表示条件を満たさない（セクション非表示・OFF・点不足）→ 隠す。
+            // data.Count<2 は 0 点（履歴なし）のみを弾く前提。1 点は GetSessionSeries が
+            // 同値 2 点（水平線）へ複製するため、ここに 1 点が渡ることはない（F-16）。
             if (!sectionAllows || !settings.ShowSparkline || data.Count < 2)
             {
                 target.Points = null;

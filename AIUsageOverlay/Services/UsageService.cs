@@ -36,8 +36,9 @@ namespace AIUsageOverlay.Services
         {
             Directory.CreateDirectory(AppDataFolder);
             _settings       = LoadSettings();
-            // F-16: スパークライン履歴の保持窓を設定値で初期化する（_settings 確定後に生成する）
-            _history        = new UsageHistoryService(_settings.SparklineRetentionHours);
+            // F-16: スパークライン履歴の保持窓と最大点数を設定値で初期化する（_settings 確定後に生成する）
+            _history        = new UsageHistoryService(
+                _settings.SparklineRetentionHours, _settings.RefreshIntervalSeconds);
             _usageRecord    = LoadUsageRecord();
             _lastUpdateTime = DateTime.Now;
             ResetWeeklyIfNeeded();
