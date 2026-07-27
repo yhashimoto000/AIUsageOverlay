@@ -17,7 +17,7 @@
 ### 前提条件（実装前に確定・整備が必要）
 1. **リポジトリの public 化**: ✅ 完了（`github.com/yhashimoto000/AIUsageOverlay` は public 化済み、確認済み）。未認証 `GET /repos/{owner}/{repo}/releases/latest` が利用可能。
 2. **owner/repo の確定**: 本書は `yhashimoto000/AIUsageOverlay` を API URL に用いる前提。相違があれば実装時に修正。
-3. **csproj `<Version>` の設定**: 現状 csproj に `<Version>` が無く、ビルドされた exe は自分を `1.0.0` と誤認する（比較が原理的に成立しない）。F-18 で最優先に是正する。
+3. **csproj `<Version>` の設定**: ✅ 完了（F-18）。`<Version>2.0.0</Version>` を開発時フォールバックとして追加し、Release ビルドではタグ由来の値を注入する。
 4. **CLAUDE.md / AGENTS.md 改定提案の承認**: ✅ 完了（2026-07-27）。公開メタデータの HTTPS GET を許可し、利用データ・認証情報・テレメトリ等の外部送信禁止を維持する文言へ改定済み。
 
 ---
@@ -50,15 +50,15 @@ CLAUDE.md の当該行（`触ってはいけない領域`）は二つの要素�
 
 | ファイル | 参照内容 |
 |----------|----------|
-| `AIUsageOverlay/AIUsageOverlay.csproj` | `<Version>` 未設定（F-18 で追加）。`PublishSingleFile=true`、ネイティブ DLL は exe 外部出力 |
-| `.github/workflows/release.yml` | v* タグ push で `--self-contained true` publish → `AIUsageOverlay_v{version}.zip` を Release 添付。`-p:Version` 注入なし（F-18）、checksums なし（F-24） |
+| `AIUsageOverlay/AIUsageOverlay.csproj` | `<Version>2.0.0</Version>` 設定済み。`PublishSingleFile=true`、ネイティブ DLL は exe 外部出力 |
+| `.github/workflows/release.yml` | v* タグ由来の版数を `-p:Version` と zip 名へ注入し、self-contained zip と `checksums.txt` を Release 添付。prerelease はタグ内の `-` で判定 |
 | `build-release.bat` | ローカルは `--self-contained false`（CI と方針差、§10 R-8） |
-| `App.xaml.cs` | `App_Startup`（Mutex なし＝F-25 対象。日本語 XML コメントに「処理順序: 1.〜5.」の番号付き記載があり、追記時はこのコメントとの整合を取る）、`NotifyIcon`、`BuildTrayContextMenu`（トレイメニュー）、`AttachNotifier`。**F-22（専用タイマー）・F-23（トレイメニュー項目）・F-25（Mutex ガード）・F-27（適用起動）の4機能が同ファイルを変更する。** CLAUDE.md の「ファイル全体の再生成は禁止」「大きなファイルは分割して編集」に従い、`App_Startup` 全体を書き直さず対象メソッド・追記位置を絞った差分編集で行う。実装順序は F-25（冒頭に Mutex ガード追加）→ F-22（起動遅延ワンショット＋専用タイマー追加）→ F-23（トレイメニュー項目追加）→ F-27（適用起動処理追加）とし、1コミット1機能の差分編集を徹底する |
-| `Services/NotificationService.cs` | `NotifyIcon.ShowBalloonTip` によるトースト（使用率通知専用。F-23 で汎用 `NotifyInfo` 追加） |
+| `App.xaml.cs` | F-22 の起動遅延・専用タイマー・24hゲート、および F-23 のトレイメニュー・通知・ブラウザ導線を実装済み。Mutex（F-25）・適用起動（F-27）は未実装 |
+| `Services/NotificationService.cs` | `NotifyIcon.ShowBalloonTip` を再利用する汎用 `NotifyInfo` を実装済み |
 | `Services/UsageService.cs` | 設定の SSoT（`LoadSettings`/`SaveSettings`、`settings.json`）。更新チェックは相乗りさせない |
-| `ViewModels/MainViewModel.cs` | `DispatcherTimer`（使用量取得専用）。`SaveSettings` パススルー未公開（F-22 で追加） |
-| `SettingsWindow.xaml(.cs)` | TabControl 構成。`Environment.ProcessPath` 使用箇所あり（バージョン取得の参考） |
-| `Models/AppSettings.cs` | 全項目に既定値（未知キー補完で後方互換）。更新設定を追加（§6） |
+| `ViewModels/MainViewModel.cs` | 使用量取得タイマーとは独立したまま、`SaveSettings` と `NotifyInfo` のパススルーを追加済み |
+| `SettingsWindow.xaml(.cs)` | 左サイドバー構成の全般画面へ、現在版・自動確認トグル・「今すぐ確認」を追加済み |
+| `Models/AppSettings.cs` | `AutoUpdateCheckEnabled` / `LastUpdateCheckAt` / `SkippedUpdateVersion` を既定値付きで追加済み |
 
 ---
 
