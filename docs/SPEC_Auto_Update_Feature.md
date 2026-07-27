@@ -18,7 +18,7 @@
 1. **リポジトリの public 化**: ✅ 完了（`github.com/yhashimoto000/AIUsageOverlay` は public 化済み、確認済み）。未認証 `GET /repos/{owner}/{repo}/releases/latest` が利用可能。
 2. **owner/repo の確定**: 本書は `yhashimoto000/AIUsageOverlay` を API URL に用いる前提。相違があれば実装時に修正。
 3. **csproj `<Version>` の設定**: 現状 csproj に `<Version>` が無く、ビルドされた exe は自分を `1.0.0` と誤認する（比較が原理的に成立しない）。F-18 で最優先に是正する。
-4. **CLAUDE.md 改定提案の承認**: §1「CLAUDE.md との整合」で述べる通り、「データ取得は各サービスとの直接通信のみ」への抵触可能性についてユーザーの承認が必要。本書の実装着手はこの承認を前提とする。
+4. **CLAUDE.md / AGENTS.md 改定提案の承認**: ✅ 完了（2026-07-27）。公開メタデータの HTTPS GET を許可し、利用データ・認証情報・テレメトリ等の外部送信禁止を維持する文言へ改定済み。
 
 ---
 
@@ -41,8 +41,8 @@ CLAUDE.md の当該行（`触ってはいけない領域`）は二つの要素�
 
 この解釈の相違は CLAUDE.md 自体が定める「止まる条件（スコープの変更）」および「CLAUDE.md 自己改善（プロジェクト独自のルール・規約の新たな指摘時は提案→承認）」の検知トリガーに該当する。よって本書はこの箇所を実装確定事項として扱わず、次の2点をユーザーへの意思決定事項として明示する:
 
-1. CLAUDE.md の当該行を「データ取得は各サービス（Claude/GitHub Copilot/Codex）との直接通信、および更新チェック等の公開メタデータ GET のみ」のように改定する提案を別途ユーザーに提示し、承認を得たうえで CLAUDE.md 自己改善プロセス（提案→承認→差分追記）に従って追記する。**本設計書の実装着手はこの承認を前提とする。**
-2. `AutoUpdateCheckEnabled` の既定値を `true` のまま据え置く（黙示のオプトアウト方式）か、初回起動時に明示同意を取るオプトイン方式に変えるかを、上記1の承認と合わせて明記する。本書時点の暫定案は既定 `true` だが、これは最終決定ではなく上記提案の一部として扱う。
+1. ✅ 2026-07-27 に承認を得て、CLAUDE.md / AGENTS.md の当該行を「各サービスとの直接通信、および更新チェック等に必要な公開メタデータの HTTPS GET のみ」に改定した。利用データ・認証情報・テレメトリ等の外部送信禁止は維持している。
+2. ✅ `AutoUpdateCheckEnabled` の既定値は `true`（黙示のオプトアウト方式）に確定した。設定画面のトグルを OFF にした場合、起動時・定期タイマーの更新確認通信は行わない。
 
 ---
 
@@ -103,7 +103,7 @@ CLAUDE.md の当該行（`触ってはいけない領域`）は二つの要素�
 ### 4.3 CLAUDE.md 整合
 | ルール | 本改修での順守 |
 |--------|----------------|
-| データ取得は各サービスとの直接通信のみ／外部サーバー送信を追加しない | GitHub API は GET（取得）のみで「送信禁止」には抵触しない。ただし「各サービス（Claude/GitHub Copilot/Codex）との直接通信のみ」という限定への抵触可能性は未解決 — CLAUDE.md 改定提案（§1）の承認待ち。`AutoUpdateCheckEnabled` 既定値の方針も同時に要意思決定 |
+| データ取得は許可された直接通信／公開メタデータ HTTPS GET のみ。利用データ等を外部送信しない | ✅ CLAUDE.md / AGENTS.md 改定承認済み。GitHub API は公開メタデータの GET のみに限定し、利用データ・認証情報・テレメトリ等を送信しない。`AutoUpdateCheckEnabled` は既定 `true`、設定で OFF にできる |
 | パースは `Services/Parsing/` に置く | Release JSON パースは `GitHubReleaseParser`、SemVer パースも Parsing 配下 |
 | プロパティ更新は `SetProperty<T>` | 本機能は VM バインドプロパティを新設しない。F-22 の `MainViewModel` 変更は `SaveSettings(AppSettings)` という素のパススルーメソッド1本のみで、既存の `GetSettings()` パススルーと対称な形。設定値（`AutoUpdateCheckEnabled` 等）はこれまで通り `SettingsWindow.xaml.cs`/`MainWindow.xaml.cs` が `UsageService.GetSettings()/SaveSettings()` で取得した `AppSettings` スナップショットを直接読み書きする既存パターンを踏襲するため、`SetProperty` の適用対象外 |
 | WebView2/Scraper ライフサイクルを壊さない | HttpClient は完全独立系統。WebView2 に一切触れない |
