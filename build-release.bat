@@ -23,7 +23,7 @@ set "VERSION_ARG="
 
 REM Accept SemVer only before passing the value to MSBuild.
 if defined BUILD_VERSION (
-    powershell -NoProfile -Command "if ($env:BUILD_VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') { exit 1 }"
+    powershell -NoProfile -Command "if ($env:BUILD_VERSION -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-(?:(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+(?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$') { exit 1 }"
     if !ERRORLEVEL! neq 0 (
         echo [ERROR] Version must use SemVer without a leading v.
         exit /b 1

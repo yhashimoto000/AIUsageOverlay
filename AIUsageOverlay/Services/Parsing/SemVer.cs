@@ -10,11 +10,12 @@ namespace AIUsageOverlay.Services.Parsing
     public sealed class SemVer : IComparable<SemVer>, IEquatable<SemVer>
     {
         /// <summary>
-        /// 先頭の任意の v、3つの数値成分、任意の prerelease と build metadata
-        /// だけを受理する。過去タグの v1.40 のような2成分表記は受理しない。
+        /// 先頭の任意の v、先頭ゼロを許さない3つの数値成分、空要素を許さない
+        /// prerelease と build metadata だけを受理する。過去タグの v1.40 のような
+        /// 2成分表記や 2.0.0-alpha..1、2.0.0-01 は受理しない。
         /// </summary>
         private static readonly Regex VersionPattern = new(
-            @"^v?(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$",
+            @"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>メジャーバージョン。</summary>

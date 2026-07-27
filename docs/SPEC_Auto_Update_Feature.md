@@ -123,6 +123,7 @@ CLAUDE.md の当該行（`触ってはいけない領域`）は二つの要素�
 **本アプリでの仕様**:
 - `AIUsageOverlay.csproj` に `<Version>2.0.0</Version>` を追加（仕切り直しの初期値。開発時フォールバック）。
 - `release.yml` 内の「Extract version from tag」ステップ（既存・`shell: bash`、タグから `v` を除去し `steps.version.outputs.version` を出力）を「Publish executable」ステップより**前**（Restore の直後）に移動する。
+- 「Extract version from tag」ステップでタグを厳密な SemVer として検証し、`v2.1`、空識別子、数値 prerelease の先頭ゼロなどを含む不正タグは publish 前に失敗させる。
 - 「Publish executable」ステップ（`shell` 未指定＝Windows既定の pwsh。既存の `run:` はバックティックによる pwsh 行継続で書かれている）はシェルを変えずそのまま維持し、`dotnet publish` の引数に `-p:Version=${{ steps.version.outputs.version }}` を追加する。`${{ }}` は GitHub Actions がシェル実行前にテンプレート置換するため、pwsh/bash どちらのステップからでもシェル非依存に参照できる。これにより**タグを単一の真実源**にする（例 `v2.0.0` → `2.0.0`）。
 - bash 専用のパラメータ展開構文（`${VAR#pattern}` 等）は「Extract version from tag」ステップ内だけに閉じ込め、他ステップ（Publish executable・Create release zip・Create GitHub Release）へ直書きしない。バージョン文字列は `steps.version.outputs.version` の1箇所からのみ導出し、独立な再パースを禁止する（`Create release zip` の既存 `$ver = "${{ github.ref_name }}"` も `$ver = "v${{ steps.version.outputs.version }}"` へ揃える）。
 - `build-release.bat` にも同様に任意で `-p:Version` を渡せるようにする（ローカルビルドはタグ情報を持たないため必須にはしない）。
@@ -144,7 +145,7 @@ CLAUDE.md の当該行（`触ってはいけない領域`）は二つの要素�
 **概要**: `System.Version` は使わず、3成分厳密の SemVer 比較を `Services/Parsing/` に自前実装する。
 
 **本アプリでの仕様**:
-- 正規表現 `^v?(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$` で major.minor.patch の3成分が揃うものだけ受理。
+- SemVer 2.0.0 に従い、major.minor.patch の3成分を必須とし、数値成分の不要な先頭ゼロ、prerelease/build metadata の空識別子、数値 prerelease の先頭ゼロを拒否する。任意の先頭 `v` は受理する。
 - `v1.40` 等の2成分・不正タグはパース失敗として**比較対象外（無視）**。
 - prerelease（`-rc.1` 等）は build metadata（`+hash`）を除去して比較。安定版優先の順序付け。
 - NuGetVersion 等の重い依存は追加しない（最小実装）。
