@@ -102,10 +102,17 @@ namespace AIUsageOverlay
 
         private async void Settings_Click(object sender, RoutedEventArgs e)
         {
-            var settingsWindow = new SettingsWindow(_usageService) { Owner = this };
+            var app = (App)Application.Current;
+            var settingsWindow = new SettingsWindow(
+                _usageService,
+                app.CheckForUpdatesManuallyAsync)
+            {
+                Owner = this
+            };
             settingsWindow.ShowDialog();
             _viewModel.NotifyUserInteraction();   // F-10: 設定操作は操作扱い
             _viewModel.UpdateRefreshInterval();
+            app.ApplyUpdateCheckSetting();
 
             // F-03: 閾値・マーカー表示設定の変更をマーカーと現在色へ即時反映する
             // （使用率が変わらない場合は PropertyChanged が走らないため明示的に色を再適用する）

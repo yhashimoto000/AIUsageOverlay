@@ -7,7 +7,7 @@ namespace AIUsageOverlay
 {
     /// <summary>
     /// SettingsWindow のコードビハインド。
-    /// TabControl（全般 / 表示項目 / 外観）で各設定を編集する。通知タブは P2（F-07）で追加予定。
+    /// 左サイドバーで全般・表示項目・外観・通知を切り替え、設定を編集する。
     /// </summary>
     public partial class SettingsWindow : Window
     {
@@ -16,11 +16,20 @@ namespace AIUsageOverlay
         private const string StartupValueName = "AIUsageOverlay";
 
         private readonly UsageService _usageService;
+        private readonly Func<Task<string>> _checkForUpdatesAsync;
 
-        public SettingsWindow(UsageService usageService)
+        /// <summary>
+        /// 設定画面を初期化し、現在設定と自バージョンを各コントロールへ反映する。
+        /// </summary>
+        /// <param name="usageService">設定の取得・保存を担うサービス</param>
+        /// <param name="checkForUpdatesAsync">24時間ゲートを無視して更新確認するコールバック</param>
+        public SettingsWindow(
+            UsageService usageService,
+            Func<Task<string>> checkForUpdatesAsync)
         {
             InitializeComponent();
             _usageService = usageService;
+            _checkForUpdatesAsync = checkForUpdatesAsync;
 
             var settings = _usageService.GetSettings();
 
@@ -28,6 +37,10 @@ namespace AIUsageOverlay
             RefreshIntervalTextBox.Text     = settings.RefreshIntervalSeconds.ToString();
             AdaptiveRefreshCheckBox.IsChecked = settings.AdaptiveRefreshEnabled;
             StartupCheckBox.IsChecked       = IsStartupRegistered();
+            AutoUpdateCheckBox.IsChecked    = settings.AutoUpdateCheckEnabled;
+            CurrentVersionTextBlock.Text    =
+                $"現在のバージョン: v{UpdateCheckService.GetCurrentVersion()}";
+            VersionLabel.Text = $"AI Usage Overlay v{UpdateCheckService.GetCurrentVersion()}";
 
             // ── 表示項目 ──
             GitHubCopilotCheckBox.IsChecked = settings.GitHubCopilotEnabled;
@@ -76,6 +89,28 @@ namespace AIUsageOverlay
             // InitializeComponent 中の初回発火に備えて null ガードする
             if (OpacityLabel != null)
                 OpacityLabel.Text = $"オーバーレイ不透明度: {(int)(value * 100)}%";
+        }
+
+        /// <summary>
+        /// 24時間ゲートとスキップ設定を無視して更新確認を即時実行し、結果を画面に表示する。F-23。
+        /// </summary>
+        private async void CheckUpdatesNow_Click(object sender, RoutedEventArgs e)
+        {
+            CheckUpdatesButton.IsEnabled = false;
+            UpdateCheckStatusTextBlock.Text = "更新を確認しています...";
+
+            try
+            {
+                UpdateCheckStatusTextBlock.Text = await _checkForUpdatesAsync();
+            }
+            catch (Exception ex)
+            {
+                UpdateCheckStatusTextBlock.Text = $"更新確認に失敗しました: {ex.Message}";
+            }
+            finally
+            {
+                CheckUpdatesButton.IsEnabled = true;
+            }
         }
 
         private void Save_Click(object sender, RoutedEventArgs e)
@@ -146,6 +181,7 @@ namespace AIUsageOverlay
             // 全般
             settings.RefreshIntervalSeconds = refreshInterval;
             settings.AdaptiveRefreshEnabled = AdaptiveRefreshCheckBox.IsChecked == true;
+            settings.AutoUpdateCheckEnabled = AutoUpdateCheckBox.IsChecked == true;
 
             // 表示項目
             settings.GitHubCopilotEnabled   = GitHubCopilotCheckBox.IsChecked == true;

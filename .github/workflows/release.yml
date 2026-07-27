@@ -7,7 +7,10 @@
 # 処理内容:
 #   1. .NET 9 SDK をセットアップ
 #   2. dotnet publish で単一 exe（self-contained）を生成
-#   3. 生成した AIUsageOverlay.exe を GitHub Release に添付
+#   3. 配布 zip と checksums.txt を GitHub Release に添付
+#
+# 自動アップデートが参照する配布物はこのワークフローの self-contained zip のみ。
+# build-release.bat で生成した framework-dependent zip を手動添付しないこと。
 #
 # トリガー例:
 #   git tag v1.0.0
@@ -55,7 +58,22 @@ jobs:
         run: dotnet restore AIUsageOverlay/AIUsageOverlay.csproj
 
       # ──────────────────────────────────────────────────────────
-      # 4. 発行
+      # 4. タグ名からバージョン番号を取得（例: v2.0.0 → 2.0.0）
+      # ──────────────────────────────────────────────────────────
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          semver_regex='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(\+([0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*))?$'
+          if [[ ! "$version" =~ $semver_regex ]]; then
+            echo "Invalid release tag: ${GITHUB_REF_NAME}. Expected strict SemVer such as v2.0.0 or v2.1.0-rc.1." >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # ──────────────────────────────────────────────────────────
+      # 5. 発行
       #    --self-contained true  : .NET ランタイム同梱
       #    PublishSingleFile=true : マネージドコードを 1 exe に圧縮
       #    IncludeNativeLibrariesForSelfExtract は指定しない:
@@ -68,18 +86,19 @@ jobs:
             -c Release `
             -r win-x64 `
             --self-contained true `
+            -p:Version=${{ steps.version.outputs.version }} `
             -p:PublishSingleFile=true `
             -p:EnableCompressionInSingleFile=true `
             -o publish/
 
       # ──────────────────────────────────────────────────────────
-      # 4b. 配布用 zip を作成
+      # 5b. 配布用 zip を作成
       #     .pdb（デバッグ）/ .xml（IntelliSense）は除外する
       # ──────────────────────────────────────────────────────────
       - name: Create release zip
         shell: pwsh
         run: |
-          $ver = "${{ github.ref_name }}"
+          $ver = "v${{ steps.version.outputs.version }}"
           $zip = "AIUsageOverlay_${ver}.zip"
           $tmp = Join-Path $env:TEMP "aiusage_zip_tmp"
           Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -90,17 +109,21 @@ jobs:
           Write-Host "Created: $zip"
 
       # ──────────────────────────────────────────────────────────
-      # 5. タグ名からバージョン番号を取得（例: v1.0.0 → 1.0.0）
+      # 5c. 配布用 zip の SHA256 を checksums.txt に記録
+      #     ハッシュは小文字、パスは含めずファイル名だけを出力する
       # ──────────────────────────────────────────────────────────
-      - name: Extract version from tag
-        id: version
-        shell: bash
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - name: Create checksums
+        shell: pwsh
+        run: |
+          $zip = "AIUsageOverlay_v${{ steps.version.outputs.version }}.zip"
+          $hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
+          $name = Split-Path -Path $zip -Leaf
+          "$hash  $name" | Out-File -FilePath checksums.txt -Encoding ascii
 
       # ──────────────────────────────────────────────────────────
       # 6. GitHub Release を作成し、exe をアセットとして添付
       #    draft: false  → 即時公開
-      #    prerelease: タグに "-beta" / "-rc" を含む場合は true
+      #    prerelease: SemVer の prerelease 識別子（"-"）を含む場合は true
       # ──────────────────────────────────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -122,7 +145,9 @@ jobs:
             ### 初回セットアップ
             起動後、オーバーレイを右クリック → **ログイン** から claude.ai にログインしてください。
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
-          files: AIUsageOverlay_v${{ steps.version.outputs.version }}.zip
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            AIUsageOverlay_v${{ steps.version.outputs.version }}.zip
+            checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -32,6 +32,12 @@ namespace AIUsageOverlay.Services
         /// <summary>通知の送出先。App から注入される。未注入なら通知は送られない。</summary>
         private NotifyIcon? _icon;
 
+        /// <summary>
+        /// 現在表示中の情報通知にだけ対応するクリック処理。
+        /// 次の通知表示時に必ず上書きし、異なる通知のクリックへ誤適用しない。
+        /// </summary>
+        private Action? _balloonClickAction;
+
         // ── 窓ごとの判定状態（メモリのみ）──
         /// <summary>窓ごとの「通知済み閾値」集合。リセット検知でクリアする。</summary>
         private readonly Dictionary<UsageWindowKey, HashSet<int>> _notifiedThresholds = new();
@@ -42,8 +48,39 @@ namespace AIUsageOverlay.Services
         /// <summary>窓ごとの「上限到達を通知済み」フラグ。リセット検知でクリアする。</summary>
         private readonly HashSet<UsageWindowKey> _exhaustedNotified = new();
 
-        /// <summary>通知の送出先 NotifyIcon を受け取る（App から注入）。</summary>
-        public void Attach(NotifyIcon icon) => _icon = icon;
+        /// <summary>通知の送出先 NotifyIcon を受け取り、通知クリックを一元管理する。</summary>
+        public void Attach(NotifyIcon icon)
+        {
+            if (_icon != null)
+                _icon.BalloonTipClicked -= OnBalloonTipClicked;
+
+            _icon = icon;
+            _icon.BalloonTipClicked += OnBalloonTipClicked;
+        }
+
+        /// <summary>
+        /// 使用率の通知状態機械とは独立した一般情報のバルーン通知を送出する。F-23。
+        /// 更新通知など、閾値判定を必要としないアプリケーション情報に使用する。
+        /// </summary>
+        /// <param name="title">通知タイトル</param>
+        /// <param name="message">通知本文</param>
+        /// <param name="clickAction">この通知がクリックされた場合だけ実行する処理</param>
+        public void NotifyInfo(string title, string message, Action? clickAction = null)
+        {
+            _balloonClickAction = clickAction;
+            _icon?.ShowBalloonTip(5000, title, message, ToolTipIcon.Info);
+        }
+
+        /// <summary>
+        /// 現在表示中の通知に登録されたクリック処理を1回だけ実行する。
+        /// 使用率通知の表示時は処理がnullへ上書きされるため、更新ページへ誤誘導しない。
+        /// </summary>
+        private void OnBalloonTipClicked(object? sender, EventArgs e)
+        {
+            var action = _balloonClickAction;
+            _balloonClickAction = null;
+            action?.Invoke();
+        }
 
         /// <summary>
         /// 窓の現在値を評価し、閾値跨ぎ・リセット・上限到達を検知して通知を発火する。
@@ -114,6 +151,7 @@ namespace AIUsageOverlay.Services
         {
             // NotifyIcon.ShowBalloonTip は UI スレッドから呼ぶ。呼び出し元（ViewModel の更新）は
             // UI スレッド上で動作するため、ここでは直接呼び出す。
+            _balloonClickAction = null;
             _icon?.ShowBalloonTip(5000, "AIUsageOverlay", message, ToolTipIcon.Info);
         }
 

@@ -153,5 +153,31 @@ namespace AIUsageOverlay.Models
         /// </summary>
         [JsonPropertyName("sparklineRetentionHours")]
         public int SparklineRetentionHours { get; set; } = 24;
+
+        // ────────────────────────────────────────────────────────────────
+        // P5（自動アップデート検知）追加設定
+        // すべて既定値を持つため、旧 settings.json からの読み込みでも後方互換を保つ。
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// GitHub Releases の公開メタデータを取得して更新を自動確認するか。F-22。
+        /// 既定 true。false の場合は起動時・定期タイマーとも外部通信を行わない。
+        /// </summary>
+        [JsonPropertyName("autoUpdateCheckEnabled")]
+        public bool AutoUpdateCheckEnabled { get; set; } = true;
+
+        /// <summary>
+        /// 最後に更新確認の HTTP GET を開始した UTC 日時。F-22。
+        /// 自動確認の24時間ゲートに使用し、手動確認ではこの値に関係なく実行する。
+        /// </summary>
+        [JsonPropertyName("lastUpdateCheckAt")]
+        public DateTime? LastUpdateCheckAt { get; set; }
+
+        /// <summary>
+        /// 自動通知を抑制する SemVer 文字列。F-22/F-23。
+        /// 空文字列の場合はどのバージョンも抑制しない。
+        /// </summary>
+        [JsonPropertyName("skippedUpdateVersion")]
+        public string SkippedUpdateVersion { get; set; } = string.Empty;
     }
 }

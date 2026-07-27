@@ -882,6 +882,22 @@ namespace AIUsageOverlay.ViewModels
         /// </summary>
         public Models.AppSettings GetSettings() => _usageService.GetSettings();
 
+        /// <summary>
+        /// 更新確認時刻や更新確認の有効設定を UsageService 経由で永続化する。F-22。
+        /// App から settings.json へ直接書き込まず、設定の単一窓口を維持する。
+        /// </summary>
+        /// <param name="settings">保存する設定スナップショット</param>
+        public void SaveSettings(Models.AppSettings settings) => _usageService.SaveSettings(settings);
+
+        /// <summary>
+        /// 使用率の通知状態とは独立した一般情報通知を送出する。F-23。
+        /// </summary>
+        /// <param name="title">通知タイトル</param>
+        /// <param name="message">通知本文</param>
+        /// <param name="clickAction">この通知がクリックされた場合だけ実行する処理</param>
+        public void NotifyInfo(string title, string message, Action? clickAction = null)
+            => _notificationService.NotifyInfo(title, message, clickAction);
+
         /// <summary>通知の送出先 NotifyIcon を注入する（F-07。App から起動時に呼ぶ）。</summary>
         public void AttachNotifier(System.Windows.Forms.NotifyIcon icon)
             => _notificationService.Attach(icon);

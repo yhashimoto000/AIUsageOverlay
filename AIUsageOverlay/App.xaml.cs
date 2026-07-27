@@ -1,8 +1,11 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Threading;
+using AIUsageOverlay.Models;
 using AIUsageOverlay.Services;
 // WinForms / System.Drawing との名前衝突を解消するエイリアス
 using Application  = System.Windows.Application;
@@ -23,6 +26,19 @@ namespace AIUsageOverlay
     /// </summary>
     public partial class App : Application
     {
+        /// <summary>自動更新確認を始めるまでの起動後待機時間。</summary>
+        private static readonly TimeSpan InitialUpdateCheckDelay = TimeSpan.FromSeconds(30);
+
+        /// <summary>24時間ゲートを再評価するための粗い定期タイマー間隔。</summary>
+        private static readonly TimeSpan UpdateCheckTimerInterval = TimeSpan.FromHours(6);
+
+        /// <summary>自動更新確認で実際の HTTP GET を許可する最小間隔。</summary>
+        private static readonly TimeSpan AutomaticUpdateCheckInterval = TimeSpan.FromHours(24);
+
+        /// <summary>検証済みURLが無い場合に開く固定のGitHub Releases一覧。</summary>
+        private static readonly Uri ReleasesPageUri =
+            new("https://github.com/yhashimoto000/AIUsageOverlay/releases");
+
         // ────────────────────────────────────────────────────────────────
         // Win32 P/Invoke
         // ────────────────────────────────────────────────────────────────
@@ -58,6 +74,27 @@ namespace AIUsageOverlay
         /// </summary>
         private string? _lastTrayKey;
 
+        /// <summary>GitHub Releasesの取得とSemVer比較を担当する更新確認サービス。F-21。</summary>
+        private readonly UpdateCheckService _updateCheckService = new();
+
+        /// <summary>使用量更新ループと分離した更新確認専用タイマー。F-22。</summary>
+        private DispatcherTimer? _updateCheckTimer;
+
+        /// <summary>自動・手動の更新確認を1本に制限する排他制御。F-22。</summary>
+        private readonly SemaphoreSlim _updateCheckGate = new(1, 1);
+
+        /// <summary>終了時に遅延処理・HTTP取得を中断するキャンセルトークン。</summary>
+        private readonly CancellationTokenSource _updateCheckCancellation = new();
+
+        /// <summary>現在検知している、自バージョンより新しいRelease情報。</summary>
+        private UpdateInfo? _availableUpdate;
+
+        /// <summary>設定保存など、HTTPサービス外で発生した直近の更新確認エラー。</summary>
+        private string? _lastUpdateOrchestrationError;
+
+        /// <summary>状態に応じて文言とクリック動作を変えるトレイの更新項目。F-23。</summary>
+        private ToolStripMenuItem? _updateMenuItem;
+
         // ────────────────────────────────────────────────────────────────
         // 公開プロパティ
         // ────────────────────────────────────────────────────────────────
@@ -82,6 +119,8 @@ namespace AIUsageOverlay
         ///   3. NotifyIcon を初期化する（初期アイコンは静的アイコン）
         ///   4. MainWindow を生成して表示する
         ///   5. MainViewModel の PropertyChanged を購読して動的更新を開始する
+        ///   6. 通知サービスをトレイアイコンへ接続する
+        ///   7. 設定が有効な場合だけ、更新確認の遅延起動と専用タイマーを開始する
         /// </summary>
         private void App_Startup(object sender, StartupEventArgs e)
         {
@@ -112,6 +151,9 @@ namespace AIUsageOverlay
             // F-07: 通知の送出先として NotifyIcon を ViewModel（NotificationService）へ注入する
             if (_notifyIcon != null)
                 _mainWindow.ViewModel.AttachNotifier(_notifyIcon);
+
+            ApplyUpdateCheckSetting();
+            ScheduleInitialUpdateCheck();
         }
 
         /// <summary>
@@ -123,6 +165,7 @@ namespace AIUsageOverlay
         {
             // OnClosing でウィンドウを隠さないようにフラグを立てる
             IsExiting = true;
+            StopUpdateChecks();
 
             // トレイアイコンを解放する（破棄しないとアイコンがゴーストとして残る）
             _notifyIcon?.Dispose();
@@ -170,6 +213,8 @@ namespace AIUsageOverlay
         /// </summary>
         protected override void OnExit(ExitEventArgs e)
         {
+            StopUpdateChecks();
+
             if (_currentIconHandle != IntPtr.Zero)
                 DestroyIcon(_currentIconHandle);
 
@@ -237,11 +282,15 @@ namespace AIUsageOverlay
             resumeItem.Click += (_, _) => _mainWindow?.ViewModel.ClearSnooze();
             snoozeItem.DropDownItems.Add(resumeItem);
 
+            _updateMenuItem = new ToolStripMenuItem("更新を確認");
+            _updateMenuItem.Click += OnUpdateMenuItemClick;
+
             var exitItem = new ToolStripMenuItem("終了");
             exitItem.Click += (_, _) => ExitApplication();
 
             menu.Items.Add(showHideItem);
             menu.Items.Add(snoozeItem);
+            menu.Items.Add(_updateMenuItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(exitItem);
 
@@ -254,6 +303,234 @@ namespace AIUsageOverlay
             var item = new ToolStripMenuItem(label);
             item.Click += (_, _) => _mainWindow?.ViewModel.SnoozeFor(duration);
             parent.DropDownItems.Add(item);
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // 自動更新確認（F-22 / F-23）
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 現在の設定に合わせて更新確認専用タイマーを開始または停止する。
+        /// OFF の場合はタイマーを張らず、以後の自動通信を発生させない。
+        /// </summary>
+        internal void ApplyUpdateCheckSetting()
+        {
+            var enabled = _mainWindow?.ViewModel.GetSettings().AutoUpdateCheckEnabled == true;
+            if (!enabled)
+            {
+                _updateCheckTimer?.Stop();
+                return;
+            }
+
+            if (_updateCheckTimer == null)
+            {
+                _updateCheckTimer = new DispatcherTimer
+                {
+                    Interval = UpdateCheckTimerInterval
+                };
+                _updateCheckTimer.Tick += async (_, _) =>
+                    await CheckForUpdatesAsync(force: false, notifyAvailable: true);
+            }
+
+            _updateCheckTimer.Start();
+        }
+
+        /// <summary>
+        /// 起動直後のネットワーク競合を避けるため、初回の自動確認を一度だけ遅延実行する。
+        /// 遅延中に設定がOFFになった場合は実行直前の設定確認で通信を抑止する。
+        /// </summary>
+        private async void ScheduleInitialUpdateCheck()
+        {
+            try
+            {
+                await Task.Delay(InitialUpdateCheckDelay, _updateCheckCancellation.Token);
+                await CheckForUpdatesAsync(force: false, notifyAvailable: true);
+            }
+            catch (OperationCanceledException)
+            {
+                // アプリ終了に伴う通常のキャンセル。通知やエラー表示は不要。
+            }
+        }
+
+        /// <summary>
+        /// 設定画面から24時間ゲートとスキップ設定を無視して更新確認を実行し、
+        /// 画面表示用の日本語結果を返す。
+        /// </summary>
+        /// <returns>更新有無または失敗理由を示す表示文字列</returns>
+        internal async Task<string> CheckForUpdatesManuallyAsync()
+        {
+            var update = await CheckForUpdatesAsync(force: true, notifyAvailable: false);
+
+            if (!string.IsNullOrEmpty(_lastUpdateOrchestrationError))
+                return $"更新確認に失敗しました: {_lastUpdateOrchestrationError}";
+
+            if (!string.IsNullOrEmpty(_updateCheckService.LastError))
+                return $"更新確認に失敗しました: {_updateCheckService.LastError}";
+
+            return update != null
+                ? $"新しいバージョン v{update.LatestVersion} があります。トレイメニューから開けます。"
+                : "現在のバージョンが最新です。";
+        }
+
+        /// <summary>
+        /// 更新確認の有効設定・24時間ゲート・重複実行を判定してGitHub Releasesを確認する。
+        /// 手動確認では有効設定、時刻ゲート、スキップ設定を無視する。
+        /// </summary>
+        /// <param name="force">trueなら手動確認として時刻ゲートを無視する</param>
+        /// <param name="notifyAvailable">更新検知時にバルーン通知を表示するか</param>
+        /// <returns>自バージョンより新しいRelease。更新なし・失敗・実行抑止時はnull</returns>
+        private async Task<UpdateInfo?> CheckForUpdatesAsync(bool force, bool notifyAvailable)
+        {
+            if (_mainWindow == null)
+                return null;
+
+            var settings = _mainWindow.ViewModel.GetSettings();
+            if (!force && !settings.AutoUpdateCheckEnabled)
+                return null;
+
+            var now = DateTime.UtcNow;
+            if (!force
+                && settings.LastUpdateCheckAt.HasValue
+                && now - settings.LastUpdateCheckAt.Value.ToUniversalTime()
+                    < AutomaticUpdateCheckInterval)
+            {
+                return null;
+            }
+
+            var entered = force
+                ? await WaitForUpdateCheckAsync()
+                : await _updateCheckGate.WaitAsync(0);
+            if (!entered)
+                return null;
+
+            try
+            {
+                _lastUpdateOrchestrationError = null;
+
+                // HTTP GETを実行する試行時刻を保存し、失敗時の過剰な再試行も24時間ゲートで防ぐ。
+                settings.LastUpdateCheckAt = now;
+                _mainWindow.ViewModel.SaveSettings(settings);
+
+                var update = await _updateCheckService.CheckForUpdateAsync(
+                    _updateCheckCancellation.Token);
+
+                if (_updateCheckService.LastError == null)
+                {
+                    _availableUpdate = update;
+                    UpdateUpdateMenuText();
+                }
+
+                if (update != null
+                    && notifyAvailable
+                    && !string.Equals(
+                        settings.SkippedUpdateVersion,
+                        update.LatestVersion.ToString(),
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    _mainWindow.ViewModel.NotifyInfo(
+                        "AI Usage Overlay",
+                        $"新しいバージョン v{update.LatestVersion} があります",
+                        OpenReleasePage);
+                }
+
+                return update;
+            }
+            catch (OperationCanceledException) when (_updateCheckCancellation.IsCancellationRequested)
+            {
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _lastUpdateOrchestrationError =
+                    $"更新確認の設定保存または画面反映に失敗しました: {ex.Message}";
+                Trace.TraceWarning(
+                    $"Update check orchestration failure: {ex.GetType().Name}: {ex.Message}");
+                return null;
+            }
+            finally
+            {
+                _updateCheckGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// 手動確認が自動確認と重なった場合は、既存確認の完了後に確実に実行権を取得する。
+        /// 終了キャンセル時だけ false を返す。
+        /// </summary>
+        private async Task<bool> WaitForUpdateCheckAsync()
+        {
+            try
+            {
+                await _updateCheckGate.WaitAsync(_updateCheckCancellation.Token);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>更新検知状態に合わせてトレイメニューの文言を更新する。</summary>
+        private void UpdateUpdateMenuText()
+        {
+            if (_updateMenuItem == null)
+                return;
+
+            _updateMenuItem.Text = _availableUpdate == null
+                ? "更新を確認"
+                : $"更新があります (v{_availableUpdate.LatestVersion})";
+        }
+
+        /// <summary>
+        /// トレイの更新項目を処理する。更新検知済みならReleaseを開き、
+        /// 未検知なら手動確認後に結果を通知する。
+        /// </summary>
+        private async void OnUpdateMenuItemClick(object? sender, EventArgs e)
+        {
+            if (_availableUpdate != null)
+            {
+                OpenReleasePage();
+                return;
+            }
+
+            var result = await CheckForUpdatesManuallyAsync();
+            if (_availableUpdate != null)
+            {
+                OpenReleasePage();
+                return;
+            }
+
+            _mainWindow?.ViewModel.NotifyInfo("AI Usage Overlay", result);
+        }
+
+        /// <summary>
+        /// パーサーで検証済みのRelease URLを既定ブラウザで開く。
+        /// URL欠落時は固定のGitHub Releases一覧へフォールバックする。
+        /// </summary>
+        private void OpenReleasePage()
+        {
+            var target = _availableUpdate?.HtmlUrl ?? ReleasesPageUri;
+
+            try
+            {
+                Process.Start(new ProcessStartInfo(target.AbsoluteUri)
+                {
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                _mainWindow?.ViewModel.NotifyInfo(
+                    "AI Usage Overlay",
+                    $"リリースページを開けませんでした: {ex.Message}");
+            }
+        }
+
+        /// <summary>更新確認タイマーと遅延・HTTP処理を終了時に停止する。</summary>
+        private void StopUpdateChecks()
+        {
+            _updateCheckTimer?.Stop();
+            _updateCheckCancellation.Cancel();
         }
 
         // ────────────────────────────────────────────────────────────────

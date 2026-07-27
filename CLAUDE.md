@@ -121,7 +121,7 @@
   - `ViewModels/MainViewModel.cs` — `INotifyPropertyChanged` / `DispatcherTimer`
   - `App.xaml(.cs)` 起動・トレイアイコン生成 / `MainWindow` オーバーレイ / `SettingsWindow` / `LoginWindow`
 - 触ってはいけない領域 / 注意:
-  - データ取得は各サービスとの直接通信のみ。**外部サーバー送信（テレメトリ等）を追加しない。**
+  - データ取得は各サービス（Claude / GitHub Copilot / Codex）との直接通信、および更新チェック等に必要な公開メタデータの HTTPS GET のみに限定する。**利用データ・認証情報・テレメトリ等を外部サーバーへ送信しない。**
   - パース処理は必ず `Services/Parsing/` の Parser クラスに置き、Scraper には WebView2 制御・JS 傍受のみ残す。
   - プロパティ更新は `MainViewModel.SetProperty<T>` を使う（手動で `PropertyChanged` を発火しない）。
   - `_gitHubEverLoaded` 等のフラグによる「取得失敗時の前回表示維持（ちらつき防止）」を壊さない。

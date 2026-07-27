@@ -209,7 +209,7 @@
                                       Style="{StaticResource ToggleSwitch}"/>
                         </Grid>
 
-                        <Grid>
+                        <Grid Margin="0,0,0,18">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -221,6 +221,37 @@
                             <CheckBox x:Name="StartupCheckBox" Grid.Column="1"
                                       Style="{StaticResource ToggleSwitch}"/>
                         </Grid>
+
+                        <Border BorderBrush="#303036" BorderThickness="0,1,0,0" Margin="0,0,0,18"/>
+
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="自動で更新を確認する" Style="{StaticResource BodyText}"/>
+                                <TextBlock Text="GitHub Releases の公開情報を24時間ごとに確認します。利用データは送信しません。"
+                                           Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                            <CheckBox x:Name="AutoUpdateCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
+
+                        <StackPanel>
+                            <TextBlock Text="バージョン情報" Style="{StaticResource SectionLabel}"/>
+                            <DockPanel LastChildFill="False">
+                                <TextBlock x:Name="CurrentVersionTextBlock" DockPanel.Dock="Left"
+                                           Text="現在のバージョン: --"
+                                           Style="{StaticResource BodyText}" VerticalAlignment="Center"/>
+                                <Button x:Name="CheckUpdatesButton" DockPanel.Dock="Right"
+                                        Content="今すぐ確認" Style="{StaticResource FlatButton}"
+                                        Background="#26262B" Foreground="#D4D4D8"
+                                        Click="CheckUpdatesNow_Click"/>
+                            </DockPanel>
+                            <TextBlock x:Name="UpdateCheckStatusTextBlock"
+                                       Style="{StaticResource HintLabel}"/>
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- ============ 表示項目 ============ -->
