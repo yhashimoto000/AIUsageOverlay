@@ -95,12 +95,6 @@ namespace AIUsageOverlay
         /// <summary>状態に応じて文言とクリック動作を変えるトレイの更新項目。F-23。</summary>
         private ToolStripMenuItem? _updateMenuItem;
 
-        /// <summary>更新通知バルーンのクリックをReleaseページへ結び付ける短時間フラグ。</summary>
-        private bool _updateBalloonClickEnabled;
-
-        /// <summary>古い遅延解除処理が新しい更新通知フラグを消さないための世代番号。</summary>
-        private int _updateBalloonGeneration;
-
         // ────────────────────────────────────────────────────────────────
         // 公開プロパティ
         // ────────────────────────────────────────────────────────────────
@@ -258,7 +252,6 @@ namespace AIUsageOverlay
 
             // ダブルクリックで表示 / 非表示をトグルする
             _notifyIcon.DoubleClick += (_, _) => ToggleMainWindow();
-            _notifyIcon.BalloonTipClicked += OnBalloonTipClicked;
 
             // 右クリックメニューを構築する
             _notifyIcon.ContextMenuStrip = BuildTrayContextMenu();
@@ -434,10 +427,10 @@ namespace AIUsageOverlay
                         update.LatestVersion.ToString(),
                         StringComparison.OrdinalIgnoreCase))
                 {
-                    EnableUpdateBalloonClick();
                     _mainWindow.ViewModel.NotifyInfo(
                         "AI Usage Overlay",
-                        $"新しいバージョン v{update.LatestVersion} があります");
+                        $"新しいバージョン v{update.LatestVersion} があります",
+                        OpenReleasePage);
                 }
 
                 return update;
@@ -508,37 +501,6 @@ namespace AIUsageOverlay
             }
 
             _mainWindow?.ViewModel.NotifyInfo("AI Usage Overlay", result);
-        }
-
-        /// <summary>
-        /// 更新通知バルーンのクリックをReleaseページへ結び付ける。
-        /// 使用率通知のクリックを誤認しないよう、更新通知直後の短時間だけ有効化する。
-        /// </summary>
-        private void OnBalloonTipClicked(object? sender, EventArgs e)
-        {
-            if (!_updateBalloonClickEnabled || _availableUpdate == null)
-                return;
-
-            _updateBalloonClickEnabled = false;
-            OpenReleasePage();
-        }
-
-        /// <summary>更新通知のクリック受付を有効化し、10秒後に同じ世代だけ無効化する。</summary>
-        private async void EnableUpdateBalloonClick()
-        {
-            _updateBalloonClickEnabled = true;
-            var generation = ++_updateBalloonGeneration;
-
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(10), _updateCheckCancellation.Token);
-                if (generation == _updateBalloonGeneration)
-                    _updateBalloonClickEnabled = false;
-            }
-            catch (OperationCanceledException)
-            {
-                _updateBalloonClickEnabled = false;
-            }
         }
 
         /// <summary>

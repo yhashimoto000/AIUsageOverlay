@@ -894,8 +894,9 @@ namespace AIUsageOverlay.ViewModels
         /// </summary>
         /// <param name="title">通知タイトル</param>
         /// <param name="message">通知本文</param>
-        public void NotifyInfo(string title, string message)
-            => _notificationService.NotifyInfo(title, message);
+        /// <param name="clickAction">この通知がクリックされた場合だけ実行する処理</param>
+        public void NotifyInfo(string title, string message, Action? clickAction = null)
+            => _notificationService.NotifyInfo(title, message, clickAction);
 
         /// <summary>通知の送出先 NotifyIcon を注入する（F-07。App から起動時に呼ぶ）。</summary>
         public void AttachNotifier(System.Windows.Forms.NotifyIcon icon)
