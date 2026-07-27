@@ -46,6 +46,15 @@ namespace AIUsageOverlay.Services
         public void Attach(NotifyIcon icon) => _icon = icon;
 
         /// <summary>
+        /// 使用率の通知状態機械とは独立した一般情報のバルーン通知を送出する。F-23。
+        /// 更新通知など、閾値判定を必要としないアプリケーション情報に使用する。
+        /// </summary>
+        /// <param name="title">通知タイトル</param>
+        /// <param name="message">通知本文</param>
+        public void NotifyInfo(string title, string message)
+            => _icon?.ShowBalloonTip(5000, title, message, ToolTipIcon.Info);
+
+        /// <summary>
         /// 窓の現在値を評価し、閾値跨ぎ・リセット・上限到達を検知して通知を発火する。
         /// 初回（その窓の前回値が無い）呼び出しはベースライン記録のみで通知しない（起動時の連発防止）。
         /// </summary>
