@@ -1,11 +1,12 @@
 @echo off
-setlocal
+setlocal EnableExtensions EnableDelayedExpansion
 
 REM ----------------------------------------------------------------
 REM build-release.bat
 REM Publishes AIUsageOverlay as a framework-dependent exe.
 REM Output: publish\                     (exe + native DLLs)
 REM         AIUsageOverlay_release.zip   (distribution zip)
+REM Usage : build-release.bat [version]  (example: 2.0.0)
 REM
 REM Framework-dependent: the .NET runtime is NOT bundled, so the exe
 REM is small (~1-2MB instead of ~70MB). The target PC must have the
@@ -17,6 +18,18 @@ set ROOT=%~dp0
 set PROJECT=%ROOT%AIUsageOverlay\AIUsageOverlay.csproj
 set PROJDIR=%ROOT%AIUsageOverlay
 set OUTPUT=%ROOT%publish
+set "BUILD_VERSION=%~1"
+set "VERSION_ARG="
+
+REM Accept SemVer only before passing the value to MSBuild.
+if defined BUILD_VERSION (
+    powershell -NoProfile -Command "if ($env:BUILD_VERSION -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$') { exit 1 }"
+    if !ERRORLEVEL! neq 0 (
+        echo [ERROR] Version must use SemVer without a leading v.
+        exit /b 1
+    )
+    set "VERSION_ARG=-p:Version=!BUILD_VERSION!"
+)
 
 echo.
 echo ========================================
@@ -83,6 +96,7 @@ dotnet publish "%PROJECT%" ^
   --self-contained false ^
   -p:PublishSingleFile=true ^
   -p:DebugType=none ^
+  !VERSION_ARG! ^
   -o "%OUTPUT%"
 
 if %ERRORLEVEL% neq 0 (

@@ -55,7 +55,15 @@ jobs:
         run: dotnet restore AIUsageOverlay/AIUsageOverlay.csproj
 
       # ──────────────────────────────────────────────────────────
-      # 4. 発行
+      # 4. タグ名からバージョン番号を取得（例: v2.0.0 → 2.0.0）
+      # ──────────────────────────────────────────────────────────
+      - name: Extract version from tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # ──────────────────────────────────────────────────────────
+      # 5. 発行
       #    --self-contained true  : .NET ランタイム同梱
       #    PublishSingleFile=true : マネージドコードを 1 exe に圧縮
       #    IncludeNativeLibrariesForSelfExtract は指定しない:
@@ -68,18 +76,19 @@ jobs:
             -c Release `
             -r win-x64 `
             --self-contained true `
+            -p:Version=${{ steps.version.outputs.version }} `
             -p:PublishSingleFile=true `
             -p:EnableCompressionInSingleFile=true `
             -o publish/
 
       # ──────────────────────────────────────────────────────────
-      # 4b. 配布用 zip を作成
+      # 5b. 配布用 zip を作成
       #     .pdb（デバッグ）/ .xml（IntelliSense）は除外する
       # ──────────────────────────────────────────────────────────
       - name: Create release zip
         shell: pwsh
         run: |
-          $ver = "${{ github.ref_name }}"
+          $ver = "v${{ steps.version.outputs.version }}"
           $zip = "AIUsageOverlay_${ver}.zip"
           $tmp = Join-Path $env:TEMP "aiusage_zip_tmp"
           Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -88,14 +97,6 @@ jobs:
           Compress-Archive -Path "$tmp\*" -DestinationPath $zip -Force
           Remove-Item $tmp -Recurse -Force
           Write-Host "Created: $zip"
-
-      # ──────────────────────────────────────────────────────────
-      # 5. タグ名からバージョン番号を取得（例: v1.0.0 → 1.0.0）
-      # ──────────────────────────────────────────────────────────
-      - name: Extract version from tag
-        id: version
-        shell: bash
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
       # ──────────────────────────────────────────────────────────
       # 6. GitHub Release を作成し、exe をアセットとして添付
