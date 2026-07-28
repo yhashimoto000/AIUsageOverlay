@@ -28,7 +28,7 @@ CodexBar には Windows 移植版 **Win-CodexBar**（Rust + Tauri、winget: `Fin
 
 - **常時表示オーバーレイ**: Win-CodexBar はトレイクリックで開くパネル方式。作業中に視界へ常駐させる本アプリの用途とは異なる。
 - **認証方式**: Win-CodexBar の Claude 取得はブラウザ Cookie 抽出が優先（Chrome の App-Bound Encryption 対策等が必要で環境依存が強い）。本アプリの WebView2 ログインセッション方式は自己完結しており、この安定性は維持する価値がある。
-- **日本語 UI・軽量単一 exe**。
+- **日本語UI・インストーラー不要のzip配布**。
 
 ## 2. 参照
 
@@ -82,7 +82,7 @@ CodexBar には Windows 移植版 **Win-CodexBar**（Rust + Tauri、winget: `Fin
 | 適応更新間隔 | ○（2分〜30分） | ×（固定30秒） | F-10 |
 | 更新スヌーズ | ○ | × | F-11 |
 | プロバイダ稼働ステータス監視 | ○ | × | F-12 |
-| トレイポップアップカード / Merge Icons / 複数アカウント / ウィジェット / CLI / 自動更新 | ○ | × | スコープ外 |
+| トレイポップアップカード / Merge Icons / 複数アカウント / ウィジェット / CLI / 自動更新 | ○ | ×（本仕様策定時） | 本仕様ではスコープ外 |
 
 ## 4. 変更方針とスコープ
 
@@ -110,12 +110,14 @@ CodexBar には Windows 移植版 **Win-CodexBar**（Rust + Tauri、winget: `Fin
 - **トレイポップアップカード（CodexBar の MenuCardView 相当）**: ユーザー決定によりオーバーレイ改良方針を採用。将来フェーズ候補。
 - **Merge Icons / プロバイダ別トレイアイコン複数表示**: トレイは1アイコン維持。ツールチップ拡充で代替。
 - **複数アカウント対応**: WebView2 プロファイルが1系統のため大規模改修になる。
-- **ウィジェット / CLI / Sparkle 型自動更新**: 配布形態（単一 self-contained exe + GitHub Release）と乖離。
+- **ウィジェット / CLI / Sparkle型自動更新**: 本仕様ではスコープ外。自動更新は後続の
+  [`SPEC_Auto_Update_Feature.md`](SPEC_Auto_Update_Feature.md)で、自前実装のP5（検知・通知・手動ダウンロード導線）としてv2.0.0に実装済み。
+  Sparkle型の更新方式と、ダウンロード・自己適用を行うP6は引き続き未実装。
 - **OAuth / ブラウザ Cookie 直読みによる取得方式変更**: 現行 WebView2 傍受方式は安定稼働しており、取得層は変更しない。
 
 ### 4.3 プロジェクト制約との整合（CLAUDE.md 準拠）
 
-- **外部サーバー送信の禁止**: 本仕様の全機能は送信を行わない。F-12 のみ各ベンダー公式ステータスページ（Statuspage API）への **読み取り GET** が発生するため、既定 OFF のオプトイン設定とする。
+- **外部通信の制限**: 利用データ・認証情報・テレメトリ等を外部送信しない。本仕様のF-12は各ベンダー公式ステータスページ（Statuspage API）への**読み取りGET**のみだが、通信先を増やすため既定OFFのオプトイン設定とする。後続P5の更新確認は、承認済みルールに基づきGitHubの公開メタデータをGETする。
 - **パーサは `Services/Parsing/` に配置**: F-08 の JSONL パーサは `Services/Parsing/` に新設し、ファイル列挙・キャッシュは Service 層に置く。
 - **`MainViewModel.SetProperty<T>` を使用**: 追加プロパティはすべて同ヘルパー経由。
 - **`_gitHubEverLoaded` 等のちらつき防止を壊さない**: F-02 は「前回値保持」を置換せず、その上に stale 視覚表現を追加する。
