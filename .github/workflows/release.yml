@@ -6,7 +6,7 @@
 #
 # 処理内容:
 #   1. .NET 9 SDK をセットアップ
-#   2. dotnet publish で単一 exe（self-contained）を生成
+#   2. dotnet publish で self-contained のアプリ一式を生成
 #   3. 配布 zip と checksums.txt を GitHub Release に添付
 #
 # 自動アップデートが参照する配布物はこのワークフローの self-contained zip のみ。
@@ -121,7 +121,7 @@ jobs:
           "$hash  $name" | Out-File -FilePath checksums.txt -Encoding ascii
 
       # ──────────────────────────────────────────────────────────
-      # 6. GitHub Release を作成し、exe をアセットとして添付
+      # 6. GitHub Release を作成し、zip と checksums.txt をアセットとして添付
       #    draft: false  → 即時公開
       #    prerelease: SemVer の prerelease 識別子（"-"）を含む場合は true
       # ──────────────────────────────────────────────────────────
@@ -143,7 +143,8 @@ jobs:
               - 未インストールの場合は [WebView2 Runtime](https://developer.microsoft.com/ja-jp/microsoft-edge/webview2/) を別途インストール
 
             ### 初回セットアップ
-            起動後、オーバーレイを右クリック → **ログイン** から claude.ai にログインしてください。
+            起動後、オーバーレイを右クリックし、表示するサービスに応じて **ログイン - Claude** /
+            **ログイン - GitHub** / **ログイン - Codex** からログインしてください。
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |

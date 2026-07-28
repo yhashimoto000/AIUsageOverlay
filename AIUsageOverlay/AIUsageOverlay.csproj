@@ -4,7 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <!-- 開発時の既定値。GitHub Release ビルドではタグ由来の値で上書きする -->
-    <Version>2.0.0</Version>
+    <Version>2.0.1</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>

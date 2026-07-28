@@ -6,7 +6,7 @@ REM build-release.bat
 REM Publishes AIUsageOverlay as a framework-dependent exe.
 REM Output: publish\                     (exe + native DLLs)
 REM         AIUsageOverlay_release.zip   (distribution zip)
-REM Usage : build-release.bat [version]  (example: 2.0.0)
+REM Usage : build-release.bat [version]  (format: X.Y.Z)
 REM
 REM Framework-dependent: the .NET runtime is NOT bundled, so the exe
 REM is small (~1-2MB instead of ~70MB). The target PC must have the

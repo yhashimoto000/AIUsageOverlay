@@ -6,18 +6,18 @@
 | 対象 | AIUsageOverlay（C# / .NET 9 WPF、`net9.0-windows`） |
 | 起票理由 | 新バージョン公開時に、アプリ側で更新を検知・通知し、半自動で適用できるようにする |
 | 配布経路 | GitHub Releases（`release.yml` が v* タグ push で zip を自動添付） |
-| 適用方式 | 半自動（ダウンロードはアプリが自動、適用はユーザーがボタン操作） |
+| 適用方式 | 現在のP5は通知＋Releaseページからの手動取得。P6では半自動（ダウンロードはアプリ、適用はユーザー操作）を計画 |
 | バージョン体系 | SemVer に統一。**v2.0.0 で仕切り直し**（過去タグ v1.40 等の表記揺れは比較対象外として無視） |
 | ヘルパー形態 | 小型 `updater.exe`（P6。フォルダ差し替え専用の第二成果物） |
 | 完全性検証 | SHA256 照合を追加（`checksums.txt` を Release 同梱）。**当面は無署名**（検証後 MOTW 除去で SmartScreen 回避） |
 | 粒度 | 機能 F-18〜F-27 / フェーズ P5（検知・通知）〜P6（半自動適用） |
-| 実装状況 | **P5（F-18〜F-24）実装済み**（2026-07-27）。P6（F-25〜F-27）は未着手。 |
-| ビルド検証 | P5 実装後の `dotnet build AIUsageOverlay/AIUsageOverlay.csproj -c Release` は成功（警告0・エラー0）。 |
+| 実装状況 | **P5（F-18〜F-24）実装済み**（2026-07-27）。v2.0.1で実リリース検証を行う。P6（F-25〜F-27）は未着手。 |
+| ビルド検証 | P5実装後およびv2.0.1リリース準備時の結果を `TEST_Auto_Update_P5.md` に記録する。 |
 
 ### 前提条件（実装前に確定・整備が必要）
 1. **リポジトリの public 化**: ✅ 完了（`github.com/yhashimoto000/AIUsageOverlay` は public 化済み、確認済み）。未認証 `GET /repos/{owner}/{repo}/releases/latest` が利用可能。
 2. **owner/repo の確定**: 本書は `yhashimoto000/AIUsageOverlay` を API URL に用いる前提。相違があれば実装時に修正。
-3. **csproj `<Version>` の設定**: ✅ 完了（F-18）。`<Version>2.0.0</Version>` を開発時フォールバックとして追加し、Release ビルドではタグ由来の値を注入する。
+3. **csproj `<Version>` の設定**: ✅ 完了（F-18）。v2.0.1リリース準備時点では`<Version>2.0.1</Version>`を開発時フォールバックとし、Releaseビルドではタグ由来の値を注入する。
 4. **CLAUDE.md / AGENTS.md 改定提案の承認**: ✅ 完了（2026-07-27）。公開メタデータの HTTPS GET を許可し、利用データ・認証情報・テレメトリ等の外部送信禁止を維持する文言へ改定済み。
 
 ---
@@ -29,7 +29,7 @@
 多観点の技術精査（5観点）の結論は次のとおり。
 
 - **自前実装が最適**。自己更新ライブラリ（Velopack 等）は技術的に優れる（delta・rollback 内蔵）が、独自パッケージ形式・独自インストールレイアウトを強制し、**現在の素 zip 配布・`release.yml` を全面的に作り替える**ことになる。最小依存方針・既存リリース資産の温存に反するため不採用。将来 delta やロールバックが必須要件になった時点で「配布方式ごと移行」を判断する。
-- **最大の落とし穴**: `csproj` に `<Version>` が無いため exe が自分を `1.0.0` と認識する。また SemVer 比較に `System.Version` は使えない（`v1.40` を `1.40` と解釈し、将来の `v1.7.0` を旧版と誤順序にする）。この土台を最初に固める。
+- **実装前に確認した最大の落とし穴**: `csproj` に `<Version>` が無いため exe が自分を `1.0.0` と認識していた。また SemVer 比較に `System.Version` は使えない（`v1.40` を `1.40` と解釈し、将来の `v1.7.0` を旧版と誤順序にする）。P5ではこの土台から修正した。
 - **実行中プロセスの自己差し替えは罠が多い**ため、段階分けする。P5（検知・通知・手動 DL 導線）は外部への GET とローカル UI だけで完結し危険がない。P6（半自動適用）でファイル差し替えの本丸に踏み込む。
 
 ### CLAUDE.md「データ取得は各サービスとの直接通信のみ。外部サーバー送信（テレメトリ等）を追加しない。」との整合
@@ -50,7 +50,7 @@ CLAUDE.md の当該行（`触ってはいけない領域`）は二つの要素�
 
 | ファイル | 参照内容 |
 |----------|----------|
-| `AIUsageOverlay/AIUsageOverlay.csproj` | `<Version>2.0.0</Version>` 設定済み。`PublishSingleFile=true`、ネイティブ DLL は exe 外部出力 |
+| `AIUsageOverlay/AIUsageOverlay.csproj` | v2.0.1リリース準備時点の開発用既定値は`<Version>2.0.1</Version>`。SingleFile設定とネイティブDLLの出力方式はRelease workflow / batchのpublish引数で指定 |
 | `.github/workflows/release.yml` | v* タグ由来の版数を `-p:Version` と zip 名へ注入し、self-contained zip と `checksums.txt` を Release 添付。prerelease はタグ内の `-` で判定 |
 | `build-release.bat` | ローカルは `--self-contained false`（CI と方針差、§10 R-8） |
 | `App.xaml.cs` | F-22 の起動遅延・専用タイマー・24hゲート、および F-23 のトレイメニュー・通知・ブラウザ導線を実装済み。Mutex（F-25）・適用起動（F-27）は未実装 |
@@ -64,7 +64,7 @@ CLAUDE.md の当該行（`触ってはいけない領域`）は二つの要素�
 
 ## 3. 機能対比サマリ
 
-| 機能 | 現状 | 本仕様 | F番号 | フェーズ |
+| 機能 | P5実装前 | P5/P6の仕様 | F番号 | フェーズ |
 |------|------|--------|-------|----------|
 | 自バージョン | exe が自分を 1.0.0 と誤認 | csproj `<Version>`＋タグ注入で正しい版を保持 | F-18 | P5 |
 | バージョン比較 | なし | 軽量 SemVer 型（3成分厳密、非 SemVer タグ無視） | F-19 | P5 |
@@ -118,10 +118,10 @@ CLAUDE.md の当該行（`触ってはいけない領域`）は二つの要素�
 
 **概要**: exe が自分の正しい版数を持てるようにする。これが全機能の土台。
 
-**現状**: csproj に `<Version>` が無く、生成 AssemblyInfo は `1.0.0`。`release.yml` も `-p:Version` を注入しないため、どのタグでビルドしても exe は自分を 1.0.0 と認識する。
+**P5実装前**: csproj に `<Version>` が無く、生成 AssemblyInfo は `1.0.0`。`release.yml` も`-p:Version`を注入しないため、どのタグでビルドしてもexeは自分を1.0.0と認識していた。
 
 **本アプリでの仕様**:
-- `AIUsageOverlay.csproj` に `<Version>2.0.0</Version>` を追加（仕切り直しの初期値。開発時フォールバック）。
+- `AIUsageOverlay.csproj`に開発時フォールバックの`<Version>`を設定する。v2.0.1リリース準備時点の値は`2.0.1`。
 - `release.yml` 内の「Extract version from tag」ステップ（既存・`shell: bash`、タグから `v` を除去し `steps.version.outputs.version` を出力）を「Publish executable」ステップより**前**（Restore の直後）に移動する。
 - 「Extract version from tag」ステップでタグを厳密な SemVer として検証し、`v2.1`、空識別子、数値 prerelease の先頭ゼロなどを含む不正タグは publish 前に失敗させる。
 - 「Publish executable」ステップ（`shell` 未指定＝Windows既定の pwsh。既存の `run:` はバックティックによる pwsh 行継続で書かれている）はシェルを変えずそのまま維持し、`dotnet publish` の引数に `-p:Version=${{ steps.version.outputs.version }}` を追加する。`${{ }}` は GitHub Actions がシェル実行前にテンプレート置換するため、pwsh/bash どちらのステップからでもシェル非依存に参照できる。これにより**タグを単一の真実源**にする（例 `v2.0.0` → `2.0.0`）。
@@ -132,7 +132,7 @@ CLAUDE.md の当該行（`触ってはいけない領域`）は二つの要素�
 **変更・新規ファイル**:
 | ファイル | 変更 |
 |----------|------|
-| `AIUsageOverlay.csproj` | `<Version>2.0.0</Version>` 追加 |
+| `AIUsageOverlay.csproj` | 開発時フォールバックの`<Version>`を設定。リリースごとにタグと同じ値へ更新 |
 | `.github/workflows/release.yml` | 「Extract version from tag」ステップを Restore 直後（Publish executable より前）へ移動。「Publish executable」（pwsh既定のまま）の `dotnet publish` に `-p:Version=${{ steps.version.outputs.version }}` を注入。「Create release zip」の zip 名生成も同じ出力を再利用するよう統一 |
 | （実行時取得は F-21 の UpdateCheckService に実装） | — |
 
@@ -391,7 +391,7 @@ Before                          After（P5）                         After（P6
 ### 7.2 SettingsWindow（バージョン情報欄・新規タブ or 既存タブ末尾）
 | 要素 | 内容 |
 |------|------|
-| 現在のバージョン | `v2.0.0`（F-18 の実行時取得） |
+| 現在のバージョン | `vX.Y.Z`（F-18 の実行時取得。公式Releaseではタグ由来） |
 | 自動で更新を確認する | チェックボックス（`AutoUpdateCheckEnabled`） |
 | 今すぐ確認 | ボタン（24h ゲート無視で即チェック→結果表示） |
 | （P6）ダウンロード状況 / 適用 | 「更新をダウンロード」「適用して再起動」ボタン |
@@ -429,10 +429,12 @@ P6: 半自動適用（P5 完了後）
 ## 9. テスト観点（手動確認項目）
 
 自動テストプロジェクトは無いため、Windows 実機で確認する。
+v2.0.0からv2.0.1への実リリース検証手順・結果は
+[`TEST_Auto_Update_P5.md`](TEST_Auto_Update_P5.md)に記録する。
 
 | 対象(F) | 確認項目 |
 |---------|----------|
-| F-18 | タグ `v2.0.0` でビルドした exe が自分を `2.0.0` と認識する（1.0.0 固定バグの解消） |
+| F-18 | タグ`v2.0.1`でビルドしたexeが自分を`2.0.1`と認識する。引数なしのローカルビルドもcsprojの既定値`2.0.1`を認識する |
 | F-19 | `v2.1.0 > v2.0.0` を検知。`v1.40` 等の非 SemVer タグは無視される。`-rc.1` が安定版より古いと判定される |
 | F-20 | 実際の Release JSON から tag/DL URL/size が正しく抽出される |
 | F-21 | 最新版が自分より新しいときのみ更新ありと判定。ネットワーク失敗時にクラッシュせずサイレント |
@@ -450,7 +452,7 @@ P6: 半自動適用（P5 完了後）
 
 | # | リスク | 対応 |
 |---|--------|------|
-| R-1 | csproj Version 未設定で比較が成立しない | F-18 を最優先。タグ注入を真実源に |
+| R-1 | csproj Version未設定、または開発用既定値の更新漏れで比較が成立しない | F-18で対応済み。タグ注入を真実源とし、リリース時はcsprojの既定値も同じ版へ更新 |
 | R-2 | `System.Version` で `v1.40` を誤順序 | F-19 の厳密 SemVer で3成分のみ受理、非 SemVer は無視 |
 | R-3 | 未署名 exe の SmartScreen 警告 | 検証後 MOTW 除去で回避（安全シグナル削除のトレードオフを承知の上）。将来署名を検討 |
 | R-4 | 同一チャネル配布で改ざん検知不可 | SHA256 は破損検知どまり。改ざん耐性は発行アカウント 2FA＋タグ保護で割り切り、真の耐性は署名でのみ |
