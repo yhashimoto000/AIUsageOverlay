@@ -13,6 +13,8 @@ using Brush          = System.Windows.Media.Brush;
 using Button         = System.Windows.Controls.Button;
 using Color          = System.Windows.Media.Color;
 using ColorConverter = System.Windows.Media.ColorConverter;
+// UseWindowsForms 有効化で System.Windows.Forms.MessageBox と衝突するためエイリアスで固定する
+using MessageBox     = System.Windows.MessageBox;
 using Point          = System.Windows.Point;
 
 namespace AIUsageOverlay
@@ -134,13 +136,37 @@ namespace AIUsageOverlay
         }
 
         private async void Login_Click(object sender, RoutedEventArgs e)
-            => await _usageService.ShowLoginWindowAsync();
+            => await ShowLoginWindowSafeAsync(_usageService.ShowLoginWindowAsync, "Claude");
 
         private async void GitHubLogin_Click(object sender, RoutedEventArgs e)
-            => await _usageService.ShowGitHubLoginWindowAsync();
+            => await ShowLoginWindowSafeAsync(_usageService.ShowGitHubLoginWindowAsync, "GitHub");
 
         private async void CodexLogin_Click(object sender, RoutedEventArgs e)
-            => await _usageService.ShowCodexLoginWindowAsync();
+            => await ShowLoginWindowSafeAsync(_usageService.ShowCodexLoginWindowAsync, "Codex");
+
+        /// <summary>
+        /// ログインウィンドウ表示を例外安全に呼び出す。
+        /// WebView2 の初期化（Environment 作成）が失敗すると async void ハンドラから
+        /// 例外が抜けてアプリごと落ちるため、ここで捕捉して案内に留める。
+        /// 失敗した WebView2 は次回の取得・ログイン操作で作り直されるため、再試行で復帰できる。
+        /// </summary>
+        /// <param name="showLoginAsync">各サービスのログインウィンドウ表示処理</param>
+        /// <param name="serviceName">エラー表示に使うサービス名</param>
+        private static async Task ShowLoginWindowSafeAsync(Func<Task> showLoginAsync, string serviceName)
+        {
+            try
+            {
+                await showLoginAsync();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"{serviceName} のログイン画面を開けませんでした。\n" +
+                    $"{ex.GetType().Name}: {ex.Message}\n\n" +
+                    "少し待ってからもう一度お試しください（WebView2 は自動で再初期化されます）。",
+                    "エラー", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
 
         private void ResetSession_Click(object sender, RoutedEventArgs e)
             => _viewModel.ResetSession();

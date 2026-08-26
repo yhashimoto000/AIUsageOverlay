@@ -41,6 +41,13 @@ namespace AIUsageOverlay
         private bool _navigationEventsAttached;
 
         /// <summary>
+        /// 黒画面（描画失敗）検知時の再読み込みを一度だけ行うためのフラグ。
+        /// レンダラーの一時的な失敗はリロードで復旧することがあるため、
+        /// エラーバナーを出す前に 1 回だけ自動で読み直す。
+        /// </summary>
+        private bool _renderRecoveryAttempted;
+
+        /// <summary>
         /// ログインウィンドウを初期化する。
         /// </summary>
         /// <param name="env">WebView2 の共有 Environment（Cookie を引き継ぐために共有する）</param>
@@ -97,6 +104,7 @@ namespace AIUsageOverlay
                 {
                     LoginWebView.CoreWebView2.NavigationStarting  += OnNavigationStarting;
                     LoginWebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+                    LoginWebView.CoreWebView2.ProcessFailed       += OnProcessFailed;
                     _navigationEventsAttached = true;
                 }
                 LoginWebView.CoreWebView2.Navigate(_loginUrl);
@@ -199,10 +207,45 @@ namespace AIUsageOverlay
         private void ReloadButton_Click(object sender, RoutedEventArgs e)
         {
             _autoRetryCount = 0;
+            _renderRecoveryAttempted = false;   // 手動再試行では黒画面の自動復旧も再度許可する
             HideErrorBanner();
             LoginWebView.CoreWebView2?.Reload();
         }
 
+        /// <summary>
+        /// WebView2 のプロセス異常終了ハンドラ。
+        /// レンダラープロセスの終了はページの再読み込みで復帰することが多いため、まず再読み込みする。
+        /// ブラウザプロセス自体が落ちた場合はこのウィンドウの WebView2 では回復できない
+        /// （Environment ごと作り直す必要がある）ため、開き直しを促す案内を出す。
+        /// 呼び出し元のスクレイパ側は次回取得時に Environment を作り直すため、
+        /// このウィンドウを閉じてログインを開き直せば正常な画面になる。
+        /// </summary>
+        private void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+        {
+            // サブフレームのみのクラッシュはログイン操作に影響しないため何もしない
+            if (e.ProcessFailedKind == CoreWebView2ProcessFailedKind.FrameRenderProcessExited)
+                return;
+
+            if (e.ProcessFailedKind == CoreWebView2ProcessFailedKind.BrowserProcessExited)
+            {
+                ShowErrorBanner(
+                    "WebView2 のブラウザプロセスが終了しました。\n" +
+                    "このウィンドウを閉じて、もう一度ログインを開いてください（自動で再初期化します）。");
+                return;
+            }
+
+            // レンダラー系の失敗は再読み込みで復帰を試みる
+            Dispatcher.Invoke(() =>
+            {
+                ShowErrorBanner($"ページの表示処理が停止しました（{e.ProcessFailedKind}）。再読み込みします。");
+                LoginWebView.CoreWebView2?.Reload();
+            });
+        }
+
+        /// <summary>
+        /// ページが実質空（黒画面）で表示されていないかを判定する。
+        /// 空だった場合は 1 回だけ自動で再読み込みして再判定し、それでも空ならエラーバナーを出す。
+        /// </summary>
         private async Task CheckRenderAsync()
         {
             try
@@ -211,8 +254,22 @@ namespace AIUsageOverlay
                 var result = await LoginWebView.CoreWebView2.ExecuteScriptAsync(
                     "document.body ? document.body.innerHTML.length.toString() : '0'");
                 var lengthStr = result?.Trim('"') ?? "0";
-                if (int.TryParse(lengthStr, out var bodyLength) && bodyLength < 100)
-                    ShowErrorBanner("ブラウザの描画に失敗した可能性があります（黒画面）。");
+                if (!int.TryParse(lengthStr, out var bodyLength) || bodyLength >= 100)
+                    return;
+
+                // 一時的な描画失敗はリロードで復旧することがあるため、まず 1 回だけ読み直す
+                if (!_renderRecoveryAttempted)
+                {
+                    _renderRecoveryAttempted = true;
+                    Dispatcher.Invoke(() => LoginWebView.CoreWebView2?.Reload());
+                    await Task.Delay(RenderCheckDelayMs);
+                    await CheckRenderAsync();
+                    return;
+                }
+
+                ShowErrorBanner(
+                    "ブラウザの描画に失敗した可能性があります（黒画面）。\n" +
+                    "このウィンドウを閉じて、もう一度ログインを開くと再初期化されます。");
             }
             catch { }
         }
@@ -238,6 +295,33 @@ namespace AIUsageOverlay
                 ErrorBanner.Visibility = Visibility.Collapsed;
                 ErrorRow.Height = new System.Windows.GridLength(0);
             });
+        }
+
+        /// <summary>
+        /// ウィンドウを閉じたときに WebView2 を明示的に破棄する。
+        /// 破棄しないとログイン画面用のブラウザプロセスが常駐したままになり、
+        /// 開き直すたびに増えていく（メモリ圧迫でプロセスが落ちる遠因になる）。
+        /// </summary>
+        protected override void OnClosed(EventArgs e)
+        {
+            try
+            {
+                if (LoginWebView.CoreWebView2 != null)
+                {
+                    LoginWebView.CoreWebView2.NavigationStarting  -= OnNavigationStarting;
+                    LoginWebView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
+                    LoginWebView.CoreWebView2.ProcessFailed       -= OnProcessFailed;
+                }
+            }
+            catch { /* 既にプロセスが死んでいる場合の解除失敗は無視してよい */ }
+
+            try
+            {
+                LoginWebView.Dispose();
+            }
+            catch { /* 破棄失敗はウィンドウ終了処理を妨げない */ }
+
+            base.OnClosed(e);
         }
 
         private void OpenBrowserButton_Click(object sender, RoutedEventArgs e)

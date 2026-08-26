@@ -89,6 +89,17 @@ namespace AIUsageOverlay.Services
         /// <summary>WebView2 の初期化完了フラグ</summary>
         private bool _initialized;
 
+        /// <summary>
+        /// WebView2 のブラウザプロセス ID。生存確認に使う（未初期化・取得失敗時は 0）。
+        /// </summary>
+        private int _browserProcessId;
+
+        /// <summary>
+        /// WebView2 の作り直しが必要になったか（ブラウザプロセス異常終了・致命的例外を検知した）。
+        /// ProcessFailed イベント（UI スレッド）と取得処理の双方から書き込むため volatile にする。
+        /// </summary>
+        private volatile bool _needsRecreate;
+
         // ────────────────────────────────────────────────────────────────
         // 公開プロパティ
         // ────────────────────────────────────────────────────────────────
@@ -135,6 +146,10 @@ namespace AIUsageOverlay.Services
             }
             catch (Exception ex)
             {
+                // 死んだ WebView2 を掴んだままだと以降ずっと失敗するため、再作成を要求する
+                if (WebView2Health.IsFatalWebViewError(ex))
+                    _needsRecreate = true;
+
                 LastError = $"{ex.GetType().Name}: {ex.Message}";
                 return null;
             }
@@ -213,6 +228,11 @@ namespace AIUsageOverlay.Services
                 _hostWindow.Show();
 
                 await _webView.EnsureCoreWebView2Async(env);
+
+                // WebView2 プロセスの異常終了を検知して次回取得時に作り直せるようにする
+                _webView.CoreWebView2.ProcessFailed += OnProcessFailed;
+                // BrowserProcessId は uint。Windows の PID は int 範囲に収まるため int で保持する
+                _browserProcessId = unchecked((int)_webView.CoreWebView2.BrowserProcessId);
 
                 // 不要な UI 機能を無効化する
                 _webView.CoreWebView2.Settings.IsStatusBarEnabled           = false;
@@ -343,11 +363,34 @@ namespace AIUsageOverlay.Services
         }
 
         /// <summary>
+        /// WebView2 のプロセス異常終了ハンドラ。
+        /// ブラウザプロセスが落ちても C# 側の CoreWebView2 参照は残るため、何もしないと
+        /// 「初期化済み」と誤判定したまま取得もログイン画面（同じ Environment を共有）も
+        /// 失敗し続け、アプリ再起動でしか復旧しない。ここで再作成要求を立て、次回の
+        /// EnsureInitializedAsync で Environment ごと作り直す。
+        /// </summary>
+        private void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+        {
+            // サブフレームのみのクラッシュは本体に影響しないため作り直さない
+            if (e.ProcessFailedKind == CoreWebView2ProcessFailedKind.FrameRenderProcessExited)
+                return;
+
+            _needsRecreate = true;
+            LastError = $"WebView2プロセス異常終了（{e.ProcessFailedKind}）。次回取得時に再初期化します。";
+        }
+
+        /// <summary>
         /// WebView2 が利用可能な状態まで初期化済みかを判定する。
-        /// _initialized だけで判断すると、起動直後の初期化失敗後に壊れた参照を再利用する恐れがある。
+        /// _initialized だけでは、起動直後の初期化失敗で壊れた参照や、ブラウザプロセスが
+        /// 落ちた後の「オブジェクトは残っているが操作は全て失敗する」状態を弾けない。
+        /// そのため CoreWebView2 の存在・再作成要求・ブラウザプロセスの生存まで確認する。
         /// </summary>
         private bool IsInitialized()
-            => _initialized && _env != null && _webView?.CoreWebView2 != null;
+            => _initialized
+            && !_needsRecreate
+            && _env != null
+            && _webView?.CoreWebView2 != null
+            && WebView2Health.IsBrowserProcessAlive(_browserProcessId);
 
         /// <summary>
         /// 初期化途中または利用済みの WebView2 関連オブジェクトを破棄し、次回呼び出しで再作成できる状態へ戻す。
@@ -355,6 +398,21 @@ namespace AIUsageOverlay.Services
         /// </summary>
         private void ResetWebViewState()
         {
+            try
+            {
+                if (_webView?.CoreWebView2 != null)
+                    _webView.CoreWebView2.ProcessFailed -= OnProcessFailed;
+            }
+            catch { /* 既にプロセスが死んでいる場合の解除失敗は無視してよい */ }
+
+            try
+            {
+                // 明示的に破棄してブラウザプロセスを確実に終了させる
+                // （作り直しのたびに msedgewebview2.exe が積み上がるのを防ぐ）
+                _webView?.Dispose();
+            }
+            catch { /* 破棄失敗は次回再作成で回復する */ }
+
             try
             {
                 _hostWindow?.Close();
@@ -365,6 +423,8 @@ namespace AIUsageOverlay.Services
             _hostWindow = null;
             _env = null;
             _initialized = false;
+            _needsRecreate = false;
+            _browserProcessId = 0;
         }
     }
 }
