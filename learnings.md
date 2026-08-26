@@ -29,6 +29,9 @@
 - 3 スクレイパ（Claude / GitHub / Codex）の `IsInitialized()` は `_webView?.CoreWebView2 != null` しか見ていない。ブラウザプロセス（msedgewebview2.exe）が落ちても C# 側の参照は残るため「初期化済み」と誤判定し続け、ログイン画面も同じ Environment を共有するため黒画面になり、アプリ再起動以外で復旧しなかった。
 - `CoreWebView2.BrowserProcessId` の型は `uint`。`Process.GetProcessById(int)` に渡すにはキャストが要る（CS0266 でビルドが落ちた）。
 - 実機で確認した WebView2 のプロセス名は `msedgewebview2`。PID 再利用による生存誤判定を避けるため名前照合に使える。
+- WPF の `ProgressBar.Value`（`RangeBase.Value`）は **既定で TwoWay バインド**。`private set` の ViewModel プロパティに結ぶと、起動時に「TwoWay または OneWayToSource バインドは、読み取り専用プロパティでは動作できません」で例外になりアプリが起動しない。**ビルドは警告0で通る**ため、ビルド成功は起動可否の担保にならない。
+- MainWindow.xaml の全 `{Binding}` パスと MainViewModel の public プロパティを突き合わせる簡易スクリプトで、この事故を検出できた（修正前は `CodexWeeklyPercent` を検出、修正後は 0 件）。
+- 検証時点で `AIUsageOverlay.exe` が 2 プロセス常駐していた。多重起動制御（Mutex）は実装されていないため、動作確認で起動するとインスタンスが増え、WebView2 のユーザーデータフォルダを別プロセスと共有することになる。
 ### Policy（方針）
 - Codex のプロファイルは `~/.codex/<name>.config.toml` に置く。リポジトリ同梱の `.codex/light.config.toml` は雛型であり、使う人が `~/.codex/` へコピーする前提で運用する。
 - AGENTS.md は CLAUDE.md を入力とした機械変換で生成し、手打ちで書き起こさない。片方だけ改訂されるドリフトが最も起きやすいため。
@@ -36,3 +39,5 @@
 - ユーザーレベル共有ファイルと重複させる事故防止系ルール（ファイル編集 / Git 操作）は `shared-rules` マーカーで囲み、出典と確認日を残して差分検証可能にする。
 - Codex の枠表示は「5時間枠が取れれば 5時間、取れなければ週間」の二段構えにする。OpenAI 側の仕様変更で枠が増減しても表示が空にならない。
 - WebView2 を常駐利用する箇所では `ProcessFailed` の購読とブラウザプロセスの生存確認をセットで入れ、致命例外時は Environment ごと作り直す。参照が non-null であることを初期化済みの根拠にしない。
+- XAML バインディングを追加したら、TwoWay 既定の DP（ProgressBar/Slider の `Value`、`TextBox.Text`、`CheckBox.IsChecked`、Selector の `Selected*`）に `private set` のプロパティを結んでいないかをコミット前に確認する。ビルドでは検出できず実行時に落ちる。
+- WPF の変更は「ビルド成功」を完了条件にしない。起動確認が取れない場合は、その旨を未確認として明示する。
