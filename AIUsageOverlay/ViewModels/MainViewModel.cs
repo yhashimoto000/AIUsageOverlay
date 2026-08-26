@@ -467,11 +467,16 @@ namespace AIUsageOverlay.ViewModels
             private set => SetProperty(ref _codexDetailLabel, value);
         }
 
-        /// <summary>1b（詳細）の「Codex 週間」行の使用率（0.0 ～ 100.0）（F-15）</summary>
+        /// <summary>
+        /// 1b（詳細）の「Codex 週間」行の使用率（0.0 ～ 100.0）（F-15）。
+        /// ProgressBar.Value（RangeBase.Value）は既定で TwoWay バインドのため、
+        /// セッターを private にすると起動時に「読み取り専用プロパティでは動作できません」で落ちる。
+        /// 他の%プロパティ（SessionPercent 等）と同じく public セッターにしておく。
+        /// </summary>
         public double CodexWeeklyPercent
         {
             get => _codexWeeklyPercent;
-            private set => SetProperty(ref _codexWeeklyPercent, value);
+            set => SetProperty(ref _codexWeeklyPercent, value);
         }
 
         /// <summary>1b（詳細）の「Codex 週間」行の使用率テキスト（例: "34%"）（F-15）</summary>
