@@ -31,7 +31,10 @@ namespace AIUsageOverlay.Services
         public const string SeriesClaude = "claude";
         /// <summary>GitHub Copilot（クレジット）の履歴系列キー。</summary>
         public const string SeriesCopilot = "copilot";
-        /// <summary>Codex 週間枠の履歴系列キー（F-13 で 5時間枠から週間枠へ変更）。</summary>
+        /// <summary>
+        /// Codex の履歴系列キー。記録する枠はメインバーと同じ（F-15 で 5時間枠へ戻した。
+        /// 5時間枠が取得できない期間だけ週間枠を記録するため、切替直後は両者が混在した線になる）。
+        /// </summary>
         public const string SeriesCodex = "codex";
 
         /// <summary>
