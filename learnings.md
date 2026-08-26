@@ -16,3 +16,23 @@
 ### Policy（方針）
 - リリース準備ではタグだけでなくcsprojの開発用既定バージョンも同じ版へ更新し、引数なしのローカルビルドによる誤った更新判定を防ぐ。
 - 自動アップデートの実リリース検証は、旧版での新版検知と、更新後の新版で再通知されないことの両方を確認する。
+
+## 2026-08-26
+### Facts（事実）
+- Codex CLI 0.144.4 の `-p, --profile <name>` は「`$CODEX_HOME/<name>.config.toml` をベースのユーザー設定にレイヤする」仕様（`codex --help` で確認）。`config.toml` 内に `[profiles.<name>]` テーブルを書く方式ではない。
+- `codex doctor --json` は cwd が `C:\ToolCreate\Claude-UsageTool` でも、ロードした設定を `C:\Users\ndq23402\.codex\config.toml` のみと報告した。プロジェクトルートの `.codex/` は Codex の設定探索対象外。
+- 選択可能な Codex モデルは `~/.codex/models_cache.json` に実データがある。現行は gpt-5.6-sol(prio1) / gpt-5.6-terra(2) / gpt-5.6-luna(3) / gpt-5.5(7) / gpt-5.4(16) / gpt-5.4-mini(23)。luna の説明は "Fast and affordable agentic coding model"。
+- CLAUDE.md の「`.gitattributes` / `.editorconfig` は未配置」という記述は誤りだった。`.gitattributes` は配置済みで、`*.md` `*.cs` 等は `eol=lf`、`*.bat` `*.cmd` は `eol=crlf`。
+- `.claude/settings.local.json` は `.gitignore` に未登録。`.claude/` をまとめて `git add` すると、個人のローカル許可リストごと commit される。
+- Git Bash の `grep -c $'\r'` は CRLF 判定に使えない（LF のみのファイルで全行マッチした）。改行判定は `git ls-files --eol` か Python のバイト検査が確実。
+- `AIUsageOverlay` の Codex 表示は F-13（commit bf928c1）で 5時間枠→週間枠へ組み替えられていたが、データ層（`CodexUsageData.Session*` / `CodexUsageParser` の期間判定）は据え置きだった。5時間枠の復活は ViewModel の表示ロジック差し替えだけで足りた。
+- 3 スクレイパ（Claude / GitHub / Codex）の `IsInitialized()` は `_webView?.CoreWebView2 != null` しか見ていない。ブラウザプロセス（msedgewebview2.exe）が落ちても C# 側の参照は残るため「初期化済み」と誤判定し続け、ログイン画面も同じ Environment を共有するため黒画面になり、アプリ再起動以外で復旧しなかった。
+- `CoreWebView2.BrowserProcessId` の型は `uint`。`Process.GetProcessById(int)` に渡すにはキャストが要る（CS0266 でビルドが落ちた）。
+- 実機で確認した WebView2 のプロセス名は `msedgewebview2`。PID 再利用による生存誤判定を避けるため名前照合に使える。
+### Policy（方針）
+- Codex のプロファイルは `~/.codex/<name>.config.toml` に置く。リポジトリ同梱の `.codex/light.config.toml` は雛型であり、使う人が `~/.codex/` へコピーする前提で運用する。
+- AGENTS.md は CLAUDE.md を入力とした機械変換で生成し、手打ちで書き起こさない。片方だけ改訂されるドリフトが最も起きやすいため。
+- 規約ファイルに委譲先・参照先（サブエージェント・プロファイル・ディレクトリ）を書くときは、実体の存在をコマンドで確認してから書く。存在しないものへの委譲指示は規約として空文になる。
+- ユーザーレベル共有ファイルと重複させる事故防止系ルール（ファイル編集 / Git 操作）は `shared-rules` マーカーで囲み、出典と確認日を残して差分検証可能にする。
+- Codex の枠表示は「5時間枠が取れれば 5時間、取れなければ週間」の二段構えにする。OpenAI 側の仕様変更で枠が増減しても表示が空にならない。
+- WebView2 を常駐利用する箇所では `ProcessFailed` の購読とブラウザプロセスの生存確認をセットで入れ、致命例外時は Environment ごと作り直す。参照が non-null であることを初期化済みの根拠にしない。
