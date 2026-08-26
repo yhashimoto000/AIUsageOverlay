@@ -1,0 +1,36 @@
+# =====================================================================
+#  Codex 軽量プロファイル — cmd-bootstrapper スキルにより生成
+#
+#  使い方 : codex --profile light
+#  仕組み : --profile <name> は $CODEX_HOME/<name>.config.toml を
+#           ベースのユーザー設定（~/.codex/config.toml）に「重ねる」。
+#           したがってこのファイルには差分だけを書く。
+#  配置先 : C:\Users\<user>\.codex\light.config.toml
+#           $CODEX_HOME 配下でないと --profile light が見つけられない。
+#           プロジェクトルートの .codex/ は Codex の探索対象外なので、
+#           リポジトリ同梱のこのファイルは「雛型」であり、
+#           使うには ~/.codex/ へコピーする必要がある。
+#  根拠   : Codex CLI 0.144.4 で実測（2026-08-26）。
+#           - codex --help :
+#               -p, --profile <CONFIG_PROFILE_V2>
+#                   Layer $CODEX_HOME/<name>.config.toml on top of the base user config
+#           - codex doctor --json :
+#               cwd = C:\ToolCreate\Claude-UsageTool でも
+#               config.toml = C:\Users\ndq23402\.codex\config.toml のみがロードされた
+#           したがって [profiles.light] テーブル方式・プロジェクト配置は
+#           いずれもこのバージョンでは効かない。
+# =====================================================================
+
+# 用途   : シンボルの位置特定・定義の所在確認・ファイル一覧化・機械的な置換
+#          （判断より作業量が支配的で、誤っても即座に grep し直して検証できる作業）
+# 非対象 : 影響範囲の洗い出し・長文読解・矛盾検出・設計判断・レビュー。
+#          いずれも誤りが「間違った答え」ではなく「静かな見落とし」として出るため、
+#          プロファイル無指定（= ベース設定の gpt-5.6-sol / high）で行う。
+
+# 軽量モデル。~/.codex/models_cache.json 上の説明は
+# "Fast and affordable agentic coding model"（priority 3）。
+model = "gpt-5.6-luna"
+
+# 推論深度。名前照合が中心の作業は深く考えても精度が上がらないため下げる。
+# ベース設定は "high"。ここで上書きする。
+model_reasoning_effort = "low"
