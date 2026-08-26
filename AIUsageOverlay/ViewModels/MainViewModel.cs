@@ -146,6 +146,11 @@ namespace AIUsageOverlay.ViewModels
         private string     _codexDetailLabel       = "Codex 5時間";
         private string     _codexStatusText        = "--";
         private string     _codexSubText           = "";
+        // 1b（詳細）の「Codex 週間」行。メインバーが 5時間枠のときだけ表示する（F-15）
+        private double     _codexWeeklyPercent;
+        private string     _codexWeeklyPercentText = "0%";
+        private string     _codexWeeklyDetailText  = "";
+        private Visibility _codexWeeklyRowVisibility = Visibility.Collapsed;
 
         /// <summary>
         /// 一度でも Codex 使用量の取得に成功したかを表すフラグ。
@@ -462,6 +467,38 @@ namespace AIUsageOverlay.ViewModels
             private set => SetProperty(ref _codexDetailLabel, value);
         }
 
+        /// <summary>1b（詳細）の「Codex 週間」行の使用率（0.0 ～ 100.0）（F-15）</summary>
+        public double CodexWeeklyPercent
+        {
+            get => _codexWeeklyPercent;
+            private set => SetProperty(ref _codexWeeklyPercent, value);
+        }
+
+        /// <summary>1b（詳細）の「Codex 週間」行の使用率テキスト（例: "34%"）（F-15）</summary>
+        public string CodexWeeklyPercentText
+        {
+            get => _codexWeeklyPercentText;
+            private set => SetProperty(ref _codexWeeklyPercentText, value);
+        }
+
+        /// <summary>1b（詳細）の「Codex 週間」行の残り時間/リセット時刻テキスト（例: "5日9時間"）（F-15）</summary>
+        public string CodexWeeklyDetailText
+        {
+            get => _codexWeeklyDetailText;
+            private set => SetProperty(ref _codexWeeklyDetailText, value);
+        }
+
+        /// <summary>
+        /// 1b（詳細）の「Codex 週間」行の表示/非表示（F-15）。
+        /// メインバーが 5時間枠で、かつ週間枠も取得できているときだけ表示する
+        /// （週間枠がメインバーへ昇格しているときは同じ値の二重表示になるため隠す）。
+        /// </summary>
+        public Visibility CodexWeeklyRowVisibility
+        {
+            get => _codexWeeklyRowVisibility;
+            private set => SetProperty(ref _codexWeeklyRowVisibility, value);
+        }
+
         /// <summary>Codex 週間制限使用率テキスト（例: "18%" / "エラー"）</summary>
         public string CodexStatusText
         {
@@ -704,7 +741,8 @@ namespace AIUsageOverlay.ViewModels
 
             if (!settings.CodexEnabled)
             {
-                CodexSectionVisibility = Visibility.Collapsed;
+                CodexSectionVisibility   = Visibility.Collapsed;
+                CodexWeeklyRowVisibility = Visibility.Collapsed;   // 1b 詳細の週間行も併せて隠す
                 return;
             }
 
@@ -777,16 +815,25 @@ namespace AIUsageOverlay.ViewModels
                 CodexSubText          = "--";
             }
 
-            // F-15: 週間チップはメインバーが 5時間枠のときだけ出す。
-            //       週間枠がメインバーのときはチップと同じ値の二重表示になるため隠す。
+            // F-15: 週間枠の併記（1a の見出しチップ、1b 詳細の週間行）は、メインバーが 5時間枠の
+            //       ときだけ出す。週間枠がメインバーのときは同じ値の二重表示になるため隠す。
             if (useSession && data.HasWeeklyData)
             {
                 CodexWeeklyChipText       = $"週 {data.WeeklyPercent}%";
                 CodexWeeklyChipVisibility = Visibility.Visible;
+
+                // 1b 詳細の「Codex 週間」行（Claude セッション/週間の 2 行構成に揃える）
+                CodexWeeklyPercent       = data.WeeklyPercent;
+                CodexWeeklyPercentText   = $"{data.WeeklyPercent}%";
+                CodexWeeklyDetailText    = absolute && !string.IsNullOrEmpty(data.WeeklyResetText)
+                    ? $"{data.WeeklyResetText} リセット"
+                    : FormatNullableMinutes(data.WeeklyRemainingMinutes);
+                CodexWeeklyRowVisibility = Visibility.Visible;
             }
             else
             {
                 CodexWeeklyChipVisibility = Visibility.Collapsed;
+                CodexWeeklyRowVisibility  = Visibility.Collapsed;
             }
 
             _codexEverLoaded = true;

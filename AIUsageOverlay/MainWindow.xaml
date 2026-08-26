@@ -427,6 +427,33 @@
                                Visibility="{Binding CodexBarVisibility}"/>
                 </Grid>
 
+                <!-- Codex 週間（メインバーが 5時間枠のときだけ出す。週間枠が主軸のときは上段が週間） -->
+                <Grid Margin="0,0,0,8" Visibility="{Binding CodexWeeklyRowVisibility}"
+                      Opacity="{Binding CodexSectionOpacity}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Codex 週間" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="#9A9AA2"/>
+                            <TextBlock Grid.Column="1" Text="{Binding CodexWeeklyDetailText}" FontSize="10"
+                                       Foreground="{StaticResource Brush.HeaderLabel}"/>
+                        </Grid>
+                        <ProgressBar Value="{Binding CodexWeeklyPercent}" Maximum="100"
+                                     Height="9" Foreground="{StaticResource Brush.Codex}"
+                                     Style="{StaticResource RoundProgressBarStyle}"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding CodexWeeklyPercentText}"
+                               FontSize="17" FontWeight="Bold" Foreground="{StaticResource Brush.Codex}"
+                               VerticalAlignment="Center" MinWidth="44" TextAlignment="Right"/>
+                </Grid>
+
                 <!-- ペースチップ行 -->
                 <WrapPanel Margin="0,2,0,0">
                     <Border Background="{StaticResource Brush.Chip}" CornerRadius="9" Padding="8,2"
