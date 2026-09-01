@@ -86,6 +86,89 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>フェーズ別の実行回数。</summary>
         public Dictionary<string, int> Phases { get; set; } = new();
+
+        // ── 明細（行を開いたときに出す）──────────────────────────
+
+        /// <summary>終了時刻（ローカル、表示用）。</summary>
+        public string End { get; set; } = string.Empty;
+
+        /// <summary>会話ツリーのルート ID。同じツリーの兄弟を辿る手掛かり。</summary>
+        public string? RootId { get; set; }
+
+        /// <summary>トークンの内訳。どこに量が寄っているかを見るために持つ。</summary>
+        public TokenDetailView Tokens { get; set; } = new();
+
+        /// <summary>モデル別の内訳。セッション内でモデルが変わる場合に効く。</summary>
+        public List<SessionModelView> ByModel { get; set; } = new();
+
+        /// <summary>日別の内訳。日をまたいだセッションで 2 件以上になる。</summary>
+        public List<SessionDayView> ByDay { get; set; } = new();
+
+        /// <summary>ツール別の実行回数（多い順）。</summary>
+        public List<CountView> Tools { get; set; } = new();
+
+        /// <summary>判別できなかったコマンド（多い順・上位のみ）。</summary>
+        public List<CountView> UnknownCommands { get; set; } = new();
+
+        /// <summary>読み取った課金レコード数（重複排除前）。</summary>
+        public int RawRecords { get; set; }
+
+        /// <summary>採用した課金レコード数（重複排除後）。</summary>
+        public int AcceptedRecords { get; set; }
+
+        /// <summary>鍵が無く無条件に加算した行数。</summary>
+        public int KeylessRecords { get; set; }
+
+        /// <summary>JSON として壊れていた行数。</summary>
+        public int ParseErrors { get; set; }
+    }
+
+    /// <summary>トークンの内訳。画面では「どこに量が寄っているか」を見るために使う。</summary>
+    public class TokenDetailView
+    {
+        /// <summary>入力トークン。</summary>
+        public long Input { get; set; }
+
+        /// <summary>出力トークン。</summary>
+        public long Output { get; set; }
+
+        /// <summary>キャッシュ作成トークン。</summary>
+        public long CacheCreate { get; set; }
+
+        /// <summary>キャッシュ読込トークン。</summary>
+        public long CacheRead { get; set; }
+
+        /// <summary>推論トークン（Codex のみ。出力の内数）。</summary>
+        public long Reasoning { get; set; }
+    }
+
+    /// <summary>セッション明細のモデル別 1 行。</summary>
+    public class SessionModelView
+    {
+        /// <summary>モデル名。</summary>
+        public string Model { get; set; } = string.Empty;
+
+        /// <summary>そのモデルで処理したターン数。</summary>
+        public int Turns { get; set; }
+
+        /// <summary>消費トークン。</summary>
+        public long Billable { get; set; }
+
+        /// <summary>処理トークン。</summary>
+        public long Processed { get; set; }
+    }
+
+    /// <summary>セッション明細の日別 1 行。</summary>
+    public class SessionDayView
+    {
+        /// <summary>ローカル日付。</summary>
+        public string Date { get; set; } = string.Empty;
+
+        /// <summary>その日のターン数。</summary>
+        public int Turns { get; set; }
+
+        /// <summary>その日の消費トークン。</summary>
+        public long Billable { get; set; }
     }
 
     /// <summary>期間 1 つ分の集計結果。</summary>
@@ -308,6 +391,15 @@ namespace AIUsageOverlay.Services.SessionStats
         private const int TopCountLimit = 20;
 
         /// <summary>
+        /// セッション明細に載せるツールの上限件数。
+        /// 全セッション分を HTML へ埋め込むため、件数を絞ってサイズを抑える。
+        /// </summary>
+        private const int SessionToolLimit = 12;
+
+        /// <summary>セッション明細に載せる未分類コマンドの上限件数。</summary>
+        private const int SessionUnknownLimit = 5;
+
+        /// <summary>
         /// 走査結果からレポートを組み立てる。
         /// </summary>
         /// <param name="scan">走査結果</param>
@@ -463,6 +555,48 @@ namespace AIUsageOverlay.Services.SessionStats
                 ProcessedCumulative = cum.Item2,
                 SubagentCount = cum.Item3,
                 Phases = s.PhaseCounts,
+
+                End = s.EndUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
+                RootId = s.RootId,
+                Tokens = new TokenDetailView
+                {
+                    Input = s.Tokens.Input,
+                    Output = s.Tokens.Output,
+                    CacheCreate = s.Tokens.CacheCreate,
+                    CacheRead = s.Tokens.CacheRead,
+                    Reasoning = s.Tokens.Reasoning,
+                },
+                ByModel = s.ByModel
+                    .Select(m => new SessionModelView
+                    {
+                        Model = m.Model,
+                        Turns = m.Turns,
+                        Billable = m.Tokens.Billable(s.Tool),
+                        Processed = m.Tokens.Processed(s.Tool),
+                    })
+                    .ToList(),
+                ByDay = s.ByDay
+                    .Select(d => new SessionDayView
+                    {
+                        Date = d.DateLocal,
+                        Turns = d.Turns,
+                        Billable = d.Tokens.Billable(s.Tool),
+                    })
+                    .ToList(),
+                Tools = s.ToolCounts
+                    .OrderByDescending(kv => kv.Value)
+                    .Take(SessionToolLimit)
+                    .Select(kv => new CountView { Name = kv.Key, Count = kv.Value })
+                    .ToList(),
+                UnknownCommands = s.UnknownCommands
+                    .OrderByDescending(kv => kv.Value)
+                    .Take(SessionUnknownLimit)
+                    .Select(kv => new CountView { Name = kv.Key, Count = kv.Value })
+                    .ToList(),
+                RawRecords = s.Dedup.RawRecords,
+                AcceptedRecords = s.Dedup.AcceptedRecords,
+                KeylessRecords = s.Dedup.KeylessRecords,
+                ParseErrors = s.ParseErrors,
             };
         }
 

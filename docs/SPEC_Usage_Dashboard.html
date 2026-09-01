@@ -326,11 +326,11 @@ tr.hidden-by-filter{display:none}
 <header>
   <div class="hrow">
     <h1>AI 使用量ダッシュボード 詳細設計書</h1><span class="rev">Rev.1.2</span>
-    <span class="stat">見出し 88 / 表 61 / 外部参照なし</span>
+    <span class="stat">見出し 89 / 表 63 / 外部参照なし</span>
   </div>
   <div class="hsub">
     正は <code>SPEC_Usage_Dashboard.md</code>。<b>この HTML は生成物です。修正は Markdown 側で行い、再生成してください。</b>
-    再生成: <code>python gen_design_html.py SPEC_Usage_Dashboard.md SPEC_Usage_Dashboard.html</code>　生成: 2026-09-02 01:45 JST
+    再生成: <code>python gen_design_html.py SPEC_Usage_Dashboard.md SPEC_Usage_Dashboard.html</code>　生成: 2026-09-02 02:00 JST
   </div>
 </header>
 
@@ -418,6 +418,7 @@ tr.hidden-by-filter{display:none}
 <a class="sec" href="#sec-8-2" data-target="sec-8-2" data-num="8.2" data-title="概要画面"><span class="n">8.2</span><span class="t">概要画面</span></a>
 <a class="sec" href="#sec-8-3" data-target="sec-8-3" data-num="8.3" data-title="プロジェクト画面（Rev 1.1 で廃止）"><span class="n">8.3</span><span class="t">プロジェクト画面（Rev 1.1 で廃止）</span></a>
 <a class="sec" href="#sec-8-4" data-target="sec-8-4" data-num="8.4" data-title="セッション画面"><span class="n">8.4</span><span class="t">セッション画面</span></a>
+<a class="sec" href="#sec-8-4-1" data-target="sec-8-4-1" data-num="8.4.1" data-title="セッション明細（行を開いたときに出す）"><span class="n">8.4.1</span><span class="t">セッション明細（行を開いたときに出す）</span></a>
 <a class="sec" href="#sec-8-5" data-target="sec-8-5" data-num="8.5" data-title="データ品質画面"><span class="n">8.5</span><span class="t">データ品質画面</span></a>
 <a class="sec" href="#sec-8-6" data-target="sec-8-6" data-num="8.6" data-title="未定義ケース"><span class="n">8.6</span><span class="t">未定義ケース</span></a>
 <a class="sec" href="#sec-8-7" data-target="sec-8-7" data-num="8.7" data-title="埋め込み JSON のエスケープ"><span class="n">8.7</span><span class="t">埋め込み JSON のエスケープ</span></a>
@@ -459,7 +460,7 @@ tr.hidden-by-filter{display:none}
 <a class="sec" href="#sec-12-4" data-target="sec-12-4" data-num="12.4" data-title="受け入れ基準"><span class="n">12.4</span><span class="t">受け入れ基準</span></a>
 </div></div>
 <div class="chgrp" data-ch="13">
-<a class="ch" href="#sec-13" data-target="sec-13" data-num="13" data-title="対応方針一覧（トリアージ）"><span class="ca"></span><span class="n">13</span><span class="t">対応方針一覧（トリアージ）</span><span class="badge">55</span></a>
+<a class="ch" href="#sec-13" data-target="sec-13" data-num="13" data-title="対応方針一覧（トリアージ）"><span class="ca"></span><span class="n">13</span><span class="t">対応方針一覧（トリアージ）</span><span class="badge">56</span></a>
 <div class="secs">
 <a class="sec" href="#sec-13-1" data-target="sec-13-1" data-num="13.1" data-title="一覧"><span class="n">13.1</span><span class="t">一覧</span></a>
 <a class="sec" href="#sec-13-2" data-target="sec-13-2" data-num="13.2" data-title="実装ステップ"><span class="n">13.2</span><span class="t">実装ステップ</span></a>
@@ -556,7 +557,7 @@ tr.hidden-by-filter{display:none}
 <tr>
 <td>1.2</td>
 <td>2026-09-02</td>
-<td>実装と B0 の実機確認を反映。<strong>S12（当日表示）・S13（画面用語の平易化）・S14（月別の期間）・S15（未生成の通知）・S17（レポートの整理）を追加。</strong> <strong>5.2 の重複排除規則が誤りだったため差し替えた</strong>（<code>session_id</code> → <code>session_meta.id</code>）。Q1 / Q2 / Q3 / Q6 を確定、Q5 を決定。7.3.2 の分類率を実測値へ更新。変更した章: 1.2 / 4.2 / 5.2 / 7.3 / 8.2 / 9 / 10 / 11 / 12 / 13 / 付録 B</td>
+<td>実装と B0 の実機確認を反映。<strong>S12（当日表示）・S13（画面用語の平易化）・S14（月別の期間）・S15（未生成の通知）・S17（レポートの整理）・S18（セッション明細）を追加。</strong> <strong>5.2 の重複排除規則が誤りだったため差し替えた</strong>（<code>session_id</code> → <code>session_meta.id</code>）。Q1 / Q2 / Q3 / Q6 を確定、Q5 を決定。7.3.2 の分類率を実測値へ更新。変更した章: 1.2 / 4.2 / 5.2 / 7.3 / 8.2 / 9 / 10 / 11 / 12 / 13 / 付録 B</td>
 </tr>
 </tbody>
 </table>
@@ -681,6 +682,11 @@ tr.hidden-by-filter{display:none}
 <td>レポートの保存と整理</td>
 <td>生成物を日時付きで保存し、<strong>直近 5 件だけ残して古いものを削除する</strong>。保存先を開く導線も置く（→ 8.10）。Rev 1.2 で追加</td>
 </tr>
+<tr>
+<td>S18</td>
+<td>セッション明細</td>
+<td>一覧の行を開くと、そのセッションのトークン内訳・モデル別・ツール別・作業内容・日別・配下のサブエージェントを出す（→ 8.4.1）。<strong>キャッシュにある範囲に限る</strong>。Rev 1.2 で追加</td>
+</tr>
 </tbody>
 </table>
 <h3 id="sec-1-3"><span class="num">1.3</span><span class="t">非スコープ（N）</span></h3>
@@ -735,8 +741,8 @@ tr.hidden-by-filter{display:none}
 </tr>
 <tr>
 <td>N9</td>
-<td>セッションのターン別明細</td>
-<td><strong>技術的に実現できない。</strong> 自己完結 HTML から C# を呼び戻して履歴を再パースする経路が無く、3.2 の分界とも T13 の外部参照 0 件とも両立しない。全セッション分を埋め込む案は HTML が肥大するため採らない</td>
+<td>セッションの<strong>ターン別</strong>明細</td>
+<td><strong>技術的に実現できない。</strong> 自己完結 HTML から C# を呼び戻して履歴を再パースする経路が無く、3.2 の分界とも T13 の外部参照 0 件とも両立しない。ターン 1 件ずつの時系列は出せない。<strong>ただしキャッシュが持つ集計値の範囲での明細は S18 で出す</strong></td>
 </tr>
 <tr>
 <td>N10</td>
@@ -2540,6 +2546,96 @@ Rev 1.2 で要求側へ変更した。</p>
 <p><strong>Rev 1.2: 実装した画面にターン別タイムラインは無い。</strong>
 モックは起草時の下書きとして残す。実際の画面が正である。</p>
 </div>
+<h3 id="sec-8-4-1"><span class="num">8.4.1</span><span class="t">セッション明細（行を開いたときに出す）</span></h3>
+<p>一覧の行をクリックすると、その下に明細を開く。<strong>出せるのはキャッシュ（6 章）が持つ集計値だけ</strong>である。
+ターン 1 件ずつの時系列は N9 のとおり出せない。この線引きを混同しないこと。</p>
+<table>
+<thead>
+<tr>
+<th>カード</th>
+<th>内容</th>
+<th>出す条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>このセッション</td>
+<td>指示文、ツール、開始・終了、経過時間、ターン数、主なモデル、エージェント名、配下の件数</td>
+<td>常時</td>
+</tr>
+<tr>
+<td>トークンの内訳</td>
+<td>新規入力 / キャッシュ作成 / キャッシュ読込 / 出力 の横帯と実数。消費・処理トークン。子を含む累計</td>
+<td>常時</td>
+</tr>
+<tr>
+<td>何をしていたか</td>
+<td>フェーズ別の実行回数（横帯 + 件数）</td>
+<td>常時</td>
+</tr>
+<tr>
+<td>モデル別</td>
+<td>モデルごとのターン数・消費・処理</td>
+<td>内訳がある場合</td>
+</tr>
+<tr>
+<td>使ったツール</td>
+<td>ツール別の実行回数（上位 12 件）</td>
+<td>記録がある場合</td>
+</tr>
+<tr>
+<td>判別できなかったコマンド</td>
+<td>上位 5 件</td>
+<td>記録がある場合</td>
+</tr>
+<tr>
+<td>日別</td>
+<td>日ごとのターン数と消費</td>
+<td><strong>2 日以上にまたがる場合のみ</strong></td>
+</tr>
+<tr>
+<td>配下のサブエージェント</td>
+<td>子の消費（多い順）。値は各子の単独分</td>
+<td>子がある場合</td>
+</tr>
+<tr>
+<td>数字の確からしさ</td>
+<td>読んだ / 採用したレコード数、鍵なしで加算した行、壊れた行、測定不可・末尾破損</td>
+<td>常時</td>
+</tr>
+</tbody>
+</table>
+<p>設計上の要点:</p>
+<table>
+<thead>
+<tr>
+<th>事項</th>
+<th>決定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>明細の生成</td>
+<td><strong>開いたときに初めて DOM を作る。</strong> 全行ぶんを先に作ると 1,000 行規模で重くなる</td>
+</tr>
+<tr>
+<td>開閉ボタンとの関係</td>
+<td>サブエージェントの開閉（▸）は <code>stopPropagation</code> で行クリックと分ける。混ざると意図しない開閉が起きる</td>
+</tr>
+<tr>
+<td>子を畳んだとき</td>
+<td>その子の明細も閉じる。行だけ消えて明細が残るのを防ぐ</td>
+</tr>
+<tr>
+<td>Codex の新規入力</td>
+<td>キャッシュ読込が入力の内数のため、<code>input − cacheRead</code> を新規入力として出す（→ 7.1 / Q1）</td>
+</tr>
+<tr>
+<td>HTML サイズ</td>
+<td>明細のぶん 1 セッションあたり約 500 バイト増える。実測で 1.19 MB から 1.79 MB へ増えた（1,115 セッション）。上位件数を絞って抑える</td>
+</tr>
+</tbody>
+</table>
 <h3 id="sec-8-5"><span class="num">8.5</span><span class="t">データ品質画面</span></h3>
 <div class="figure"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 600" width="1140" height="600" font-family="Segoe UI, Meiryo, sans-serif">
   <!-- ============================================================
@@ -3809,6 +3905,15 @@ B1 で <code>AIUsageOverlay.Tests</code>（xUnit）を新規に作る。</p>
 <td>—</td>
 <td>S</td>
 <td>8.10。<strong>Rev 1.2 で追加</strong></td>
+</tr>
+<tr>
+<td>S18</td>
+<td>スコープ</td>
+<td>セッション明細（行を開く）</td>
+<td>対応済み</td>
+<td>—</td>
+<td>M</td>
+<td>8.4.1。<strong>Rev 1.2 で追加。N9 とは別物</strong></td>
 </tr>
 <tr>
 <td>N1</td>

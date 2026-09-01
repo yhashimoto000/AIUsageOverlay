@@ -179,6 +179,44 @@ tr.child > td:first-child { padding-left: 30px; }
 tr.child { display: none; }
 tr.child.shown { display: table-row; }
 
+/* セッション明細（行をクリックすると開く） */
+tbody tr.expandable { cursor: pointer; }
+tbody tr.selected { background: var(--accent-soft); }
+tbody tr.selected:hover { background: var(--accent-soft); }
+tr.detail { display: none; }
+tr.detail.shown { display: table-row; }
+tr.detail > td {
+  background: var(--surface-2); padding: 14px 16px; white-space: normal;
+  border-bottom: 2px solid var(--border);
+}
+.detail-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;
+}
+.detail-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px;
+}
+.detail-card h3 {
+  font-size: 12px; margin: 0 0 8px; color: var(--text-muted); font-weight: 650;
+}
+.detail-card .hint { font-size: 11px; color: var(--text-muted); margin: 6px 0 0; }
+.mini { width: 100%; font-size: 12px; }
+.mini td, .mini th {
+  padding: 3px 6px; border: none; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.mini tr:last-child td { border-bottom: none; }
+.mini td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mini td.grow { width: 100%; }
+.detail-prompt {
+  font-size: 12px; color: var(--text); background: var(--surface-2);
+  border-left: 3px solid var(--border); padding: 6px 10px; margin: 0 0 10px;
+  white-space: pre-wrap; word-break: break-word;
+}
+.legend .lg-in::before { background: var(--phase-investigate); }
+.legend .lg-cc::before { background: var(--phase-dialogue); }
+.legend .lg-cr::before { background: var(--phase-unknown); }
+.legend .lg-out::before { background: var(--phase-implement); }
+
 .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted); }
 .legend span::before {
   content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px;
@@ -295,6 +333,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
         サブエージェントは親の下に畳んでいます。親の行は<strong>子を含めた合計</strong>、
         子の行は<strong>その子だけの分</strong>です。
         経過時間は最初と最後の記録の差なので、読んでいた時間や離席も含みます（作業時間ではありません）。
+        <strong>行をクリックすると、そのセッションの内訳（トークン・モデル・ツール・作業内容）を開けます。</strong>
       </p>
       <div class="filters">
         <label>ツール <select id="session-tool"><option value="">すべて</option>
@@ -687,6 +726,224 @@ function renderProjects() {
     limited.length + " / 全 " + rows.length + " 件" + (showAll ? "" : "（上位 10 件を表示）");
 }
 
+/* ── セッション明細（行を開いたときに出す）─────────────────── */
+
+/* トークンの内訳。Codex はキャッシュ読込が入力の内数なので、新規入力を差し引いて出す */
+function tokenParts(s) {
+  const t = s.tokens || {};
+  const cacheRead = t.cacheRead || 0;
+  const freshInput = s.tool === "codex"
+    ? Math.max(0, (t.input || 0) - cacheRead)
+    : (t.input || 0);
+  return [
+    { key: "in",  label: "新規入力",     value: freshInput,        varName: "--phase-investigate" },
+    { key: "cc",  label: "キャッシュ作成", value: t.cacheCreate || 0, varName: "--phase-dialogue" },
+    { key: "cr",  label: "キャッシュ読込", value: cacheRead,          varName: "--phase-unknown" },
+    { key: "out", label: "出力",         value: t.output || 0,      varName: "--phase-implement" },
+  ];
+}
+
+/* 内訳を横帯にする。合計 0 のときは空の帯を返す */
+function stackedBar(parts, width, height) {
+  const w = width || 260;
+  const h = height || 14;
+  const total = parts.reduce((a, p) => a + p.value, 0);
+  const svg = svgEl("svg", { width: "100%", height: h, viewBox: "0 0 " + w + " " + h,
+                             preserveAspectRatio: "none" });
+  if (total === 0) {
+    svg.appendChild(svgEl("rect",
+      { x: 0, y: 0, width: w, height: h, rx: 2, fill: "var(--surface-2)" }));
+    return svg;
+  }
+  let x = 0;
+  parts.forEach(p => {
+    if (p.value <= 0) { return; }
+    const seg = Math.max(1, (p.value / total) * w);
+    const rect = svgEl("rect",
+      { x: x, y: 0, width: seg, height: h, fill: "var(" + p.varName + ")" });
+    rect.appendChild(svgEl("title", {})).textContent =
+      p.label + " " + fmt(p.value) + " (" + ((p.value / total) * 100).toFixed(1) + "%)";
+    svg.appendChild(rect);
+    x += seg;
+  });
+  return svg;
+}
+
+/* 件数の横棒。最大値を基準に幅を決める */
+function countBar(value, max, width) {
+  const w = width || 90;
+  const svg = svgEl("svg", { width: w, height: 10, viewBox: "0 0 " + w + " 10" });
+  svg.appendChild(svgEl("rect", {
+    x: 0, y: 1, width: Math.max(1, (value / (max || 1)) * w), height: 8,
+    rx: 2, fill: "var(--accent)",
+  }));
+  return svg;
+}
+
+/* 明細カードの器 */
+function detailCard(title, nodes, hint) {
+  const card = el("div", { class: "detail-card" }, [el("h3", { text: title })]);
+  nodes.filter(Boolean).forEach(n => card.appendChild(n));
+  if (hint) { card.appendChild(el("p", { class: "hint", text: hint })); }
+  return card;
+}
+
+/* 「名前 / 数値 / バー」の 3 列表 */
+function miniBarTable(rows, valueLabel) {
+  const max = rows.reduce((a, r) => Math.max(a, r.value), 0);
+  const table = el("table", { class: "mini" });
+  const body = el("tbody", {});
+  rows.forEach(r => {
+    const barCell = el("td", {});
+    barCell.appendChild(countBar(r.value, max));
+    const tr = el("tr", {}, [
+      el("td", { class: "grow", text: r.name }),
+      el("td", { class: "num", text: fmt(r.value) + (valueLabel || "") }),
+    ]);
+    tr.appendChild(barCell);
+    body.appendChild(tr);
+  });
+  table.appendChild(body);
+  return table;
+}
+
+/* 「項目 / 値」の 2 列表 */
+function miniKeyValue(rows) {
+  const table = el("table", { class: "mini" });
+  const body = el("tbody", {});
+  rows.forEach(r => body.appendChild(el("tr", {}, [
+    el("td", { class: "grow", text: r[0] }),
+    el("td", { class: "num", text: r[1] }),
+  ])));
+  table.appendChild(body);
+  return table;
+}
+
+/* セッション 1 件の明細セルを作る */
+function detailContent(s, children) {
+  const grid = el("div", { class: "detail-grid" });
+
+  // 1. 基本情報
+  const basic = [
+    ["ツール", s.tool === "codex" ? "Codex" : "Claude Code"],
+    ["開始", s.start],
+    ["終了", s.end],
+    ["経過時間", s.elapsedMeasurable ? fmtDuration(s.elapsedSec) : "測定不可"],
+    ["ターン", fmt(s.turns)],
+    ["主なモデル", s.model],
+  ];
+  if (s.agentLabel) { basic.push(["エージェント", s.agentLabel]); }
+  if (s.isSubagent) { basic.push(["区分", "サブエージェント"]); }
+  if (s.subagentCount > 0) { basic.push(["配下のサブエージェント", fmt(s.subagentCount) + " 件"]); }
+  grid.appendChild(detailCard("このセッション", [
+    el("div", { class: "detail-prompt", text: s.prompt || "(指示文なし)" }),
+    miniKeyValue(basic),
+  ]));
+
+  // 2. トークンの内訳
+  const parts = tokenParts(s);
+  const legend = el("div", { class: "legend", style: "margin-top:8px" });
+  parts.forEach(p => legend.appendChild(el("span", {
+    class: "lg-" + p.key, text: p.label + " " + fmt(p.value),
+  })));
+  const tokenRows = [
+    ["消費トークン", fmt(s.billable)],
+    ["処理トークン", fmt(s.processed)],
+  ];
+  if (s.subagentCount > 0) {
+    tokenRows.push(["消費（子を含む）", fmt(s.billableCumulative)]);
+    tokenRows.push(["処理（子を含む）", fmt(s.processedCumulative)]);
+  }
+  if ((s.tokens || {}).reasoning > 0) {
+    tokenRows.push(["うち推論", fmt(s.tokens.reasoning)]);
+  }
+  grid.appendChild(detailCard("トークンの内訳",
+    [stackedBar(parts), legend, miniKeyValue(tokenRows)],
+    s.tool === "codex"
+      ? "Codex はキャッシュ読込が入力の内数のため、新規入力は差し引いた値です。"
+      : null));
+
+  // 3. 何をしていたか
+  const phaseRows = PHASES
+    .map(p => ({ name: p.label, value: (s.phases || {})[p.key] || 0 }))
+    .filter(r => r.value > 0);
+  grid.appendChild(detailCard("何をしていたか",
+    [phaseBar(s.phases, 260),
+     phaseRows.length ? miniBarTable(phaseRows, " 回") : el("p", { class: "hint", text: "ツール実行の記録がありません。" })],
+    "ツールを実行した回数です。かけた時間ではありません。"));
+
+  // 4. モデル別（1 件しか無くても内訳として出す）
+  if ((s.byModel || []).length) {
+    const table = el("table", { class: "mini" });
+    const head = el("thead", {}, [el("tr", {}, [
+      el("th", { class: "grow", text: "モデル" }),
+      el("th", { class: "num", text: "ターン" }),
+      el("th", { class: "num", text: "消費" }),
+      el("th", { class: "num", text: "処理" }),
+    ])]);
+    const body = el("tbody", {});
+    s.byModel.forEach(m => body.appendChild(el("tr", {}, [
+      el("td", { class: "grow", text: m.model }),
+      el("td", { class: "num", text: fmt(m.turns) }),
+      el("td", { class: "num", text: fmt(m.billable) }),
+      el("td", { class: "num", text: fmt(m.processed) }),
+    ])));
+    table.appendChild(head);
+    table.appendChild(body);
+    grid.appendChild(detailCard("モデル別", [table],
+      s.byModel.length > 1
+        ? "セッション途中でモデルが変わっています。内訳はターンごとの差分から割り振っています。"
+        : null));
+  }
+
+  // 5. ツール別
+  if ((s.tools || []).length) {
+    grid.appendChild(detailCard("使ったツール",
+      [miniBarTable(s.tools.map(t => ({ name: t.name, value: t.count })), " 回")],
+      "上位のみ表示しています。"));
+  }
+
+  // 6. 判別できなかったコマンド
+  if ((s.unknownCommands || []).length) {
+    grid.appendChild(detailCard("判別できなかったコマンド",
+      [miniBarTable(s.unknownCommands.map(u => ({ name: u.name, value: u.count })), " 回")],
+      "何の作業か決められなかったコマンドです。"));
+  }
+
+  // 7. 日別（またいだ場合だけ）
+  if ((s.byDay || []).length > 1) {
+    grid.appendChild(detailCard("日別",
+      [miniBarTable(s.byDay.map(d => ({ name: d.date, value: d.billable })))],
+      "日をまたいだセッションです。ターンが始まった時刻の日に数えています。"));
+  }
+
+  // 8. サブエージェント
+  if ((children || []).length) {
+    const rows = children
+      .slice()
+      .sort((a, b) => b.billable - a.billable)
+      .map(c => ({ name: c.agentLabel || c.prompt || c.key, value: c.billable }));
+    grid.appendChild(detailCard("配下のサブエージェント", [miniBarTable(rows)],
+      "消費トークンの多い順。値は各サブエージェント単独の分です。"));
+  }
+
+  // 9. データ品質
+  const quality = [];
+  if (s.rawRecords > 0) {
+    quality.push(["読んだ課金レコード", fmt(s.rawRecords)]);
+    quality.push(["採用したレコード", fmt(s.acceptedRecords)]);
+  }
+  if (s.keylessRecords > 0) {
+    quality.push(["鍵なしで加算した行", fmt(s.keylessRecords)]);
+  }
+  quality.push(["壊れていた行", fmt(s.parseErrors)]);
+  if (!s.elapsedMeasurable) { quality.push(["経過時間", "測定不可（時刻が 1 種類）"]); }
+  if (s.lastLineBroken) { quality.push(["末尾行", "壊れている（過小計上の恐れ）"]); }
+  grid.appendChild(detailCard("このセッションの数字の確からしさ", [miniKeyValue(quality)]));
+
+  return grid;
+}
+
 /* ── セッション一覧 ───────────────────────────────────────── */
 
 function renderSessions() {
@@ -734,6 +991,7 @@ function renderSessions() {
 
   const rowFor = (s, isChild, kids) => {
     const tr = el("tr", { class: isChild ? "child" : "" });
+    tr.dataset.key = s.key;
     if (isChild) { tr.dataset.parent = s.parentKey; }
 
     const first = el("td", {});
@@ -742,10 +1000,19 @@ function renderSessions() {
         class: "toggle-child", type: "button",
         "aria-label": "サブエージェントの表示切替", text: expand ? "▾" : "▸",
       });
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", ev => {
+        // 開閉ボタンは行クリック（明細の開閉）と別物として扱う
+        ev.stopPropagation();
         const shown = body.querySelectorAll('tr.child[data-parent="' + s.key + '"]');
         const nowShown = btn.textContent === "▸";
-        shown.forEach(r => r.classList.toggle("shown", nowShown));
+        shown.forEach(r => {
+          r.classList.toggle("shown", nowShown);
+          if (nowShown) { return; }
+          // 畳むときは、その子の明細も閉じる（行だけ消えて明細が残るのを防ぐ）
+          const detail = body.querySelector('tr.detail[data-detail-of="' + r.dataset.key + '"]');
+          if (detail) { detail.classList.remove("shown"); }
+          r.classList.remove("selected");
+        });
         btn.textContent = nowShown ? "▾" : "▸";
       });
       first.appendChild(btn);
@@ -800,16 +1067,40 @@ function renderSessions() {
     return tr;
   };
 
+  // 行と、その直後に置く明細行をまとめて追加する。
+  // 明細の中身は開いたときに初めて作る（全行ぶんを先に作ると重くなる）
+  const appendRow = (row, session, kids) => {
+    body.appendChild(row);
+
+    const detail = el("tr", { class: "detail" });
+    detail.dataset.detailOf = session.key;
+    const cell = el("td", { colspan: "9" });
+    detail.appendChild(cell);
+    body.appendChild(detail);
+
+    let built = false;
+    row.classList.add("expandable");
+    row.addEventListener("click", () => {
+      const open = !detail.classList.contains("shown");
+      if (open && !built) {
+        cell.appendChild(detailContent(session, kids));
+        built = true;
+      }
+      detail.classList.toggle("shown", open);
+      row.classList.toggle("selected", open);
+    });
+  };
+
   let shownCount = 0;
   parents.forEach(p => {
     const kids = (childrenOf[p.key] || []).slice()
       .sort((a, b) => b.billable - a.billable);
-    body.appendChild(rowFor(p, false, kids));
+    appendRow(rowFor(p, false, kids), p, kids);
     shownCount++;
     kids.forEach(k => {
       const tr = rowFor(k, true, null);
       if (expand) { tr.classList.add("shown"); }
-      body.appendChild(tr);
+      appendRow(tr, k, null);
       shownCount++;
     });
   });
