@@ -242,7 +242,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
     <div class="block" id="block-daily">
       <h2>日ごとの消費トークン</h2>
       <p class="note">
-        やり取りが始まった時刻の日（お使いの PC の時刻）に数えています。
+        ターンが始まった時刻の日（お使いの PC の時刻）に数えています。
         下のプロジェクト表はセッションが始まった日で数えているため、合計は一致しません。
       </p>
       <div class="scroll-x"><div id="chart-daily"></div></div>
@@ -306,7 +306,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
           <th>ツール</th>
           <th>プロジェクト</th>
           <th>指示文（先頭 64 文字）</th>
-          <th class="num sortable" data-sort="turns">やり取り</th>
+          <th class="num sortable" data-sort="turns">ターン</th>
           <th class="num sortable" data-sort="elapsedSec">経過時間</th>
           <th class="num sortable" data-sort="billable">消費トークン</th>
           <th class="num sortable" data-sort="processed">処理トークン</th>
@@ -354,7 +354,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
       </div>
       <div class="scroll-x"><table id="model-table">
         <thead><tr>
-          <th>モデル</th><th class="num">やり取り</th><th class="num">消費トークン</th><th class="num">処理トークン</th>
+          <th>モデル</th><th class="num">ターン</th><th class="num">消費トークン</th><th class="num">処理トークン</th>
         </tr></thead>
         <tbody></tbody>
       </table></div>
@@ -614,7 +614,7 @@ function renderKpi() {
     { label: "処理トークン", value: fmt(p.processed),
       sub: "AI が実際に読み書きした量。うちキャッシュから読んだ分が " + fmt(p.cacheRead) },
     { label: "セッション", value: fmt(p.sessionCount),
-      sub: fmt(p.turnCount) + " 回のやり取り / " + fmt(p.projectCount) + " プロジェクト" },
+      sub: fmt(p.turnCount) + " ターン / " + fmt(p.projectCount) + " プロジェクト" },
     { label: "経過時間", value: fmtDuration(p.elapsedSec),
       sub: p.elapsedUnmeasurableCount > 0
         ? "測れなかった " + fmt(p.elapsedUnmeasurableCount) + " 件を除く。作業時間ではありません"
