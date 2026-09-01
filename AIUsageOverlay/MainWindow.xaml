@@ -474,5 +474,18 @@
             </StackPanel>
         </Border>
 
+
+        <!--
+            レポート生成中の表示。レイアウト種別（リスト / コンパクト）に関わらず
+            ルート Grid の最前面へ重ねる。生成していないときは畳んでおく。
+        -->
+        <Border x:Name="ReportStatusBadge" Visibility="Collapsed"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Margin="0,0,8,6" Padding="7,2,7,2"
+                Background="{StaticResource Brush.Chip}" CornerRadius="4"
+                BorderBrush="{StaticResource Brush.OverlayBorder}" BorderThickness="1">
+            <TextBlock x:Name="ReportStatusText" Text="レポート生成中…"
+                       FontSize="10" Foreground="{StaticResource Brush.Text2}"/>
+        </Border>
     </Grid>
 </Window>

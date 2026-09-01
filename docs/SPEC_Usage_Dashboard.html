@@ -326,11 +326,11 @@ tr.hidden-by-filter{display:none}
 <header>
   <div class="hrow">
     <h1>AI 使用量ダッシュボード 詳細設計書</h1><span class="rev">Rev.1.2</span>
-    <span class="stat">見出し 89 / 表 63 / 外部参照なし</span>
+    <span class="stat">見出し 90 / 表 65 / 外部参照なし</span>
   </div>
   <div class="hsub">
     正は <code>SPEC_Usage_Dashboard.md</code>。<b>この HTML は生成物です。修正は Markdown 側で行い、再生成してください。</b>
-    再生成: <code>python gen_design_html.py SPEC_Usage_Dashboard.md SPEC_Usage_Dashboard.html</code>　生成: 2026-09-02 02:00 JST
+    再生成: <code>python gen_design_html.py SPEC_Usage_Dashboard.md SPEC_Usage_Dashboard.html</code>　生成: 2026-09-02 08:20 JST
   </div>
 </header>
 
@@ -425,6 +425,7 @@ tr.hidden-by-filter{display:none}
 <a class="sec" href="#sec-8-8" data-target="sec-8-8" data-num="8.8" data-title="グラフの描画方式"><span class="n">8.8</span><span class="t">グラフの描画方式</span></a>
 <a class="sec" href="#sec-8-9" data-target="sec-8-9" data-num="8.9" data-title="レポート未生成の通知"><span class="n">8.9</span><span class="t">レポート未生成の通知</span></a>
 <a class="sec" href="#sec-8-10" data-target="sec-8-10" data-num="8.10" data-title="生成物の保存と整理"><span class="n">8.10</span><span class="t">生成物の保存と整理</span></a>
+<a class="sec" href="#sec-8-11" data-target="sec-8-11" data-num="8.11" data-title="生成中の表示"><span class="n">8.11</span><span class="t">生成中の表示</span></a>
 </div></div>
 <div class="chgrp" data-ch="9">
 <a class="ch" href="#sec-9" data-target="sec-9" data-num="9" data-title="ファイル構成"><span class="ca"></span><span class="n">9</span><span class="t">ファイル構成</span></a>
@@ -460,7 +461,7 @@ tr.hidden-by-filter{display:none}
 <a class="sec" href="#sec-12-4" data-target="sec-12-4" data-num="12.4" data-title="受け入れ基準"><span class="n">12.4</span><span class="t">受け入れ基準</span></a>
 </div></div>
 <div class="chgrp" data-ch="13">
-<a class="ch" href="#sec-13" data-target="sec-13" data-num="13" data-title="対応方針一覧（トリアージ）"><span class="ca"></span><span class="n">13</span><span class="t">対応方針一覧（トリアージ）</span><span class="badge">56</span></a>
+<a class="ch" href="#sec-13" data-target="sec-13" data-num="13" data-title="対応方針一覧（トリアージ）"><span class="ca"></span><span class="n">13</span><span class="t">対応方針一覧（トリアージ）</span><span class="badge">57</span></a>
 <div class="secs">
 <a class="sec" href="#sec-13-1" data-target="sec-13-1" data-num="13.1" data-title="一覧"><span class="n">13.1</span><span class="t">一覧</span></a>
 <a class="sec" href="#sec-13-2" data-target="sec-13-2" data-num="13.2" data-title="実装ステップ"><span class="n">13.2</span><span class="t">実装ステップ</span></a>
@@ -557,7 +558,7 @@ tr.hidden-by-filter{display:none}
 <tr>
 <td>1.2</td>
 <td>2026-09-02</td>
-<td>実装と B0 の実機確認を反映。<strong>S12（当日表示）・S13（画面用語の平易化）・S14（月別の期間）・S15（未生成の通知）・S17（レポートの整理）・S18（セッション明細）を追加。</strong> <strong>5.2 の重複排除規則が誤りだったため差し替えた</strong>（<code>session_id</code> → <code>session_meta.id</code>）。Q1 / Q2 / Q3 / Q6 を確定、Q5 を決定。7.3.2 の分類率を実測値へ更新。変更した章: 1.2 / 4.2 / 5.2 / 7.3 / 8.2 / 9 / 10 / 11 / 12 / 13 / 付録 B</td>
+<td>実装と B0 の実機確認を反映。<strong>S12（当日表示）・S13（画面用語の平易化）・S14（月別の期間）・S15（未生成の通知）・S17（レポートの整理）・S18（セッション明細）・S19（生成中の表示）を追加。</strong> <strong>5.2 の重複排除規則が誤りだったため差し替えた</strong>（<code>session_id</code> → <code>session_meta.id</code>）。Q1 / Q2 / Q3 / Q6 を確定、Q5 を決定。7.3.2 の分類率を実測値へ更新。変更した章: 1.2 / 4.2 / 5.2 / 7.3 / 8.2 / 9 / 10 / 11 / 12 / 13 / 付録 B</td>
 </tr>
 </tbody>
 </table>
@@ -686,6 +687,11 @@ tr.hidden-by-filter{display:none}
 <td>S18</td>
 <td>セッション明細</td>
 <td>一覧の行を開くと、そのセッションのトークン内訳・モデル別・ツール別・作業内容・日別・配下のサブエージェントを出す（→ 8.4.1）。<strong>キャッシュにある範囲に限る</strong>。Rev 1.2 で追加</td>
+</tr>
+<tr>
+<td>S19</td>
+<td>生成中の表示</td>
+<td>集計中であることをオーバーレイの隅に小さく出す（→ 8.11）。Rev 1.2 で追加</td>
 </tr>
 </tbody>
 </table>
@@ -2129,6 +2135,26 @@ Rev 1.2 で要求側へ変更した。</p>
 <td><strong>判別できなかったコマンド</strong></td>
 <td>—</td>
 </tr>
+<tr>
+<td>課金レコード</td>
+<td><strong>応答の記録</strong></td>
+<td>1 回の応答が複数行に書かれるため、識別子で 1 件にまとめる</td>
+</tr>
+<tr>
+<td>重複排除の実績</td>
+<td><strong>同じ記録を二重に数えていないか</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>除外率</td>
+<td><strong>二重分の割合</strong></td>
+<td>そのまま足すと N 倍になります</td>
+</tr>
+<tr>
+<td>鍵（requestId）が無い行</td>
+<td><strong>識別子が無くそのまま数えた行</strong></td>
+<td>—</td>
+</tr>
 </tbody>
 </table>
 <p>本書の本文では設計上の呼び方を使い続ける。<strong>画面の文言を変えるときは、この表も併せて直す。</strong>
@@ -2987,6 +3013,56 @@ JS は <code>&lt;script&gt;</code> に直接書き、<strong>データだけを 
 履歴ファイルが残っている分だけである。
 また <code>schemaVersion</code> を上げると全件再パースになるため、<strong>その時点で履歴が消えている
 セッションは失われる。</strong> 版を上げる変更では、この副作用を必ず確認する。</p>
+</div>
+<h3 id="sec-8-11"><span class="num">8.11</span><span class="t">生成中の表示</span></h3>
+<p>集計は実測で 7 秒前後かかる。押した直後は何も起きないように見えるため、進行を出す。</p>
+<table>
+<thead>
+<tr>
+<th>場所</th>
+<th>表示</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>トレイメニューの項目</td>
+<td>「使用量レポートを生成中… 42%」。実行中は項目を無効化する</td>
+</tr>
+<tr>
+<td><strong>オーバーレイの右下</strong></td>
+<td>「レポート生成中… 42%」の小さなバッジ。生成していないときは畳んでおく</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>事項</th>
+<th>決定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>置き場所</td>
+<td>ルート <code>Grid</code> の最前面へ重ねる。<strong>レイアウト種別（リスト / コンパクト）に依存させない</strong></td>
+</tr>
+<tr>
+<td>更新経路</td>
+<td><code>IProgress&lt;(Done, Total)&gt;</code> のコールバックから直接更新する。<code>MainWindow</code> のメソッドを呼び、ViewModel を経由しない</td>
+</tr>
+<tr>
+<td>バインディング</td>
+<td><strong>使わない。</strong> <code>TextBlock.Text</code> を直接書き換える。TwoWay 既定の依存関係プロパティに読み取り専用プロパティを結ぶ事故（<code>learnings.md</code> 2026-08-26）を避ける</td>
+</tr>
+<tr>
+<td>後始末</td>
+<td><code>finally</code> で必ず消す。例外・キャンセルでもバッジが残らないようにする</td>
+</tr>
+</tbody>
+</table>
+<div class="note ng"><div class="lab">注意</div>
+<p>注意: オーバーレイを非表示にしているときはバッジも見えない。
+その場合はトレイメニューの文言で分かる。<strong>両方に出しているのはこのため</strong>である。</p>
 </div>
 <hr>
 <h2 id="sec-9"><span class="num">9</span><span class="t">ファイル構成</span></h2><div class="rule"></div>
@@ -3914,6 +3990,15 @@ B1 で <code>AIUsageOverlay.Tests</code>（xUnit）を新規に作る。</p>
 <td>—</td>
 <td>M</td>
 <td>8.4.1。<strong>Rev 1.2 で追加。N9 とは別物</strong></td>
+</tr>
+<tr>
+<td>S19</td>
+<td>スコープ</td>
+<td>生成中の表示</td>
+<td>対応済み</td>
+<td>—</td>
+<td>S</td>
+<td>8.11。<strong>Rev 1.2 で追加</strong></td>
 </tr>
 <tr>
 <td>N1</td>

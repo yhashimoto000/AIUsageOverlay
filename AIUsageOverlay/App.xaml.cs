@@ -587,16 +587,23 @@ namespace AIUsageOverlay
                     menuItem.Enabled = false;
                     menuItem.Text = "使用量レポートを生成中…";
                 }
+                // メニューを開かなくても分かるよう、オーバーレイの隅にも出す
+                _mainWindow?.SetUsageReportStatus("レポート生成中…");
 
                 var includePrompt =
                     _mainWindow?.ViewModel.GetSettings().UsageReportIncludePrompt ?? true;
                 var progress = new Progress<(int Done, int Total)>(p =>
                 {
-                    if (menuItem is null || p.Total == 0)
+                    if (p.Total == 0)
                     {
                         return;
                     }
-                    menuItem.Text = $"使用量レポートを生成中… {p.Done * 100 / p.Total}%";
+                    var percent = p.Done * 100 / p.Total;
+                    if (menuItem is not null)
+                    {
+                        menuItem.Text = $"使用量レポートを生成中… {percent}%";
+                    }
+                    _mainWindow?.SetUsageReportStatus($"レポート生成中… {percent}%");
                 });
 
                 var path = await Task.Run(
@@ -633,6 +640,7 @@ namespace AIUsageOverlay
                     menuItem.Text = "使用量レポートを生成";
                     menuItem.Enabled = true;
                 }
+                _mainWindow?.SetUsageReportStatus(null);
                 _usageReportGate.Release();
             }
         }

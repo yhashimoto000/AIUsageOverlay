@@ -101,7 +101,10 @@ header.top {
 }
 header.top h1 { font-size: 17px; margin: 0; font-weight: 650; }
 .meta { color: var(--text-muted); font-size: 12px; }
-.spacer { flex: 1 1 auto; }
+/* 幅が狭いときは折り返す。要素そのものは縮ませない（ボタンが潰れて文字が切れるため） */
+header.top > * { flex-shrink: 0; }
+header.top [role="group"] { display: flex; }
+.spacer { flex: 1 1 auto; min-width: 0; }
 
 button, select, input[type="search"], input[type="text"] {
   font: inherit; color: var(--text); background: var(--surface);
@@ -109,7 +112,7 @@ button, select, input[type="search"], input[type="text"] {
 }
 button { cursor: pointer; }
 button:hover { background: var(--surface-2); }
-button.seg { border-radius: 0; border-right-width: 0; }
+button.seg { border-radius: 0; border-right-width: 0; white-space: nowrap; }
 button.seg:first-child { border-radius: 6px 0 0 6px; }
 button.seg:last-child { border-radius: 0 6px 6px 0; border-right-width: 1px; }
 button.seg[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
@@ -416,11 +419,12 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
     </div>
 
     <div class="block">
-      <h2>重複排除の実績</h2>
+      <h2>同じ記録を二重に数えていないか</h2>
       <p class="note">
-        Claude Code は 1 つの API 応答が複数行に書き出されるため <code>(requestId, message.id)</code> で一意化します。
-        Codex は <code>session_meta.id</code>（スレッド固有 ID）で数えます。
-        <code>session_id</code> は会話ツリーのルート ID であり、これを鍵にするとサブエージェントの消費が落ちます。
+        Claude Code は 1 回の応答が複数行に書き出されるため、応答の識別子
+        （<code>requestId</code> と <code>message.id</code>）で同じものを 1 件にまとめています。
+        Codex はスレッドごとの識別子（<code>session_meta.id</code>）で数えます。
+        <code>session_id</code> は会話ツリーの根の ID なので、これで数えるとサブエージェントの分が消えます。
       </p>
       <dl class="kv" id="dedup-kv"></dl>
     </div>
@@ -930,11 +934,11 @@ function detailContent(s, children) {
   // 9. データ品質
   const quality = [];
   if (s.rawRecords > 0) {
-    quality.push(["読んだ課金レコード", fmt(s.rawRecords)]);
-    quality.push(["採用したレコード", fmt(s.acceptedRecords)]);
+    quality.push(["読み取った応答の記録", fmt(s.rawRecords)]);
+    quality.push(["重複を除いた後", fmt(s.acceptedRecords)]);
   }
   if (s.keylessRecords > 0) {
-    quality.push(["鍵なしで加算した行", fmt(s.keylessRecords)]);
+    quality.push(["識別子が無くそのまま数えた行", fmt(s.keylessRecords)]);
   }
   quality.push(["壊れていた行", fmt(s.parseErrors)]);
   if (!s.elapsedMeasurable) { quality.push(["経過時間", "測定不可（時刻が 1 種類）"]); }
@@ -1204,16 +1208,17 @@ function renderQuality() {
     ? (q.claudeRawRecords / q.claudeAcceptedRecords).toFixed(2)
     : "-";
   const dedupRows = [
-    ["Claude Code: 読んだ課金レコード", fmt(q.claudeRawRecords) + " 件"],
-    ["Claude Code: 採用したレコード", fmt(q.claudeAcceptedRecords) + " 件"],
-    ["Claude Code: 除外率", q.claudeRawRecords > 0
-      ? (100 - q.claudeAcceptedRecords / q.claudeRawRecords * 100).toFixed(1) + " %（重複 " + ratio + " 倍）"
+    ["Claude Code: 読み取った応答の記録", fmt(q.claudeRawRecords) + " 件"],
+    ["Claude Code: 重複を除いた後", fmt(q.claudeAcceptedRecords) + " 件"],
+    ["Claude Code: 二重分の割合", q.claudeRawRecords > 0
+      ? (100 - q.claudeAcceptedRecords / q.claudeRawRecords * 100).toFixed(1) +
+        " %（そのまま足すと " + ratio + " 倍になります）"
       : "-"],
-    ["Claude Code: 鍵なしで加算した行", fmt(q.claudeKeylessRecords) +
-      " 件（requestId が無い行。捨てずに必ず加算しています）"],
+    ["Claude Code: 識別子が無くそのまま数えた行", fmt(q.claudeKeylessRecords) +
+      " 件（応答の識別子が無い行。捨てずに必ず数えています）"],
     ["Codex: スレッド数", fmt(q.codexThreads) + " 件"],
     ["Codex: うちサブエージェント", fmt(q.codexSubagents) +
-      " 件（重複ではなく独立した消費者として集計）"],
+      " 件（重複ではなく、それぞれ別の使い手として数えています）"],
   ];
   dedupRows.forEach(r => {
     dedup.appendChild(el("dt", { text: r[0] }));
