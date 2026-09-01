@@ -149,6 +149,8 @@ section.panel.active { display: block; }
 
 .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
 .filters label { color: var(--text-muted); font-size: 12px; }
+/* プロジェクト名はフルパスのため、選択肢に引きずられて横幅が伸びるのを防ぐ */
+.filters select { max-width: 340px; }
 .count { color: var(--text-muted); font-size: 12px; margin-left: auto; }
 
 .scroll-x { overflow-x: auto; }
@@ -249,12 +251,8 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
         ツール実行の<strong>回数</strong>の構成比です。時間ではありません。
         分類できなかったものは「未分類」として母数に含めています。
       </p>
+      <!-- 凡例は件数と構成比を添えて renderPhase が動的に描く -->
       <div id="chart-phase"></div>
-      <div class="legend" style="margin-top:8px">
-        <span class="lg-investigate">調査</span><span class="lg-implement">実装</span>
-        <span class="lg-test">テスト</span><span class="lg-dialogue">対話</span>
-        <span class="lg-unknown">未分類</span>
-      </div>
     </div>
 
     <div class="block">

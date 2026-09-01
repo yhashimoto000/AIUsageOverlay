@@ -93,6 +93,12 @@ public class RealHistoryScanTests
             lines.Add($"  {u.Name,-28}: {u.Count:N0}");
         }
 
+        // 目視確認用に実データのレポートを書き出す（実ブラウザでの確認は自動化できない範囲）
+        var htmlPath = new UsageReportRenderer().Render(
+            report, Path.Combine(Path.GetTempPath(), "aiusage-report"), DateTime.Now);
+        lines.Add("");
+        lines.Add($"レポート: {htmlPath}");
+
         var text = string.Join(Environment.NewLine, lines);
         var outputPath = Path.Combine(Path.GetTempPath(), "aiusage-real-scan.txt");
         File.WriteAllText(outputPath, text);

@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 600" width="1140" height="600" font-family="Segoe UI, Meiryo, sans-serif">
+  <!-- ============================================================
+       データ品質タブ モック
+       この画面の目的: 出した数字が「どこまで信用できるか」を先に見せる。
+       重複排除の実績・分類率・取りこぼし・保持期間の 4 ブロック。
+       ============================================================ -->
+  <rect x="0" y="0" width="1140" height="600" fill="#f6f7f9"/>
+
+  <!-- タブ帯 -->
+  <rect x="0" y="0" width="1140" height="34" fill="#ffffff"/>
+  <line x1="0" y1="34" x2="1140" y2="34" stroke="#d8dde3"/>
+  <text x="24" y="22" fill="#7b8794" font-size="12">概要</text>
+  <text x="88" y="22" fill="#7b8794" font-size="12">プロジェクト</text>
+  <text x="184" y="22" fill="#7b8794" font-size="12">セッション</text>
+  <text x="272" y="22" fill="#7b8794" font-size="12">ツール内訳</text>
+  <text x="368" y="22" fill="#1f2933" font-size="12" font-weight="600">データ品質</text>
+  <rect x="364" y="30" width="76" height="3" fill="#2563eb"/>
+
+  <text x="16" y="60" font-size="11" fill="#7b8794">この画面の数字がどこまで信用できるかを示す。ここを見ずに他タブの数字を引用しない。</text>
+
+  <!-- 1) 重複排除 -->
+  <rect x="16" y="72" width="548" height="212" rx="6" fill="#ffffff" stroke="#d8dde3"/>
+  <text x="32" y="96" font-size="12" fill="#1f2933" font-weight="600">1. 重複排除の実績</text>
+  <text x="32" y="114" font-size="10" fill="#7b8794">履歴には同じ課金が複数行・複数ファイルに現れる。除外しないと数倍に膨らむ。</text>
+
+  <text x="32" y="140" font-size="11" fill="#3e4c59">Claude Code（requestId + message.id で一意化）</text>
+  <rect x="32" y="148" width="380" height="16" fill="#fdecea"/>
+  <rect x="32" y="148" width="162" height="16" fill="#0e9f6e"/>
+  <text x="420" y="161" font-size="10" fill="#3e4c59">採用 145 / 除外 212</text>
+  <text x="32" y="180" font-size="10" fill="#7b8794">全行合算 1,166,378 → 一意化 498,755 出力トークン（2.34 倍の過大を除去）</text>
+
+  <text x="32" y="210" font-size="11" fill="#3e4c59">Codex（session_id で一意化。fork がファイルごと複製する）</text>
+  <rect x="32" y="218" width="380" height="16" fill="#fdecea"/>
+  <rect x="32" y="218" width="118" height="16" fill="#0e9f6e"/>
+  <text x="420" y="231" font-size="10" fill="#3e4c59">採用 380 / 除外 125</text>
+  <text x="32" y="250" font-size="10" fill="#7b8794">単純合算 7,441,455,365 → 一意化 2,319,451,810 総トークン（68.8% の過大を除去）</text>
+  <text x="32" y="268" font-size="10" fill="#7b8794">同一 session_id が最大 76 ファイルに複製されていた。</text>
+
+  <!-- 2) 分類率 -->
+  <rect x="576" y="72" width="548" height="212" rx="6" fill="#ffffff" stroke="#d8dde3"/>
+  <text x="592" y="96" font-size="12" fill="#1f2933" font-weight="600">2. フェーズ分類の信頼度</text>
+  <text x="592" y="114" font-size="10" fill="#7b8794">分類できたツール実行の割合。低いほど「フェーズ別」の数字は参考値に近い。</text>
+
+  <text x="592" y="142" font-size="11" fill="#3e4c59">Claude Code</text>
+  <rect x="700" y="132" width="300" height="14" fill="#eef1f4"/>
+  <rect x="700" y="132" width="282" height="14" fill="#0e9f6e"/>
+  <text x="1010" y="143" font-size="10" fill="#0b7a54" font-weight="600">94.1%</text>
+  <text x="592" y="162" font-size="10" fill="#7b8794">ツール名が Read / Edit / Bash と直接出るため高い</text>
+
+  <text x="592" y="192" font-size="11" fill="#3e4c59">Codex</text>
+  <rect x="700" y="182" width="300" height="14" fill="#eef1f4"/>
+  <rect x="700" y="182" width="125" height="14" fill="#f0b429"/>
+  <text x="1010" y="193" font-size="10" fill="#8d6708" font-weight="600">41.7%</text>
+  <text x="592" y="212" font-size="10" fill="#7b8794">全て exec 一本。中身の PowerShell を語彙表で判定するため落ちる</text>
+
+  <rect x="592" y="228" width="516" height="44" rx="4" fill="#fff8e1" stroke="#f0b429"/>
+  <text x="604" y="246" font-size="10" fill="#8d6708">未分類が 20% を超えたため警告表示中。分類ルールは settings.json の phaseRules で追記できる。</text>
+  <text x="604" y="262" font-size="10" fill="#8d6708">未分類コマンドの出現回数トップ 20 を「ツール内訳」タブに出す（ルール追記の手掛かり）。</text>
+
+  <!-- 3) 取りこぼし -->
+  <rect x="16" y="296" width="548" height="152" rx="6" fill="#ffffff" stroke="#d8dde3"/>
+  <text x="32" y="320" font-size="12" fill="#1f2933" font-weight="600">3. 読めなかったファイル</text>
+  <line x1="32" y1="330" x2="548" y2="330" stroke="#d8dde3"/>
+  <text x="32" y="348" font-size="10" fill="#7b8794">理由</text>
+  <text x="400" y="348" font-size="10" fill="#7b8794">件数</text>
+  <line x1="32" y1="356" x2="548" y2="356" stroke="#eef1f4"/>
+  <text x="32" y="374" font-size="10" fill="#3e4c59">JSON として解釈できない行を含む（該当行のみスキップ）</text>
+  <text x="406" y="374" font-size="10" fill="#3e4c59">3</text>
+  <text x="32" y="394" font-size="10" fill="#3e4c59">token_count / usage が 1 件も無い（集計対象外）</text>
+  <text x="406" y="394" font-size="10" fill="#3e4c59">18</text>
+  <text x="32" y="414" font-size="10" fill="#3e4c59">別プロセスがロック中（次回スキャンで再試行）</text>
+  <text x="406" y="414" font-size="10" fill="#3e4c59">1</text>
+  <line x1="32" y1="424" x2="548" y2="424" stroke="#eef1f4"/>
+  <text x="32" y="440" font-size="10" fill="#7b8794">合計 22 / 1,099 ファイル（2.0%）。一覧は「詳細」ボタンで展開。</text>
+
+  <!-- 4) 保持期間 -->
+  <rect x="576" y="296" width="548" height="152" rx="6" fill="#ffffff" stroke="#d8dde3"/>
+  <text x="592" y="320" font-size="12" fill="#1f2933" font-weight="600">4. 履歴の保持期間</text>
+  <line x1="592" y1="330" x2="1108" y2="330" stroke="#d8dde3"/>
+  <text x="592" y="350" font-size="10" fill="#3e4c59">最古の履歴: 2026-06-03（Codex） / 2026-06-11（Claude Code）</text>
+  <text x="592" y="370" font-size="10" fill="#3e4c59">キャッシュ最古: 2026-06-03（スキャン開始日から保持）</text>
+  <rect x="592" y="382" width="516" height="44" rx="4" fill="#eef6ff" stroke="#93c5fd"/>
+  <text x="604" y="400" font-size="10" fill="#1e40af">履歴ファイル本体は各ツールの保持期間設定で削除され得る。キャッシュは削除された分も保持し続ける。</text>
+  <text x="604" y="416" font-size="10" fill="#1e40af">→ キャッシュを消すと過去分は復元できない。エクスポートは「CSV 出力」から。</text>
+  <text x="592" y="442" font-size="10" fill="#7b8794">保持期間の既定値は未確認（→ Q3）。</text>
+
+  <!-- スキャン情報 -->
+  <rect x="16" y="460" width="1108" height="52" rx="6" fill="#ffffff" stroke="#d8dde3"/>
+  <text x="32" y="482" font-size="11" fill="#1f2933" font-weight="600">最終スキャン</text>
+  <text x="140" y="482" font-size="10" fill="#3e4c59">2026-08-31 09:14:22 / 差分 12 ファイル / 所要 0.4 秒</text>
+  <text x="600" y="482" font-size="10" fill="#7b8794">初回フルスキャン: 1,099 ファイル / 約 1.2 GB / 41 秒（実測環境: 別途 11 章）</text>
+  <text x="32" y="500" font-size="10" fill="#7b8794">差分判定は パス + 最終更新時刻 + サイズ。いずれかが変われば再パースする。</text>
+
+  <text x="16" y="536" font-size="10" fill="#9aa5b1">この画面の各数値は集計時に算出したものであり、表示時点の再計算は行わない。</text>
+  <text x="16" y="554" font-size="10" fill="#9aa5b1">数字を引用する場合は、生成日時（ヘッダ右上）を併記すること。</text>
+</svg>
