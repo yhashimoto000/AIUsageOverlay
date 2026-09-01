@@ -1,0 +1,184 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 660" width="1140" height="660" font-family="Segoe UI, Meiryo, sans-serif">
+  <!-- ============================================================
+       セッション一覧 + セッション明細（ドリルダウン）モック
+       上段: セッション一覧（絞り込み・並べ替え）
+       下段: 選択セッションのターン別タイムライン
+       ============================================================ -->
+  <rect x="0" y="0" width="1140" height="660" fill="#f6f7f9"/>
+
+  <!-- タブ帯 -->
+  <rect x="0" y="0" width="1140" height="34" fill="#ffffff"/>
+  <line x1="0" y1="34" x2="1140" y2="34" stroke="#d8dde3"/>
+  <text x="24" y="22" fill="#7b8794" font-size="12">概要</text>
+  <text x="88" y="22" fill="#7b8794" font-size="12">プロジェクト</text>
+  <text x="184" y="22" fill="#1f2933" font-size="12" font-weight="600">セッション</text>
+  <rect x="180" y="30" width="72" height="3" fill="#2563eb"/>
+  <text x="272" y="22" fill="#7b8794" font-size="12">ツール内訳</text>
+  <text x="368" y="22" fill="#7b8794" font-size="12">データ品質</text>
+
+  <!-- 絞り込みバー -->
+  <rect x="16" y="46" width="1108" height="34" rx="4" fill="#ffffff" stroke="#d8dde3"/>
+  <rect x="28" y="54" width="220" height="18" rx="3" fill="#f6f7f9" stroke="#d8dde3"/>
+  <text x="36" y="67" font-size="10" fill="#9aa5b1">指示文を検索…</text>
+  <rect x="260" y="54" width="130" height="18" rx="3" fill="#f6f7f9" stroke="#d8dde3"/>
+  <text x="268" y="67" font-size="10" fill="#3e4c59">プロジェクト: 全て ▾</text>
+  <rect x="402" y="54" width="110" height="18" rx="3" fill="#f6f7f9" stroke="#d8dde3"/>
+  <text x="410" y="67" font-size="10" fill="#3e4c59">ツール: 全て ▾</text>
+  <rect x="524" y="54" width="120" height="18" rx="3" fill="#f6f7f9" stroke="#d8dde3"/>
+  <text x="532" y="67" font-size="10" fill="#3e4c59">モデル: 全て ▾</text>
+  <rect x="656" y="54" width="150" height="18" rx="3" fill="#e8f0fe" stroke="#2563eb"/>
+  <text x="664" y="67" font-size="10" fill="#2563eb">☑ サブエージェントを畳む</text>
+  <text x="1000" y="67" font-size="10" fill="#7b8794">184 件中 12 件を表示</text>
+
+  <!-- セッション一覧 -->
+  <rect x="16" y="90" width="1108" height="238" rx="6" fill="#ffffff" stroke="#d8dde3"/>
+  <line x1="32" y1="114" x2="1108" y2="114" stroke="#d8dde3"/>
+  <text x="32" y="108" font-size="10" fill="#7b8794">開始日時</text>
+  <text x="150" y="108" font-size="10" fill="#7b8794">ツール / モデル</text>
+  <text x="300" y="108" font-size="10" fill="#7b8794">最初の指示</text>
+  <text x="700" y="108" font-size="10" fill="#7b8794">課金相当 ▾</text>
+  <text x="810" y="108" font-size="10" fill="#7b8794">アクティブ</text>
+  <text x="910" y="108" font-size="10" fill="#7b8794">ターン</text>
+  <text x="980" y="108" font-size="10" fill="#7b8794">フェーズ構成</text>
+
+  <!-- 選択行（ハイライト） -->
+  <rect x="17" y="120" width="1106" height="30" fill="#e8f0fe"/>
+  <rect x="17" y="120" width="3" height="30" fill="#2563eb"/>
+  <text x="32" y="139" font-size="10" fill="#1f2933">08-31 09:02</text>
+  <text x="150" y="139" font-size="10" fill="#1f2933">Claude Code / opus-4-8</text>
+  <text x="300" y="139" font-size="10" fill="#1f2933">ローカル履歴から使用量ダッシュボードを作れるか調べて</text>
+  <text x="700" y="139" font-size="10" fill="#1f2933">312.4k</text>
+  <text x="810" y="139" font-size="10" fill="#1f2933">1.8h</text>
+  <text x="916" y="139" font-size="10" fill="#1f2933">14</text>
+  <rect x="980" y="132" width="72" height="9" fill="#2563eb"/><rect x="1052" y="132" width="26" height="9" fill="#0e9f6e"/><rect x="1078" y="132" width="12" height="9" fill="#e5e7eb"/>
+  <line x1="32" y1="150" x2="1108" y2="150" stroke="#eef1f4"/>
+
+  <text x="32" y="169" font-size="10" fill="#3e4c59">08-30 16:41</text>
+  <text x="150" y="169" font-size="10" fill="#3e4c59">Codex / gpt-5.6-sol</text>
+  <text x="300" y="169" font-size="10" fill="#3e4c59">Wireshark のシーケンス表示で Ack の受信時刻を出す</text>
+  <text x="700" y="169" font-size="10" fill="#3e4c59">248.9k</text>
+  <text x="810" y="169" font-size="10" fill="#3e4c59">2.4h</text>
+  <text x="916" y="169" font-size="10" fill="#3e4c59">22</text>
+  <rect x="980" y="162" width="34" height="9" fill="#2563eb"/><rect x="1014" y="162" width="40" height="9" fill="#0e9f6e"/><rect x="1054" y="162" width="14" height="9" fill="#f0b429"/><rect x="1068" y="162" width="22" height="9" fill="#e5e7eb"/>
+  <line x1="32" y1="180" x2="1108" y2="180" stroke="#eef1f4"/>
+
+  <!-- サブエージェント（インデント表示） -->
+  <text x="46" y="199" font-size="10" fill="#7b8794">└ 08-30 16:52</text>
+  <text x="150" y="199" font-size="10" fill="#7b8794">Codex / gpt-5.6-sol</text>
+  <rect x="288" y="191" width="76" height="12" rx="2" fill="#ede9fe"/>
+  <text x="294" y="200" font-size="9" fill="#6d28d9">subagent:Turing</text>
+  <text x="372" y="199" font-size="10" fill="#7b8794">（親から自動起動。ユーザー発言なし）</text>
+  <text x="700" y="199" font-size="10" fill="#7b8794">191.2k</text>
+  <text x="810" y="199" font-size="10" fill="#7b8794">2.1h</text>
+  <text x="916" y="199" font-size="10" fill="#7b8794">0</text>
+  <rect x="980" y="192" width="56" height="9" fill="#2563eb"/><rect x="1036" y="192" width="18" height="9" fill="#0e9f6e"/><rect x="1054" y="192" width="36" height="9" fill="#e5e7eb"/>
+  <line x1="32" y1="210" x2="1108" y2="210" stroke="#eef1f4"/>
+
+  <text x="32" y="229" font-size="10" fill="#3e4c59">08-28 15:06</text>
+  <text x="150" y="229" font-size="10" fill="#3e4c59">Codex / (不明)</text>
+  <text x="300" y="229" font-size="10" fill="#3e4c59">以下のバグ修正お願いします。ログ一覧で開いた際の…</text>
+  <text x="700" y="229" font-size="10" fill="#3e4c59">96.4k</text>
+  <rect x="806" y="221" width="46" height="12" rx="2" fill="#fdecea"/>
+  <text x="811" y="230" font-size="9" fill="#a33">測定不可</text>
+  <text x="916" y="229" font-size="10" fill="#3e4c59">5</text>
+  <rect x="980" y="222" width="110" height="9" fill="#e5e7eb" stroke="#cbd2d9" stroke-dasharray="3 2"/>
+  <line x1="32" y1="240" x2="1108" y2="240" stroke="#eef1f4"/>
+
+  <text x="32" y="259" font-size="10" fill="#3e4c59">08-27 10:18</text>
+  <text x="150" y="259" font-size="10" fill="#3e4c59">Claude Code / opus-4-8</text>
+  <text x="300" y="259" font-size="10" fill="#3e4c59">WebView2 が黒画面になる件、原因を特定して直して</text>
+  <text x="700" y="259" font-size="10" fill="#3e4c59">204.7k</text>
+  <text x="810" y="259" font-size="10" fill="#3e4c59">3.1h</text>
+  <text x="916" y="259" font-size="10" fill="#3e4c59">31</text>
+  <rect x="980" y="252" width="46" height="9" fill="#2563eb"/><rect x="1026" y="252" width="42" height="9" fill="#0e9f6e"/><rect x="1068" y="252" width="16" height="9" fill="#f0b429"/><rect x="1084" y="252" width="6" height="9" fill="#e5e7eb"/>
+  <line x1="32" y1="270" x2="1108" y2="270" stroke="#eef1f4"/>
+
+  <text x="32" y="289" font-size="10" fill="#3e4c59">08-26 08:33</text>
+  <text x="150" y="289" font-size="10" fill="#3e4c59">Claude Code / opus-4-8</text>
+  <text x="300" y="289" font-size="10" fill="#3e4c59">CLAUDE.md と AGENTS.md の重複を整理して</text>
+  <text x="700" y="289" font-size="10" fill="#3e4c59">158.1k</text>
+  <text x="810" y="289" font-size="10" fill="#3e4c59">1.2h</text>
+  <text x="916" y="289" font-size="10" fill="#3e4c59">18</text>
+  <rect x="980" y="282" width="62" height="9" fill="#2563eb"/><rect x="1042" y="282" width="34" height="9" fill="#0e9f6e"/><rect x="1076" y="282" width="14" height="9" fill="#e5e7eb"/>
+  <line x1="32" y1="300" x2="1108" y2="300" stroke="#eef1f4"/>
+  <text x="32" y="318" font-size="10" fill="#9aa5b1">… 以降 7 件</text>
+
+  <!-- ドリルダウン: ターン別タイムライン -->
+  <rect x="16" y="340" width="1108" height="304" rx="6" fill="#ffffff" stroke="#d8dde3"/>
+  <text x="32" y="364" font-size="12" fill="#1f2933" font-weight="600">セッション明細 — 08-31 09:02 / C:\ToolCreate\Claude-UsageTool</text>
+  <text x="700" y="364" font-size="10" fill="#7b8794">sessionId 10188e85… / branch: HEAD / v2.1.209</text>
+  <line x1="32" y1="374" x2="1108" y2="374" stroke="#d8dde3"/>
+
+  <!-- 凡例 -->
+  <rect x="32" y="384" width="9" height="9" fill="#2563eb"/><text x="46" y="392" font-size="9" fill="#7b8794">調査</text>
+  <rect x="86" y="384" width="9" height="9" fill="#0e9f6e"/><text x="100" y="392" font-size="9" fill="#7b8794">実装</text>
+  <rect x="140" y="384" width="9" height="9" fill="#f0b429"/><text x="154" y="392" font-size="9" fill="#7b8794">テスト</text>
+  <rect x="200" y="384" width="9" height="9" fill="#9aa5b1"/><text x="214" y="392" font-size="9" fill="#7b8794">対話</text>
+  <rect x="254" y="384" width="9" height="9" fill="#e5e7eb" stroke="#cbd2d9"/><text x="268" y="392" font-size="9" fill="#7b8794">未分類</text>
+  <text x="900" y="392" font-size="9" fill="#9aa5b1">バーの長さ = そのターンの課金相当トークン</text>
+
+  <!-- ターン行 -->
+  <g font-size="10">
+    <text x="32" y="418" fill="#7b8794">T1</text>
+    <text x="56" y="418" fill="#3e4c59">09:02:14</text>
+    <text x="120" y="418" fill="#3e4c59">履歴の所在を Glob で確認</text>
+    <rect x="330" y="410" width="46" height="10" fill="#2563eb"/>
+    <text x="700" y="418" fill="#3e4c59">18.2k</text>
+    <text x="790" y="418" fill="#3e4c59">0:42</text>
+    <text x="860" y="418" fill="#7b8794">Glob ×2</text>
+
+    <text x="32" y="440" fill="#7b8794">T2</text>
+    <text x="56" y="440" fill="#3e4c59">09:04:31</text>
+    <text x="120" y="440" fill="#3e4c59">Codex の token_count を実測</text>
+    <rect x="330" y="432" width="88" height="10" fill="#2563eb"/>
+    <rect x="418" y="432" width="14" height="10" fill="#e5e7eb" stroke="#cbd2d9" stroke-dasharray="2 2"/>
+    <text x="700" y="440" fill="#3e4c59">34.9k</text>
+    <text x="790" y="440" fill="#3e4c59">2:18</text>
+    <text x="860" y="440" fill="#7b8794">Bash ×3, Grep ×1</text>
+
+    <text x="32" y="462" fill="#7b8794">T3</text>
+    <text x="56" y="462" fill="#3e4c59">09:11:07</text>
+    <text x="120" y="462" fill="#3e4c59">全 505 セッションを集計</text>
+    <rect x="330" y="454" width="164" height="10" fill="#2563eb"/>
+    <text x="700" y="462" fill="#3e4c59">62.1k</text>
+    <text x="790" y="462" fill="#3e4c59">5:04</text>
+    <text x="860" y="462" fill="#7b8794">Bash ×2</text>
+
+    <text x="32" y="484" fill="#7b8794">T4</text>
+    <text x="56" y="484" fill="#3e4c59">09:26:52</text>
+    <text x="120" y="484" fill="#3e4c59">重複排除の影響を検証</text>
+    <rect x="330" y="476" width="122" height="10" fill="#2563eb"/>
+    <text x="700" y="484" fill="#3e4c59">47.6k</text>
+    <text x="790" y="484" fill="#3e4c59">3:31</text>
+    <text x="860" y="484" fill="#7b8794">Bash ×2</text>
+
+    <text x="32" y="506" fill="#7b8794">T5</text>
+    <text x="56" y="506" fill="#3e4c59">09:38:20</text>
+    <text x="120" y="506" fill="#3e4c59">モック SVG を作成</text>
+    <rect x="330" y="498" width="18" height="10" fill="#2563eb"/>
+    <rect x="348" y="498" width="96" height="10" fill="#0e9f6e"/>
+    <text x="700" y="506" fill="#3e4c59">58.4k</text>
+    <text x="790" y="506" fill="#3e4c59">4:12</text>
+    <text x="860" y="506" fill="#7b8794">Write ×3, Read ×1</text>
+
+    <text x="32" y="528" fill="#7b8794">T6</text>
+    <text x="56" y="528" fill="#3e4c59">09:52:44</text>
+    <text x="120" y="528" fill="#3e4c59">HTML 生成と検査</text>
+    <rect x="330" y="520" width="24" height="10" fill="#2563eb"/>
+    <rect x="354" y="520" width="52" height="10" fill="#0e9f6e"/>
+    <rect x="406" y="520" width="66" height="10" fill="#f0b429"/>
+    <text x="700" y="528" fill="#3e4c59">51.8k</text>
+    <text x="790" y="528" fill="#3e4c59">3:48</text>
+    <text x="860" y="528" fill="#7b8794">Bash ×4, Edit ×2</text>
+  </g>
+
+  <line x1="32" y1="546" x2="1108" y2="546" stroke="#eef1f4"/>
+
+  <!-- 空白時間の扱い（未定義ケースの可視化） -->
+  <rect x="32" y="558" width="1076" height="34" rx="4" fill="#f6f7f9" stroke="#d8dde3"/>
+  <text x="44" y="572" font-size="10" fill="#3e4c59">T3 → T4 の間に 10分52秒 の空白がある（しきい値 120 秒超）。人間の確認・離席とみなし、アクティブ時間に加算していない。</text>
+  <text x="44" y="586" font-size="10" fill="#7b8794">経過時間 1:52:31 / アクティブ時間 0:19:35 / 除外 1:32:56（空白 9 区間）</text>
+
+  <text x="32" y="616" font-size="10" fill="#7b8794">このセッションの usage 行 357 件は requestId 145 件へ一意化した（重複 212 件を除外）。</text>
+  <text x="32" y="632" font-size="10" fill="#7b8794">除外しない場合、課金相当は 2.34 倍に膨らむ。→ 5.1 節</text>
+</svg>

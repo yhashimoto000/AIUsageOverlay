@@ -1,0 +1,1372 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 使用量レポート</title>
+<style>
+/* ────────────────────────────────────────────────────────────────
+   配色は CSS 変数で持つ。明（:root）/ OS 追従のダーク / 明示ダーク の 3 系統を定義し、
+   色は直書きしない。テーマ切替ボタンで ダーク → ライト → OS 追従 を巡回する。
+   ──────────────────────────────────────────────────────────────── */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --border: #d6dae1;
+  --text: #1b1f24;
+  --text-muted: #5b6572;
+  --accent: #2f6feb;
+  --accent-soft: #dce7fd;
+  --claude: #c96442;
+  --codex: #10a37f;
+  --phase-investigate: #3b82f6;
+  --phase-implement: #16a34a;
+  --phase-test: #d97706;
+  --phase-dialogue: #8b5cf6;
+  --phase-unknown: #94a3b8;
+  --warn-bg: #fdf0d5;
+  --warn-border: #e2b34a;
+  --warn-text: #6b4c07;
+  --bad: #d43d3d;
+  --good: #16a34a;
+  --shadow: 0 1px 2px rgba(16, 22, 30, .08);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171c;
+    --surface: #1c2027;
+    --surface-2: #242932;
+    --border: #333a45;
+    --text: #e6e9ee;
+    --text-muted: #9aa4b2;
+    --accent: #6a9bff;
+    --accent-soft: #24334f;
+    --claude: #e08464;
+    --codex: #35c79f;
+    --phase-investigate: #60a5fa;
+    --phase-implement: #4ade80;
+    --phase-test: #fbbf24;
+    --phase-dialogue: #a78bfa;
+    --phase-unknown: #6b7684;
+    --warn-bg: #3a2f14;
+    --warn-border: #a67c22;
+    --warn-text: #f3d998;
+    --bad: #f87171;
+    --good: #4ade80;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171c;
+  --surface: #1c2027;
+  --surface-2: #242932;
+  --border: #333a45;
+  --text: #e6e9ee;
+  --text-muted: #9aa4b2;
+  --accent: #6a9bff;
+  --accent-soft: #24334f;
+  --claude: #e08464;
+  --codex: #35c79f;
+  --phase-investigate: #60a5fa;
+  --phase-implement: #4ade80;
+  --phase-test: #fbbf24;
+  --phase-dialogue: #a78bfa;
+  --phase-unknown: #6b7684;
+  --warn-bg: #3a2f14;
+  --warn-border: #a67c22;
+  --warn-text: #f3d998;
+  --bad: #f87171;
+  --good: #4ade80;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+/* 横幅は制限しない。表・図は右端いっぱいまで使う */
+.wrap { padding: 16px 20px 48px; }
+
+header.top {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  padding: 14px 20px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+}
+header.top h1 { font-size: 17px; margin: 0; font-weight: 650; }
+.meta { color: var(--text-muted); font-size: 12px; }
+/* 幅が狭いときは折り返す。要素そのものは縮ませない（ボタンが潰れて文字が切れるため） */
+header.top > * { flex-shrink: 0; }
+header.top [role="group"] { display: flex; }
+.spacer { flex: 1 1 auto; min-width: 0; }
+
+button, select, input[type="search"], input[type="text"] {
+  font: inherit; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px;
+}
+button { cursor: pointer; }
+button:hover { background: var(--surface-2); }
+button.seg { border-radius: 0; border-right-width: 0; white-space: nowrap; }
+button.seg:first-child { border-radius: 6px 0 0 6px; }
+button.seg:last-child { border-radius: 0 6px 6px 0; border-right-width: 1px; }
+button.seg[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+
+nav.tabs { display: flex; gap: 4px; margin: 16px 0 12px; flex-wrap: wrap; }
+nav.tabs button {
+  border-radius: 8px 8px 0 0; border-bottom-color: transparent; padding: 7px 16px;
+}
+nav.tabs button[aria-selected="true"] {
+  background: var(--surface); border-color: var(--border); border-bottom-color: var(--surface);
+  font-weight: 650;
+}
+section.panel { display: none; }
+section.panel.active { display: block; }
+
+.cards { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 16px; box-shadow: var(--shadow); flex: 1 1 190px;
+}
+.card .label { color: var(--text-muted); font-size: 12px; }
+.card .value { font-size: 22px; font-weight: 660; letter-spacing: -.01em; }
+.card .sub { color: var(--text-muted); font-size: 11px; }
+
+.block {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 14px 16px; margin-bottom: 16px; box-shadow: var(--shadow);
+}
+.block h2 { font-size: 14px; margin: 0 0 4px; font-weight: 650; }
+.block .note { color: var(--text-muted); font-size: 12px; margin: 0 0 10px; }
+
+.banner {
+  background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
+  border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px;
+}
+.banner.hidden { display: none; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.filters label { color: var(--text-muted); font-size: 12px; }
+/* プロジェクト名はフルパスのため、選択肢に引きずられて横幅が伸びるのを防ぐ */
+.filters select { max-width: 340px; }
+.count { color: var(--text-muted); font-size: 12px; margin-left: auto; }
+
+.scroll-x { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--text-muted); font-weight: 600; font-size: 12px; position: sticky; top: 0; background: var(--surface); }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--text); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.wrap-cell { white-space: normal; max-width: 520px; }
+tbody tr:hover { background: var(--surface-2); }
+
+.badge {
+  display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text-muted); background: var(--surface-2);
+}
+.badge.claude { color: var(--claude); border-color: var(--claude); background: transparent; }
+.badge.codex { color: var(--codex); border-color: var(--codex); background: transparent; }
+.badge.warn { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
+
+.toggle-child {
+  border: none; background: transparent; color: var(--text-muted);
+  padding: 0 4px; width: 20px; text-align: center;
+}
+tr.child > td:first-child { padding-left: 30px; }
+tr.child { display: none; }
+tr.child.shown { display: table-row; }
+
+/* セッション明細（行をクリックすると開く） */
+tbody tr.expandable { cursor: pointer; }
+tbody tr.selected { background: var(--accent-soft); }
+tbody tr.selected:hover { background: var(--accent-soft); }
+tr.detail { display: none; }
+tr.detail.shown { display: table-row; }
+tr.detail > td {
+  background: var(--surface-2); padding: 14px 16px; white-space: normal;
+  border-bottom: 2px solid var(--border);
+}
+.detail-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;
+}
+.detail-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px;
+}
+.detail-card h3 {
+  font-size: 12px; margin: 0 0 8px; color: var(--text-muted); font-weight: 650;
+}
+.detail-card .hint { font-size: 11px; color: var(--text-muted); margin: 6px 0 0; }
+.mini { width: 100%; font-size: 12px; }
+.mini td, .mini th {
+  padding: 3px 6px; border: none; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.mini tr:last-child td { border-bottom: none; }
+.mini td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mini td.grow { width: 100%; }
+.detail-prompt {
+  font-size: 12px; color: var(--text); background: var(--surface-2);
+  border-left: 3px solid var(--border); padding: 6px 10px; margin: 0 0 10px;
+  white-space: pre-wrap; word-break: break-word;
+}
+.legend .lg-in::before { background: var(--phase-investigate); }
+.legend .lg-cc::before { background: var(--phase-dialogue); }
+.legend .lg-cr::before { background: var(--phase-unknown); }
+.legend .lg-out::before { background: var(--phase-implement); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted); }
+.legend span::before {
+  content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px;
+}
+.legend .lg-claude::before { background: var(--claude); }
+.legend .lg-codex::before { background: var(--codex); }
+.legend .lg-investigate::before { background: var(--phase-investigate); }
+.legend .lg-implement::before { background: var(--phase-implement); }
+.legend .lg-test::before { background: var(--phase-test); }
+.legend .lg-dialogue::before { background: var(--phase-dialogue); }
+.legend .lg-unknown::before { background: var(--phase-unknown); }
+
+svg { display: block; max-width: 100%; }
+svg text { fill: var(--text-muted); font-size: 11px; }
+svg .grid { stroke: var(--border); stroke-width: 1; }
+.empty { color: var(--text-muted); padding: 18px 2px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 18px; font-size: 13px; }
+.kv dt { color: var(--text-muted); }
+.kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>AI 使用量レポート</h1>
+  <span class="meta" id="generated-at"></span>
+  <span class="meta" id="current-period"></span>
+  <div class="spacer"></div>
+  <div role="group" aria-label="期間">
+    <button class="seg" data-period="today" aria-pressed="true">今日</button>
+    <button class="seg" data-period="7" aria-pressed="false">7 日</button>
+    <button class="seg" data-period="30" aria-pressed="false">30 日</button>
+    <button class="seg" data-period="all" aria-pressed="false">全期間</button>
+  </div>
+  <select id="month-select" aria-label="月を選ぶ">
+    <option value="">月を選ぶ…</option>
+  </select>
+  <button id="theme-toggle" title="ダーク / ライト / OS 追従 を切り替える">テーマ: OS 追従</button>
+</header>
+
+<div class="wrap">
+  <p class="meta" style="margin-top:0">
+    生成時点のスナップショットです。数字を更新するには AIUsageOverlay のトレイメニューから
+    「使用量レポートを生成」を実行してください。
+  </p>
+
+  <div class="banner hidden" id="classify-warning"></div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="overview" aria-selected="true">概要</button>
+    <button role="tab" data-tab="sessions" aria-selected="false">セッション</button>
+    <button role="tab" data-tab="tools" aria-selected="false">ツール内訳</button>
+    <button role="tab" data-tab="quality" aria-selected="false">データ品質</button>
+  </nav>
+
+  <!-- 概要 ────────────────────────────────────────────────── -->
+  <section class="panel active" id="panel-overview">
+    <div class="block" id="empty-notice" style="display:none">
+      <p class="note" style="margin:0">
+        この期間に記録された履歴はありません。上の期間ボタンで範囲を広げてください。
+      </p>
+    </div>
+    <div class="cards" id="kpi-cards"></div>
+
+    <div class="block" id="block-daily">
+      <h2>日ごとの消費トークン</h2>
+      <p class="note">
+        ターンが始まった時刻の日（お使いの PC の時刻）に数えています。
+        下のプロジェクト表はセッションが始まった日で数えているため、合計は一致しません。
+      </p>
+      <div class="scroll-x"><div id="chart-daily"></div></div>
+      <div class="legend" style="margin-top:8px">
+        <span class="lg-claude">Claude Code</span><span class="lg-codex">Codex</span>
+      </div>
+    </div>
+
+    <div class="block">
+      <h2>何をしていたか（ツール実行回数の割合）</h2>
+      <p class="note">
+        ツールを実行した<strong>回数</strong>の割合です。かけた時間ではありません。
+        判別できなかったものは「未分類」として、割合の分母に含めています。
+      </p>
+      <!-- 凡例は件数と構成比を添えて renderPhase が動的に描く -->
+      <div id="chart-phase"></div>
+    </div>
+
+    <div class="block">
+      <h2>プロジェクト別</h2>
+      <p class="note">セッションが始まった日で数えています。各セッションの単独分の合計です。パスは履歴に記録されたそのままの値です。</p>
+      <div class="filters">
+        <input type="search" id="project-search" placeholder="プロジェクト名で絞り込み" size="30">
+        <label><input type="checkbox" id="project-all"> 全件表示</label>
+        <span class="count" id="project-count"></span>
+      </div>
+      <div class="scroll-x"><table id="project-table">
+        <thead><tr>
+          <th class="sortable" data-sort="project">プロジェクト</th>
+          <th class="num sortable" data-sort="sessionCount">セッション</th>
+          <th class="num sortable" data-sort="billable">消費トークン</th>
+          <th class="num sortable" data-sort="processed">処理トークン</th>
+          <th class="num sortable" data-sort="elapsedSec">経過時間</th>
+          <th>何をしていたか</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- セッション ───────────────────────────────────────────── -->
+  <section class="panel" id="panel-sessions">
+    <div class="block">
+      <h2>セッション一覧</h2>
+      <p class="note">
+        サブエージェントは親の下に畳んでいます。親の行は<strong>子を含めた合計</strong>、
+        子の行は<strong>その子だけの分</strong>です。
+        経過時間は最初と最後の記録の差なので、読んでいた時間や離席も含みます（作業時間ではありません）。
+        <strong>行をクリックすると、そのセッションの内訳（トークン・モデル・ツール・作業内容）を開けます。</strong>
+      </p>
+      <div class="filters">
+        <label>ツール <select id="session-tool"><option value="">すべて</option>
+          <option value="claude-code">Claude Code</option><option value="codex">Codex</option></select></label>
+        <label>プロジェクト <select id="session-project"><option value="">すべて</option></select></label>
+        <label><input type="checkbox" id="session-expand"> サブエージェントを開く</label>
+        <input type="search" id="session-search" placeholder="指示文・プロジェクト・モデルで検索" size="34">
+        <span class="count" id="session-count"></span>
+      </div>
+      <div class="scroll-x"><table id="session-table">
+        <thead><tr>
+          <th>開始</th>
+          <th>ツール</th>
+          <th>プロジェクト</th>
+          <th>指示文（先頭 64 文字）</th>
+          <th class="num sortable" data-sort="turns">ターン</th>
+          <th class="num sortable" data-sort="elapsedSec">経過時間</th>
+          <th class="num sortable" data-sort="billable">消費トークン</th>
+          <th class="num sortable" data-sort="processed">処理トークン</th>
+          <th>何をしていたか</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- ツール内訳 ───────────────────────────────────────────── -->
+  <section class="panel" id="panel-tools">
+    <div class="block">
+      <h2>ツール別の実行回数</h2>
+      <div class="filters">
+        <input type="search" id="tool-search" placeholder="ツール名で絞り込み" size="26">
+        <span class="count" id="tool-count"></span>
+      </div>
+      <div class="scroll-x"><table id="tool-table">
+        <thead><tr><th>ツール</th><th class="num">実行回数</th><th>構成比</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+
+    <div class="block">
+      <h2>判別できなかったコマンド 上位</h2>
+      <p class="note">
+        何の作業か決められなかったコマンドです。次の版でどの語を覚えさせればよいかの手掛かりになります。
+      </p>
+      <div class="filters">
+        <input type="search" id="unknown-search" placeholder="コマンド名で絞り込み" size="26">
+        <span class="count" id="unknown-count"></span>
+      </div>
+      <div class="scroll-x"><table id="unknown-table">
+        <thead><tr><th>コマンド</th><th class="num">出現回数</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+
+    <div class="block">
+      <h2>モデル別</h2>
+      <div class="filters">
+        <input type="search" id="model-search" placeholder="モデル名で絞り込み" size="26">
+        <span class="count" id="model-count"></span>
+      </div>
+      <div class="scroll-x"><table id="model-table">
+        <thead><tr>
+          <th>モデル</th><th class="num">ターン</th><th class="num">消費トークン</th><th class="num">処理トークン</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- データ品質 ───────────────────────────────────────────── -->
+  <section class="panel" id="panel-quality">
+    <div class="block">
+      <h2>この数字をどこまで信じてよいか</h2>
+      <p class="note">
+        重複排除と分類は、どちらも「除外した」「決められなかった」という負の情報を持ちます。
+        それを隠すと数字が実態より確からしく見えるため、実績をここに出しています。
+      </p>
+      <dl class="kv" id="quality-kv"></dl>
+    </div>
+
+    <div class="block">
+      <h2>同じ記録を二重に数えていないか</h2>
+      <p class="note">
+        Claude Code は 1 回の応答が複数行に書き出されるため、応答の識別子
+        （<code>requestId</code> と <code>message.id</code>）で同じものを 1 件にまとめています。
+        Codex はスレッドごとの識別子（<code>session_meta.id</code>）で数えます。
+        <code>session_id</code> は会話ツリーの根の ID なので、これで数えるとサブエージェントの分が消えます。
+      </p>
+      <dl class="kv" id="dedup-kv"></dl>
+    </div>
+
+    <div class="block">
+      <h2>読めなかったファイル</h2>
+      <div class="filters">
+        <input type="search" id="skip-search" placeholder="パス・理由で絞り込み" size="34">
+        <span class="count" id="skip-count"></span>
+      </div>
+      <div class="scroll-x"><table id="skip-table">
+        <thead><tr><th>パス</th><th>理由</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+</div>
+
+<script type="application/json" id="report-data">__REPORT_DATA__</script>
+<script>
+"use strict";
+
+/* 埋め込み JSON は実行可能な script ではなく application/json から読む。
+   C# 側で < > & および行終端子を \u エスケープ済みのため、ここでは JSON.parse するだけでよい。 */
+const DATA = JSON.parse(document.getElementById("report-data").textContent);
+
+const PHASES = [
+  { key: "investigate", label: "調査", varName: "--phase-investigate" },
+  { key: "implement",   label: "実装", varName: "--phase-implement" },
+  { key: "test",        label: "テスト", varName: "--phase-test" },
+  { key: "dialogue",    label: "対話", varName: "--phase-dialogue" },
+  { key: "unknown",     label: "未分類", varName: "--phase-unknown" },
+];
+
+// 既定は「今日」。まず当日の使用量を見て、必要なら期間を広げる流れにする
+let currentPeriod = "today";
+let projectSort = { key: "billable", desc: true };
+let sessionSort = { key: "start", desc: true };
+
+/* ── 共通ユーティリティ ───────────────────────────────────── */
+
+function fmt(n) { return (n || 0).toLocaleString("ja-JP"); }
+
+function fmtCompact(n) {
+  n = n || 0;
+  if (n >= 1e9) { return (n / 1e9).toFixed(2) + " B"; }
+  if (n >= 1e6) { return (n / 1e6).toFixed(1) + " M"; }
+  if (n >= 1e3) { return (n / 1e3).toFixed(1) + " k"; }
+  return String(n);
+}
+
+function fmtDuration(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (h > 0) { return h + " 時間 " + m + " 分"; }
+  return m + " 分";
+}
+
+function el(tag, attrs, children) {
+  const node = document.createElement(tag);
+  if (attrs) {
+    for (const k in attrs) {
+      if (k === "class") { node.className = attrs[k]; }
+      else if (k === "text") { node.textContent = attrs[k]; }
+      else if (attrs[k] !== null && attrs[k] !== undefined) { node.setAttribute(k, attrs[k]); }
+    }
+  }
+  (children || []).forEach(c => node.appendChild(c));
+  return node;
+}
+
+function svgEl(tag, attrs) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const k in attrs) { node.setAttribute(k, attrs[k]); }
+  return node;
+}
+
+function period() { return DATA.periods[currentPeriod]; }
+
+/* ── フェーズ構成比バー（表の中に置く小さな横帯）───────────── */
+
+function phaseBar(counts, width) {
+  const total = PHASES.reduce((a, p) => a + (counts[p.key] || 0), 0);
+  const w = width || 150;
+  const svg = svgEl("svg", { width: w, height: 12, viewBox: "0 0 " + w + " 12" });
+  if (total === 0) {
+    svg.appendChild(svgEl("rect", { x: 0, y: 2, width: w, height: 8, rx: 2, fill: "var(--surface-2)" }));
+    return svg;
+  }
+  let x = 0;
+  PHASES.forEach(p => {
+    const v = counts[p.key] || 0;
+    if (v === 0) { return; }
+    const seg = Math.max(1, (v / total) * w);
+    const rect = svgEl("rect",
+      { x: x, y: 2, width: seg, height: 8, fill: "var(" + p.varName + ")" });
+    rect.appendChild(svgEl("title", {})).textContent =
+      p.label + " " + fmt(v) + " 回 (" + ((v / total) * 100).toFixed(1) + "%)";
+    svg.appendChild(rect);
+    x += seg;
+  });
+  return svg;
+}
+
+/* ── 日別の積み上げ棒 ─────────────────────────────────────── */
+
+function renderDaily() {
+  const host = document.getElementById("chart-daily");
+  const block = document.getElementById("block-daily");
+  host.textContent = "";
+  const days = period().byDay;
+
+  // 「今日」のように 1 日しか無い期間では、棒 1 本のグラフに読み取れることが無い。
+  // KPI とプロジェクト表で足りるのでブロックごと隠す
+  block.style.display = days.length > 1 ? "" : "none";
+  if (days.length <= 1) {
+    return;
+  }
+
+  const barW = Math.max(8, Math.min(34, Math.floor(900 / days.length)));
+  const gap = Math.max(2, Math.floor(barW * 0.22));
+  const padL = 66, padR = 12, padT = 10, padB = 44;
+  const plotW = days.length * (barW + gap);
+  const plotH = 210;
+  const w = padL + plotW + padR;
+  const h = padT + plotH + padB;
+  const max = Math.max.apply(null, days.map(d => d.claudeBillable + d.codexBillable)) || 1;
+
+  const svg = svgEl("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h });
+
+  // 目盛は最大値から線形に 4 本
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + plotH - (plotH * i / 4);
+    svg.appendChild(svgEl("line",
+      { x1: padL, y1: y, x2: padL + plotW, y2: y, class: "grid" }));
+    const label = svgEl("text", { x: padL - 8, y: y + 4, "text-anchor": "end" });
+    label.textContent = fmtCompact(max * i / 4);
+    svg.appendChild(label);
+  }
+
+  days.forEach((d, i) => {
+    const x = padL + i * (barW + gap);
+    const total = d.claudeBillable + d.codexBillable;
+    const hClaude = (d.claudeBillable / max) * plotH;
+    const hCodex = (d.codexBillable / max) * plotH;
+    let y = padT + plotH;
+
+    if (hCodex > 0) {
+      y -= hCodex;
+      const r = svgEl("rect", { x: x, y: y, width: barW, height: hCodex, fill: "var(--codex)" });
+      r.appendChild(svgEl("title", {})).textContent =
+        d.date + " Codex " + fmt(d.codexBillable);
+      svg.appendChild(r);
+    }
+    if (hClaude > 0) {
+      y -= hClaude;
+      const r = svgEl("rect", { x: x, y: y, width: barW, height: hClaude, fill: "var(--claude)" });
+      r.appendChild(svgEl("title", {})).textContent =
+        d.date + " Claude Code " + fmt(d.claudeBillable);
+      svg.appendChild(r);
+    }
+    if (total === 0) {
+      svg.appendChild(svgEl("rect",
+        { x: x, y: padT + plotH - 1, width: barW, height: 1, fill: "var(--border)" }));
+    }
+
+    // 日付ラベルは密度に応じて間引く
+    const step = Math.ceil(days.length / 18);
+    if (i % step === 0 || i === days.length - 1) {
+      const t = svgEl("text", {
+        x: x + barW / 2, y: padT + plotH + 16,
+        "text-anchor": "end",
+        transform: "rotate(-45 " + (x + barW / 2) + " " + (padT + plotH + 16) + ")",
+      });
+      t.textContent = d.date.slice(5);
+      svg.appendChild(t);
+    }
+  });
+
+  host.appendChild(svg);
+}
+
+/* ── フェーズ内訳の横帯 ───────────────────────────────────── */
+
+function renderPhase() {
+  const host = document.getElementById("chart-phase");
+  host.textContent = "";
+  const counts = period().byPhase || {};
+  const total = PHASES.reduce((a, p) => a + (counts[p.key] || 0), 0);
+  if (total === 0) {
+    host.appendChild(el("div", { class: "empty", text: "対象期間にツール実行の記録がありません。" }));
+    return;
+  }
+
+  const w = 1000, h = 40;
+  const svg = svgEl("svg", { width: "100%", height: h, viewBox: "0 0 " + w + " " + h,
+                             preserveAspectRatio: "none" });
+  let x = 0;
+  PHASES.forEach(p => {
+    const v = counts[p.key] || 0;
+    if (v === 0) { return; }
+    const seg = (v / total) * w;
+    const rect = svgEl("rect",
+      { x: x, y: 0, width: seg, height: 26, fill: "var(" + p.varName + ")" });
+    rect.appendChild(svgEl("title", {})).textContent =
+      p.label + " " + fmt(v) + " 回 (" + ((v / total) * 100).toFixed(1) + "%)";
+    svg.appendChild(rect);
+    x += seg;
+  });
+  host.appendChild(svg);
+
+  const list = el("div", { class: "legend", style: "margin-top:6px" });
+  PHASES.forEach(p => {
+    const v = counts[p.key] || 0;
+    list.appendChild(el("span", {
+      class: "lg-" + p.key,
+      text: p.label + " " + fmt(v) + " 回 (" + ((v / total) * 100).toFixed(1) + "%)",
+    }));
+  });
+  host.appendChild(list);
+}
+
+/* ── KPI ──────────────────────────────────────────────────── */
+
+function renderKpi() {
+  const p = period();
+  const host = document.getElementById("kpi-cards");
+  host.textContent = "";
+
+  const cards = [
+    { label: "消費トークン", value: fmt(p.billable),
+      sub: "使用量の枠（レート制限）を減らす分。キャッシュから読んだ分は含みません" },
+    { label: "処理トークン", value: fmt(p.processed),
+      sub: "AI が実際に読み書きした量。うちキャッシュから読んだ分が " + fmt(p.cacheRead) },
+    { label: "セッション", value: fmt(p.sessionCount),
+      sub: fmt(p.turnCount) + " ターン / " + fmt(p.projectCount) + " プロジェクト" },
+    { label: "経過時間", value: fmtDuration(p.elapsedSec),
+      sub: p.elapsedUnmeasurableCount > 0
+        ? "測れなかった " + fmt(p.elapsedUnmeasurableCount) + " 件を除く。作業時間ではありません"
+        : "読んでいた時間や離席も含みます。作業時間ではありません" },
+    { label: "作業内容の判別率", value: p.classifiedPercent.toFixed(1) + " %",
+      sub: "ツール実行のうち、何の作業か分かったものの割合" },
+  ];
+
+  cards.forEach(c => {
+    host.appendChild(el("div", { class: "card" }, [
+      el("div", { class: "label", text: c.label }),
+      el("div", { class: "value", text: c.value }),
+      el("div", { class: "sub", text: c.sub }),
+    ]));
+  });
+
+  // 期間内に履歴が無いときは、その旨をはっきり出す（0 と空欄の区別が付かなくなるため）
+  document.getElementById("empty-notice").style.display = p.sessionCount === 0 ? "" : "none";
+
+  const warn = document.getElementById("classify-warning");
+  if (p.classifiedPercent < 80 && (p.byPhase && Object.keys(p.byPhase).length > 0)) {
+    warn.textContent = "何の作業をしていたか判別できたのは " + p.classifiedPercent.toFixed(1) +
+      " % です。内訳は" +
+      (p.classifiedPercent < 50 ? "確かな数字として扱えません。" : "目安として見てください。") +
+      " 判別できなかったコマンドは「ツール内訳」タブに出しています。";
+    warn.classList.remove("hidden");
+  } else {
+    warn.classList.add("hidden");
+  }
+}
+
+/* ── プロジェクト表 ───────────────────────────────────────── */
+
+function renderProjects() {
+  const rows = period().byProject.slice();
+  const q = document.getElementById("project-search").value.trim().toLowerCase();
+  const showAll = document.getElementById("project-all").checked;
+
+  let filtered = q ? rows.filter(r => r.project.toLowerCase().includes(q)) : rows;
+  filtered.sort((a, b) => {
+    const k = projectSort.key;
+    const va = a[k], vb = b[k];
+    const c = typeof va === "string" ? va.localeCompare(vb, "ja") : va - vb;
+    return projectSort.desc ? -c : c;
+  });
+
+  const limited = showAll ? filtered : filtered.slice(0, 10);
+  const body = document.querySelector("#project-table tbody");
+  body.textContent = "";
+
+  limited.forEach(r => {
+    const tr = el("tr", {}, [
+      el("td", { class: "wrap-cell", text: r.project }),
+      el("td", { class: "num", text: fmt(r.sessionCount) }),
+      el("td", { class: "num", text: fmt(r.billable) }),
+      el("td", { class: "num", text: fmt(r.processed) }),
+      el("td", { class: "num", text: fmtDuration(r.elapsedSec) }),
+    ]);
+    const td = el("td", {});
+    td.appendChild(phaseBar(r.phases, 170));
+    tr.appendChild(td);
+    body.appendChild(tr);
+  });
+
+  document.getElementById("project-count").textContent =
+    limited.length + " / 全 " + rows.length + " 件" + (showAll ? "" : "（上位 10 件を表示）");
+}
+
+/* ── セッション明細（行を開いたときに出す）─────────────────── */
+
+/* トークンの内訳。Codex はキャッシュ読込が入力の内数なので、新規入力を差し引いて出す */
+function tokenParts(s) {
+  const t = s.tokens || {};
+  const cacheRead = t.cacheRead || 0;
+  const freshInput = s.tool === "codex"
+    ? Math.max(0, (t.input || 0) - cacheRead)
+    : (t.input || 0);
+  return [
+    { key: "in",  label: "新規入力",     value: freshInput,        varName: "--phase-investigate" },
+    { key: "cc",  label: "キャッシュ作成", value: t.cacheCreate || 0, varName: "--phase-dialogue" },
+    { key: "cr",  label: "キャッシュ読込", value: cacheRead,          varName: "--phase-unknown" },
+    { key: "out", label: "出力",         value: t.output || 0,      varName: "--phase-implement" },
+  ];
+}
+
+/* 内訳を横帯にする。合計 0 のときは空の帯を返す */
+function stackedBar(parts, width, height) {
+  const w = width || 260;
+  const h = height || 14;
+  const total = parts.reduce((a, p) => a + p.value, 0);
+  const svg = svgEl("svg", { width: "100%", height: h, viewBox: "0 0 " + w + " " + h,
+                             preserveAspectRatio: "none" });
+  if (total === 0) {
+    svg.appendChild(svgEl("rect",
+      { x: 0, y: 0, width: w, height: h, rx: 2, fill: "var(--surface-2)" }));
+    return svg;
+  }
+  let x = 0;
+  parts.forEach(p => {
+    if (p.value <= 0) { return; }
+    const seg = Math.max(1, (p.value / total) * w);
+    const rect = svgEl("rect",
+      { x: x, y: 0, width: seg, height: h, fill: "var(" + p.varName + ")" });
+    rect.appendChild(svgEl("title", {})).textContent =
+      p.label + " " + fmt(p.value) + " (" + ((p.value / total) * 100).toFixed(1) + "%)";
+    svg.appendChild(rect);
+    x += seg;
+  });
+  return svg;
+}
+
+/* 件数の横棒。最大値を基準に幅を決める */
+function countBar(value, max, width) {
+  const w = width || 90;
+  const svg = svgEl("svg", { width: w, height: 10, viewBox: "0 0 " + w + " 10" });
+  svg.appendChild(svgEl("rect", {
+    x: 0, y: 1, width: Math.max(1, (value / (max || 1)) * w), height: 8,
+    rx: 2, fill: "var(--accent)",
+  }));
+  return svg;
+}
+
+/* 明細カードの器 */
+function detailCard(title, nodes, hint) {
+  const card = el("div", { class: "detail-card" }, [el("h3", { text: title })]);
+  nodes.filter(Boolean).forEach(n => card.appendChild(n));
+  if (hint) { card.appendChild(el("p", { class: "hint", text: hint })); }
+  return card;
+}
+
+/* 「名前 / 数値 / バー」の 3 列表 */
+function miniBarTable(rows, valueLabel) {
+  const max = rows.reduce((a, r) => Math.max(a, r.value), 0);
+  const table = el("table", { class: "mini" });
+  const body = el("tbody", {});
+  rows.forEach(r => {
+    const barCell = el("td", {});
+    barCell.appendChild(countBar(r.value, max));
+    const tr = el("tr", {}, [
+      el("td", { class: "grow", text: r.name }),
+      el("td", { class: "num", text: fmt(r.value) + (valueLabel || "") }),
+    ]);
+    tr.appendChild(barCell);
+    body.appendChild(tr);
+  });
+  table.appendChild(body);
+  return table;
+}
+
+/* 「項目 / 値」の 2 列表 */
+function miniKeyValue(rows) {
+  const table = el("table", { class: "mini" });
+  const body = el("tbody", {});
+  rows.forEach(r => body.appendChild(el("tr", {}, [
+    el("td", { class: "grow", text: r[0] }),
+    el("td", { class: "num", text: r[1] }),
+  ])));
+  table.appendChild(body);
+  return table;
+}
+
+/* セッション 1 件の明細セルを作る */
+function detailContent(s, children) {
+  const grid = el("div", { class: "detail-grid" });
+
+  // 1. 基本情報
+  const basic = [
+    ["ツール", s.tool === "codex" ? "Codex" : "Claude Code"],
+    ["開始", s.start],
+    ["終了", s.end],
+    ["経過時間", s.elapsedMeasurable ? fmtDuration(s.elapsedSec) : "測定不可"],
+    ["ターン", fmt(s.turns)],
+    ["主なモデル", s.model],
+  ];
+  if (s.agentLabel) { basic.push(["エージェント", s.agentLabel]); }
+  if (s.isSubagent) { basic.push(["区分", "サブエージェント"]); }
+  if (s.subagentCount > 0) { basic.push(["配下のサブエージェント", fmt(s.subagentCount) + " 件"]); }
+  grid.appendChild(detailCard("このセッション", [
+    el("div", { class: "detail-prompt", text: s.prompt || "(指示文なし)" }),
+    miniKeyValue(basic),
+  ]));
+
+  // 2. トークンの内訳
+  const parts = tokenParts(s);
+  const legend = el("div", { class: "legend", style: "margin-top:8px" });
+  parts.forEach(p => legend.appendChild(el("span", {
+    class: "lg-" + p.key, text: p.label + " " + fmt(p.value),
+  })));
+  const tokenRows = [
+    ["消費トークン", fmt(s.billable)],
+    ["処理トークン", fmt(s.processed)],
+  ];
+  if (s.subagentCount > 0) {
+    tokenRows.push(["消費（子を含む）", fmt(s.billableCumulative)]);
+    tokenRows.push(["処理（子を含む）", fmt(s.processedCumulative)]);
+  }
+  if ((s.tokens || {}).reasoning > 0) {
+    tokenRows.push(["うち推論", fmt(s.tokens.reasoning)]);
+  }
+  grid.appendChild(detailCard("トークンの内訳",
+    [stackedBar(parts), legend, miniKeyValue(tokenRows)],
+    s.tool === "codex"
+      ? "Codex はキャッシュ読込が入力の内数のため、新規入力は差し引いた値です。"
+      : null));
+
+  // 3. 何をしていたか
+  const phaseRows = PHASES
+    .map(p => ({ name: p.label, value: (s.phases || {})[p.key] || 0 }))
+    .filter(r => r.value > 0);
+  grid.appendChild(detailCard("何をしていたか",
+    [phaseBar(s.phases, 260),
+     phaseRows.length ? miniBarTable(phaseRows, " 回") : el("p", { class: "hint", text: "ツール実行の記録がありません。" })],
+    "ツールを実行した回数です。かけた時間ではありません。"));
+
+  // 4. モデル別（1 件しか無くても内訳として出す）
+  if ((s.byModel || []).length) {
+    const table = el("table", { class: "mini" });
+    const head = el("thead", {}, [el("tr", {}, [
+      el("th", { class: "grow", text: "モデル" }),
+      el("th", { class: "num", text: "ターン" }),
+      el("th", { class: "num", text: "消費" }),
+      el("th", { class: "num", text: "処理" }),
+    ])]);
+    const body = el("tbody", {});
+    s.byModel.forEach(m => body.appendChild(el("tr", {}, [
+      el("td", { class: "grow", text: m.model }),
+      el("td", { class: "num", text: fmt(m.turns) }),
+      el("td", { class: "num", text: fmt(m.billable) }),
+      el("td", { class: "num", text: fmt(m.processed) }),
+    ])));
+    table.appendChild(head);
+    table.appendChild(body);
+    grid.appendChild(detailCard("モデル別", [table],
+      s.byModel.length > 1
+        ? "セッション途中でモデルが変わっています。内訳はターンごとの差分から割り振っています。"
+        : null));
+  }
+
+  // 5. ツール別
+  if ((s.tools || []).length) {
+    grid.appendChild(detailCard("使ったツール",
+      [miniBarTable(s.tools.map(t => ({ name: t.name, value: t.count })), " 回")],
+      "上位のみ表示しています。"));
+  }
+
+  // 6. 判別できなかったコマンド
+  if ((s.unknownCommands || []).length) {
+    grid.appendChild(detailCard("判別できなかったコマンド",
+      [miniBarTable(s.unknownCommands.map(u => ({ name: u.name, value: u.count })), " 回")],
+      "何の作業か決められなかったコマンドです。"));
+  }
+
+  // 7. 日別（またいだ場合だけ）
+  if ((s.byDay || []).length > 1) {
+    grid.appendChild(detailCard("日別",
+      [miniBarTable(s.byDay.map(d => ({ name: d.date, value: d.billable })))],
+      "日をまたいだセッションです。ターンが始まった時刻の日に数えています。"));
+  }
+
+  // 8. サブエージェント
+  if ((children || []).length) {
+    const rows = children
+      .slice()
+      .sort((a, b) => b.billable - a.billable)
+      .map(c => ({ name: c.agentLabel || c.prompt || c.key, value: c.billable }));
+    grid.appendChild(detailCard("配下のサブエージェント", [miniBarTable(rows)],
+      "消費トークンの多い順。値は各サブエージェント単独の分です。"));
+  }
+
+  // 9. データ品質
+  const quality = [];
+  if (s.rawRecords > 0) {
+    quality.push(["読み取った応答の記録", fmt(s.rawRecords)]);
+    quality.push(["重複を除いた後", fmt(s.acceptedRecords)]);
+  }
+  if (s.keylessRecords > 0) {
+    quality.push(["識別子が無くそのまま数えた行", fmt(s.keylessRecords)]);
+  }
+  quality.push(["壊れていた行", fmt(s.parseErrors)]);
+  if (!s.elapsedMeasurable) { quality.push(["経過時間", "測定不可（時刻が 1 種類）"]); }
+  if (s.lastLineBroken) { quality.push(["末尾行", "壊れている（過小計上の恐れ）"]); }
+  grid.appendChild(detailCard("このセッションの数字の確からしさ", [miniKeyValue(quality)]));
+
+  return grid;
+}
+
+/* ── セッション一覧 ───────────────────────────────────────── */
+
+function renderSessions() {
+  const keys = new Set(period().sessionKeys);
+  const all = DATA.sessions.filter(s => keys.has(s.key));
+
+  const tool = document.getElementById("session-tool").value;
+  const project = document.getElementById("session-project").value;
+  const q = document.getElementById("session-search").value.trim().toLowerCase();
+  const expand = document.getElementById("session-expand").checked;
+
+  const matches = s => {
+    if (tool && s.tool !== tool) { return false; }
+    if (project && s.project !== project) { return false; }
+    if (!q) { return true; }
+    const hay = [s.prompt || "", s.project, s.model, s.agentLabel || ""].join(" ").toLowerCase();
+    return hay.includes(q);
+  };
+
+  const visible = all.filter(matches);
+  const visibleKeys = new Set(visible.map(s => s.key));
+
+  // 親が絞り込みから外れた子は、独立した行として出す（消さない）
+  const parents = visible.filter(s => !s.parentKey || !visibleKeys.has(s.parentKey));
+  const childrenOf = {};
+  visible.forEach(s => {
+    if (s.parentKey && visibleKeys.has(s.parentKey)) {
+      (childrenOf[s.parentKey] = childrenOf[s.parentKey] || []).push(s);
+    }
+  });
+
+  parents.sort((a, b) => {
+    const k = sessionSort.key;
+    let va, vb;
+    if (k === "start") { va = a.start; vb = b.start; }
+    else if (k === "billable") { va = a.billableCumulative; vb = b.billableCumulative; }
+    else if (k === "processed") { va = a.processedCumulative; vb = b.processedCumulative; }
+    else { va = a[k]; vb = b[k]; }
+    const c = typeof va === "string" ? va.localeCompare(vb, "ja") : va - vb;
+    return sessionSort.desc ? -c : c;
+  });
+
+  const body = document.querySelector("#session-table tbody");
+  body.textContent = "";
+
+  const rowFor = (s, isChild, kids) => {
+    const tr = el("tr", { class: isChild ? "child" : "" });
+    tr.dataset.key = s.key;
+    if (isChild) { tr.dataset.parent = s.parentKey; }
+
+    const first = el("td", {});
+    if (!isChild && kids && kids.length) {
+      const btn = el("button", {
+        class: "toggle-child", type: "button",
+        "aria-label": "サブエージェントの表示切替", text: expand ? "▾" : "▸",
+      });
+      btn.addEventListener("click", ev => {
+        // 開閉ボタンは行クリック（明細の開閉）と別物として扱う
+        ev.stopPropagation();
+        const shown = body.querySelectorAll('tr.child[data-parent="' + s.key + '"]');
+        const nowShown = btn.textContent === "▸";
+        shown.forEach(r => {
+          r.classList.toggle("shown", nowShown);
+          if (nowShown) { return; }
+          // 畳むときは、その子の明細も閉じる（行だけ消えて明細が残るのを防ぐ）
+          const detail = body.querySelector('tr.detail[data-detail-of="' + r.dataset.key + '"]');
+          if (detail) { detail.classList.remove("shown"); }
+          r.classList.remove("selected");
+        });
+        btn.textContent = nowShown ? "▾" : "▸";
+      });
+      first.appendChild(btn);
+    }
+    first.appendChild(document.createTextNode(s.start));
+    if (!isChild && kids && kids.length) {
+      first.appendChild(document.createTextNode(" "));
+      first.appendChild(el("span", { class: "badge", text: "子 " + kids.length }));
+    }
+    tr.appendChild(first);
+
+    const toolCell = el("td", {}, [
+      el("span", {
+        class: "badge " + (s.tool === "codex" ? "codex" : "claude"),
+        text: s.tool === "codex" ? "Codex" : "Claude Code",
+      }),
+    ]);
+    if (!s.elapsedMeasurable) {
+      toolCell.appendChild(document.createTextNode(" "));
+      toolCell.appendChild(el("span", { class: "badge warn", text: "測定不可" }));
+    }
+    if (s.lastLineBroken) {
+      toolCell.appendChild(document.createTextNode(" "));
+      toolCell.appendChild(el("span", {
+        class: "badge warn", title: "末尾行が壊れているため過小計上の可能性があります",
+        text: "末尾破損",
+      }));
+    }
+    tr.appendChild(toolCell);
+
+    tr.appendChild(el("td", { class: "wrap-cell", text: s.project }));
+
+    const label = s.prompt
+      ? s.prompt
+      : (s.agentLabel ? s.agentLabel : (DATA.includePrompt ? "(指示文なし)" : "(指示文の出力は設定で無効)"));
+    tr.appendChild(el("td", { class: "wrap-cell", text: label }));
+
+    tr.appendChild(el("td", { class: "num", text: fmt(s.turns) }));
+    tr.appendChild(el("td", {
+      class: "num", text: s.elapsedMeasurable ? fmtDuration(s.elapsedSec) : "-",
+    }));
+    tr.appendChild(el("td", {
+      class: "num", text: fmt(isChild ? s.billable : s.billableCumulative),
+    }));
+    tr.appendChild(el("td", {
+      class: "num", text: fmt(isChild ? s.processed : s.processedCumulative),
+    }));
+
+    const phaseCell = el("td", {});
+    phaseCell.appendChild(phaseBar(s.phases, 150));
+    tr.appendChild(phaseCell);
+    return tr;
+  };
+
+  // 行と、その直後に置く明細行をまとめて追加する。
+  // 明細の中身は開いたときに初めて作る（全行ぶんを先に作ると重くなる）
+  const appendRow = (row, session, kids) => {
+    body.appendChild(row);
+
+    const detail = el("tr", { class: "detail" });
+    detail.dataset.detailOf = session.key;
+    const cell = el("td", { colspan: "9" });
+    detail.appendChild(cell);
+    body.appendChild(detail);
+
+    let built = false;
+    row.classList.add("expandable");
+    row.addEventListener("click", () => {
+      const open = !detail.classList.contains("shown");
+      if (open && !built) {
+        cell.appendChild(detailContent(session, kids));
+        built = true;
+      }
+      detail.classList.toggle("shown", open);
+      row.classList.toggle("selected", open);
+    });
+  };
+
+  let shownCount = 0;
+  parents.forEach(p => {
+    const kids = (childrenOf[p.key] || []).slice()
+      .sort((a, b) => b.billable - a.billable);
+    appendRow(rowFor(p, false, kids), p, kids);
+    shownCount++;
+    kids.forEach(k => {
+      const tr = rowFor(k, true, null);
+      if (expand) { tr.classList.add("shown"); }
+      appendRow(tr, k, null);
+      shownCount++;
+    });
+  });
+
+  document.getElementById("session-count").textContent =
+    shownCount + " / 全 " + DATA.sessions.length + " 件";
+}
+
+/* ── ツール内訳 ───────────────────────────────────────────── */
+
+function renderTools() {
+  const p = period();
+
+  const toolQ = document.getElementById("tool-search").value.trim().toLowerCase();
+  const tools = p.byTool.filter(t => !toolQ || t.name.toLowerCase().includes(toolQ));
+  const toolMax = Math.max.apply(null, p.byTool.map(t => t.count).concat([1]));
+  const toolBody = document.querySelector("#tool-table tbody");
+  toolBody.textContent = "";
+  tools.forEach(t => {
+    const bar = svgEl("svg", { width: 180, height: 12, viewBox: "0 0 180 12" });
+    bar.appendChild(svgEl("rect", {
+      x: 0, y: 2, width: Math.max(1, (t.count / toolMax) * 180), height: 8,
+      rx: 2, fill: "var(--accent)",
+    }));
+    const td = el("td", {});
+    td.appendChild(bar);
+    toolBody.appendChild(el("tr", {}, [
+      el("td", { text: t.name }),
+      el("td", { class: "num", text: fmt(t.count) }),
+      td,
+    ]));
+  });
+  document.getElementById("tool-count").textContent =
+    tools.length + " / 全 " + p.byTool.length + " 件";
+
+  const unkQ = document.getElementById("unknown-search").value.trim().toLowerCase();
+  const unknowns = p.unknownCommands.filter(u => !unkQ || u.name.toLowerCase().includes(unkQ));
+  const unkBody = document.querySelector("#unknown-table tbody");
+  unkBody.textContent = "";
+  unknowns.forEach(u => {
+    unkBody.appendChild(el("tr", {}, [
+      el("td", { text: u.name }),
+      el("td", { class: "num", text: fmt(u.count) }),
+    ]));
+  });
+  document.getElementById("unknown-count").textContent =
+    unknowns.length + " / 全 " + p.unknownCommands.length + " 件";
+
+  const modelQ = document.getElementById("model-search").value.trim().toLowerCase();
+  const models = p.byModel.filter(m => !modelQ || m.model.toLowerCase().includes(modelQ));
+  const modelBody = document.querySelector("#model-table tbody");
+  modelBody.textContent = "";
+  models.forEach(m => {
+    modelBody.appendChild(el("tr", {}, [
+      el("td", { text: m.model }),
+      el("td", { class: "num", text: fmt(m.turns) }),
+      el("td", { class: "num", text: fmt(m.billable) }),
+      el("td", { class: "num", text: fmt(m.processed) }),
+    ]));
+  });
+  document.getElementById("model-count").textContent =
+    models.length + " / 全 " + p.byModel.length + " 件";
+}
+
+/* ── データ品質 ───────────────────────────────────────────── */
+
+function statusLabel(s) {
+  if (s === "ok") { return "読み取り済み"; }
+  if (s === "unreadable") { return "読み取り不可（権限等）"; }
+  return "未使用（履歴ディレクトリなし）";
+}
+
+function renderQuality() {
+  const q = DATA.quality;
+  const p = period();
+
+  const kv = document.getElementById("quality-kv");
+  kv.textContent = "";
+  const rows = [
+    ["Claude Code 履歴", statusLabel(q.claudeStatus) + " / " + q.claudeRoot],
+    ["Codex 履歴", statusLabel(q.codexStatus) + " / " + q.codexRoot],
+    ["履歴の範囲", q.oldestRecord + " 〜 " + q.newestRecord],
+    ["今回パースしたファイル", fmt(q.parsedFiles) + " 件（キャッシュ流用 " + fmt(q.reusedFiles) + " 件）"],
+    ["ワークフローの journal", fmt(q.journalFiles) + " 件（トークンを持たないため集計対象外）"],
+    ["走査時間", (q.scanElapsedMs / 1000).toFixed(1) + " 秒"],
+    ["作業内容の判別率（この期間）", p.classifiedPercent.toFixed(1) + " %"],
+    ["壊れていた行", fmt(q.parseErrors) + " 行（その行だけスキップ）"],
+    ["末尾行が壊れたセッション", fmt(q.lastLineBrokenSessions) + " 件（静かに過小計上される恐れ）"],
+    ["経過時間を測れないセッション", fmt(q.unmeasurableSessions) + " 件"],
+    ["キャッシュ", q.cacheWasCorrupted ? "破損を検出したため全件再パースしました" : "正常"],
+    ["指示文の出力", DATA.includePrompt ? "有効（先頭 64 文字）" : "無効（設定で切り替えられます）"],
+  ];
+  rows.forEach(r => {
+    kv.appendChild(el("dt", { text: r[0] }));
+    kv.appendChild(el("dd", { text: r[1] }));
+  });
+
+  const dedup = document.getElementById("dedup-kv");
+  dedup.textContent = "";
+  const ratio = q.claudeAcceptedRecords > 0
+    ? (q.claudeRawRecords / q.claudeAcceptedRecords).toFixed(2)
+    : "-";
+  const dedupRows = [
+    ["Claude Code: 読み取った応答の記録", fmt(q.claudeRawRecords) + " 件"],
+    ["Claude Code: 重複を除いた後", fmt(q.claudeAcceptedRecords) + " 件"],
+    ["Claude Code: 二重分の割合", q.claudeRawRecords > 0
+      ? (100 - q.claudeAcceptedRecords / q.claudeRawRecords * 100).toFixed(1) +
+        " %（そのまま足すと " + ratio + " 倍になります）"
+      : "-"],
+    ["Claude Code: 識別子が無くそのまま数えた行", fmt(q.claudeKeylessRecords) +
+      " 件（応答の識別子が無い行。捨てずに必ず数えています）"],
+    ["Codex: スレッド数", fmt(q.codexThreads) + " 件"],
+    ["Codex: うちサブエージェント", fmt(q.codexSubagents) +
+      " 件（重複ではなく、それぞれ別の使い手として数えています）"],
+  ];
+  dedupRows.forEach(r => {
+    dedup.appendChild(el("dt", { text: r[0] }));
+    dedup.appendChild(el("dd", { text: r[1] }));
+  });
+
+  const skipQ = document.getElementById("skip-search").value.trim().toLowerCase();
+  const skips = q.skippedFiles.filter(f =>
+    !skipQ || (f.path + " " + f.reason).toLowerCase().includes(skipQ));
+  const body = document.querySelector("#skip-table tbody");
+  body.textContent = "";
+  if (!q.skippedFiles.length) {
+    body.appendChild(el("tr", {}, [
+      el("td", { colspan: "2", class: "empty", text: "読めなかったファイルはありません。" }),
+    ]));
+  } else {
+    skips.forEach(f => {
+      body.appendChild(el("tr", {}, [
+        el("td", { class: "wrap-cell", text: f.path }),
+        el("td", { class: "wrap-cell", text: f.reason }),
+      ]));
+    });
+  }
+  document.getElementById("skip-count").textContent =
+    skips.length + " / 全 " + q.skippedFiles.length + " 件";
+}
+
+/* ── 描画のとりまとめ ─────────────────────────────────────── */
+
+function renderAll() {
+  document.getElementById("current-period").textContent = "表示期間: " + period().label;
+  renderKpi();
+  renderDaily();
+  renderPhase();
+  renderProjects();
+  renderSessions();
+  renderTools();
+  renderQuality();
+}
+
+/* ── テーマ切替（ダーク → ライト → OS 追従 を巡回）─────────── */
+
+const THEME_KEY = "aiUsageReportTheme";
+const THEME_ORDER = ["dark", "light", "system"];
+
+function applyTheme(mode) {
+  if (mode === "system") { document.documentElement.removeAttribute("data-theme"); }
+  else { document.documentElement.setAttribute("data-theme", mode); }
+  const labels = { dark: "テーマ: ダーク", light: "テーマ: ライト", system: "テーマ: OS 追従" };
+  document.getElementById("theme-toggle").textContent = labels[mode];
+  try { localStorage.setItem(THEME_KEY, mode); } catch (e) { /* 保存できなくても動作は続ける */ }
+}
+
+(function initTheme() {
+  let saved = "system";
+  try { saved = localStorage.getItem(THEME_KEY) || "system"; } catch (e) { /* 既定のまま */ }
+  if (THEME_ORDER.indexOf(saved) < 0) { saved = "system"; }
+  applyTheme(saved);
+  document.getElementById("theme-toggle").addEventListener("click", () => {
+    let current = "system";
+    try { current = localStorage.getItem(THEME_KEY) || "system"; } catch (e) { /* 既定のまま */ }
+    const next = THEME_ORDER[(THEME_ORDER.indexOf(current) + 1) % THEME_ORDER.length];
+    applyTheme(next);
+  });
+})();
+
+/* ── イベント配線 ─────────────────────────────────────────── */
+
+document.getElementById("generated-at").textContent =
+  "生成 " + DATA.generatedAt + " / AIUsageOverlay v" + DATA.appVersion;
+
+document.querySelectorAll("nav.tabs button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("nav.tabs button").forEach(b =>
+      b.setAttribute("aria-selected", String(b === btn)));
+    document.querySelectorAll("section.panel").forEach(p =>
+      p.classList.toggle("active", p.id === "panel-" + btn.dataset.tab));
+  });
+});
+
+document.querySelectorAll("header.top button.seg").forEach(btn => {
+  btn.addEventListener("click", () => {
+    currentPeriod = btn.dataset.period;
+    document.querySelectorAll("header.top button.seg").forEach(b =>
+      b.setAttribute("aria-pressed", String(b === btn)));
+    // 月の選択とボタンは排他。ボタンを押したら月の選択を外す
+    document.getElementById("month-select").value = "";
+    // 期間を変えるとセッションの選択も変わり得るため、絞り込みは維持したまま描き直す
+    renderAll();
+  });
+});
+
+// 履歴に存在する月だけを選択肢にする（空の月を並べない）
+(function fillMonthSelect() {
+  const select = document.getElementById("month-select");
+  Object.keys(DATA.periods)
+    .filter(k => k.indexOf("month:") === 0)
+    .sort()
+    .reverse()
+    .forEach(k => select.appendChild(
+      el("option", { value: k, text: DATA.periods[k].label })));
+
+  select.addEventListener("change", () => {
+    if (!select.value) {
+      // 「月を選ぶ…」に戻したら既定の期間へ戻す
+      const btn = document.querySelector('header.top button.seg[data-period="today"]');
+      btn.click();
+      return;
+    }
+    currentPeriod = select.value;
+    document.querySelectorAll("header.top button.seg").forEach(b =>
+      b.setAttribute("aria-pressed", "false"));
+    renderAll();
+  });
+})();
+
+document.querySelectorAll("#project-table th.sortable").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.sort;
+    projectSort = { key: k, desc: projectSort.key === k ? !projectSort.desc : true };
+    renderProjects();
+  });
+});
+
+document.querySelectorAll("#session-table th.sortable").forEach(th => {
+  th.addEventListener("click", () => {
+    const k = th.dataset.sort;
+    sessionSort = { key: k, desc: sessionSort.key === k ? !sessionSort.desc : true };
+    renderSessions();
+  });
+});
+
+["project-search", "project-all"].forEach(id =>
+  document.getElementById(id).addEventListener("input", renderProjects));
+["session-tool", "session-project", "session-search", "session-expand"].forEach(id =>
+  document.getElementById(id).addEventListener("input", renderSessions));
+["tool-search", "unknown-search", "model-search"].forEach(id =>
+  document.getElementById(id).addEventListener("input", renderTools));
+document.getElementById("skip-search").addEventListener("input", renderQuality);
+
+(function fillProjectFilter() {
+  const select = document.getElementById("session-project");
+  const names = Array.from(new Set(DATA.sessions.map(s => s.project))).sort((a, b) =>
+    a.localeCompare(b, "ja"));
+  names.forEach(n => select.appendChild(el("option", { value: n, text: n })));
+})();
+
+renderAll();
+</script>
+</body>
+</html>

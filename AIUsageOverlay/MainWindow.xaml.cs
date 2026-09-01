@@ -190,6 +190,34 @@ namespace AIUsageOverlay
             button.IsEnabled = true;
         }
 
+        /// <summary>
+        /// ローカル履歴から使用量レポートを生成する。
+        /// 実処理は App 側にあり、トレイメニューと同じ経路を通る（排他制御を共有するため）。
+        /// </summary>
+        private void GenerateUsageReport_Click(object sender, RoutedEventArgs e)
+            => ((App)Application.Current).GenerateUsageReport();
+
+        /// <summary>
+        /// レポート生成中であることをオーバーレイの隅に小さく出す。
+        /// 集計は数秒かかるため、メニューを開かなくても進行が分かるようにする。
+        /// </summary>
+        /// <param name="text">表示する文言。null を渡すと非表示に戻す</param>
+        internal void SetUsageReportStatus(string? text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                ReportStatusBadge.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            ReportStatusText.Text = text;
+            ReportStatusBadge.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>生成済みレポートの保存フォルダをエクスプローラで開く。</summary>
+        private void OpenUsageReportFolder_Click(object sender, RoutedEventArgs e)
+            => ((App)Application.Current).OpenUsageReportFolder();
+
         private void Hide_Click(object sender, RoutedEventArgs e) => Hide();
 
         private void Exit_Click(object sender, RoutedEventArgs e)

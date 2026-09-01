@@ -38,6 +38,9 @@ namespace AIUsageOverlay
             AdaptiveRefreshCheckBox.IsChecked = settings.AdaptiveRefreshEnabled;
             StartupCheckBox.IsChecked       = IsStartupRegistered();
             AutoUpdateCheckBox.IsChecked    = settings.AutoUpdateCheckEnabled;
+            // S11: 使用量レポートへ指示文の先頭 64 文字を出すか
+            UsageReportPromptCheckBox.IsChecked = settings.UsageReportIncludePrompt;
+            UsageReportReminderCheckBox.IsChecked = settings.UsageReportReminderEnabled;
             CurrentVersionTextBlock.Text    =
                 $"現在のバージョン: v{UpdateCheckService.GetCurrentVersion()}";
             VersionLabel.Text = $"AI Usage Overlay v{UpdateCheckService.GetCurrentVersion()}";
@@ -182,6 +185,8 @@ namespace AIUsageOverlay
             settings.RefreshIntervalSeconds = refreshInterval;
             settings.AdaptiveRefreshEnabled = AdaptiveRefreshCheckBox.IsChecked == true;
             settings.AutoUpdateCheckEnabled = AutoUpdateCheckBox.IsChecked == true;
+            settings.UsageReportIncludePrompt = UsageReportPromptCheckBox.IsChecked == true;
+            settings.UsageReportReminderEnabled = UsageReportReminderCheckBox.IsChecked == true;
 
             // 表示項目
             settings.GitHubCopilotEnabled   = GitHubCopilotCheckBox.IsChecked == true;

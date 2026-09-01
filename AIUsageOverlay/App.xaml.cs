@@ -95,6 +95,18 @@ namespace AIUsageOverlay
         /// <summary>状態に応じて文言とクリック動作を変えるトレイの更新項目。F-23。</summary>
         private ToolStripMenuItem? _updateMenuItem;
 
+        /// <summary>使用量レポートの生成を起動するトレイ項目。実行中は無効化する。</summary>
+        private ToolStripMenuItem? _usageReportMenuItem;
+
+        /// <summary>使用量レポートの生成を 1 本に制限する排他制御。</summary>
+        private readonly SemaphoreSlim _usageReportGate = new(1, 1);
+
+        /// <summary>終了時に集計処理を中断するキャンセルトークン。</summary>
+        private readonly CancellationTokenSource _usageReportCancellation = new();
+
+        /// <summary>レポート未生成の通知を、同じ起動中に繰り返さないためのフラグ。</summary>
+        private bool _usageReportReminderShown;
+
         // ────────────────────────────────────────────────────────────────
         // 公開プロパティ
         // ────────────────────────────────────────────────────────────────
@@ -285,12 +297,22 @@ namespace AIUsageOverlay
             _updateMenuItem = new ToolStripMenuItem("更新を確認");
             _updateMenuItem.Click += OnUpdateMenuItemClick;
 
+            // ローカル履歴（.claude / .codex）から使用量レポートを生成する
+            _usageReportMenuItem = new ToolStripMenuItem("使用量レポートを生成");
+            _usageReportMenuItem.Click += OnUsageReportMenuItemClick;
+
+            // 生成済みレポートの保存先を開く（過去分を見返す導線）
+            var reportFolderItem = new ToolStripMenuItem("レポートのフォルダを開く");
+            reportFolderItem.Click += (_, _) => OpenUsageReportFolder();
+
             var exitItem = new ToolStripMenuItem("終了");
             exitItem.Click += (_, _) => ExitApplication();
 
             menu.Items.Add(showHideItem);
             menu.Items.Add(snoozeItem);
             menu.Items.Add(_updateMenuItem);
+            menu.Items.Add(_usageReportMenuItem);
+            menu.Items.Add(reportFolderItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(exitItem);
 
@@ -329,7 +351,11 @@ namespace AIUsageOverlay
                     Interval = UpdateCheckTimerInterval
                 };
                 _updateCheckTimer.Tick += async (_, _) =>
+                {
                     await CheckForUpdatesAsync(force: false, notifyAvailable: true);
+                    // 履歴の取りこぼしを防ぐため、レポートの生成間隔もここで見る
+                    NotifyIfUsageReportIsStale();
+                };
             }
 
             _updateCheckTimer.Start();
@@ -345,6 +371,7 @@ namespace AIUsageOverlay
             {
                 await Task.Delay(InitialUpdateCheckDelay, _updateCheckCancellation.Token);
                 await CheckForUpdatesAsync(force: false, notifyAvailable: true);
+                NotifyIfUsageReportIsStale();
             }
             catch (OperationCanceledException)
             {
@@ -526,11 +553,252 @@ namespace AIUsageOverlay
             }
         }
 
+        // ────────────────────────────────────────────────────────────────
+        // 使用量レポート（AI 使用量ダッシュボード）
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// トレイの「使用量レポートを生成」を処理する。
+        ///
+        /// ローカル履歴の走査・集計は数秒〜数十秒かかるためワーカースレッドで行い、
+        /// 実行中はメニュー項目を無効化して二度目の起動を無視する（設計書 8.6）。
+        /// 多重起動しているインスタンスとの同時実行は名前付き Mutex で防ぐ。
+        /// </summary>
+        private void OnUsageReportMenuItemClick(object? sender, EventArgs e)
+            => GenerateUsageReport();
+
+        /// <summary>
+        /// 使用量レポートを生成して既定ブラウザで開く。
+        /// トレイメニューとオーバーレイの右クリックメニューの両方から呼ばれる。
+        /// </summary>
+        internal async void GenerateUsageReport()
+        {
+            // 生成中に再度押された場合は無視する
+            if (!_usageReportGate.Wait(0))
+            {
+                return;
+            }
+
+            var menuItem = _usageReportMenuItem;
+            try
+            {
+                if (menuItem is not null)
+                {
+                    menuItem.Enabled = false;
+                    menuItem.Text = "使用量レポートを生成中…";
+                }
+                // メニューを開かなくても分かるよう、オーバーレイの隅にも出す
+                _mainWindow?.SetUsageReportStatus("レポート生成中…");
+
+                var includePrompt =
+                    _mainWindow?.ViewModel.GetSettings().UsageReportIncludePrompt ?? true;
+                var progress = new Progress<(int Done, int Total)>(p =>
+                {
+                    if (p.Total == 0)
+                    {
+                        return;
+                    }
+                    var percent = p.Done * 100 / p.Total;
+                    if (menuItem is not null)
+                    {
+                        menuItem.Text = $"使用量レポートを生成中… {percent}%";
+                    }
+                    _mainWindow?.SetUsageReportStatus($"レポート生成中… {percent}%");
+                });
+
+                var path = await Task.Run(
+                    () => GenerateUsageReport(includePrompt, progress, _usageReportCancellation.Token),
+                    _usageReportCancellation.Token);
+
+                if (path is null)
+                {
+                    _mainWindow?.ViewModel.NotifyInfo(
+                        "AI Usage Overlay",
+                        "別のインスタンスが集計中です。しばらくしてからもう一度実行してください。");
+                    return;
+                }
+
+                SaveUsageReportGeneratedAt(DateTime.Now);
+                OpenInDefaultBrowser(path);
+            }
+            catch (OperationCanceledException)
+            {
+                // 終了時のキャンセル。通知は出さない
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"使用量レポートを生成できませんでした。\n\n{ex.Message}",
+                    "AI Usage Overlay",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            finally
+            {
+                if (menuItem is not null)
+                {
+                    menuItem.Text = "使用量レポートを生成";
+                    menuItem.Enabled = true;
+                }
+                _mainWindow?.SetUsageReportStatus(null);
+                _usageReportGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// 履歴の走査から HTML の書き出しまでを一度に行う（設計書 3.4 のデータフロー）。
+        /// 他インスタンスが集計中で Mutex を取得できない場合は null を返す。
+        /// </summary>
+        /// <param name="includePrompt">指示文の先頭 64 文字を出力するか（S11）</param>
+        /// <param name="progress">進捗通知</param>
+        /// <param name="cancellationToken">キャンセル用トークン</param>
+        /// <returns>生成した HTML のパス。Mutex を取得できなければ null</returns>
+        private static string? GenerateUsageReport(
+            bool includePrompt,
+            IProgress<(int Done, int Total)> progress,
+            CancellationToken cancellationToken)
+        {
+            // 多重起動が実際に観測されているため、キャッシュ書き込みを名前付き Mutex で保護する
+            using var mutex = Services.SessionStats.SessionStatsCacheStore.TryAcquireLock();
+            if (mutex is null)
+            {
+                return null;
+            }
+
+            try
+            {
+                var store = new Services.SessionStats.SessionStatsCacheStore();
+                var cache = store.Load();
+                var cacheWasCorrupted = store.LastLoadWasCorrupted;
+
+                var scanner = new Services.SessionStats.SessionStatsScanner();
+                var scan = scanner.Scan(cache, includePrompt, progress, cancellationToken);
+
+                store.Save(new SessionStatsCache
+                {
+                    SchemaVersion = SessionStatsCache.CurrentSchemaVersion,
+                    LastScanUtc = DateTime.UtcNow,
+                    Files = scan.Files,
+                    Sessions = scan.Sessions,
+                });
+
+                var version = System.Reflection.Assembly.GetExecutingAssembly()
+                    .GetName().Version?.ToString(3) ?? "0.0.0";
+                var now = DateTime.Now;
+                var report = Services.SessionStats.SessionStatsAggregator.Build(
+                    scan, includePrompt, version, cacheWasCorrupted, now);
+
+                var renderer = new Services.SessionStats.UsageReportRenderer();
+                return renderer.Render(report, outputFolder: null, now);
+            }
+            finally
+            {
+                mutex.ReleaseMutex();
+            }
+        }
+
+        /// <summary>
+        /// レポートをしばらく生成していない場合に一度だけ通知する。
+        ///
+        /// 履歴ファイルは各ツールの保持期間で削除される。レポートを生成した時点の集計は
+        /// キャッシュへ残るが、生成しないまま履歴が消えた分は後から復元できない。
+        /// 通知は外部通信を伴わず、設定に持つ最終生成日時との差だけで判定する。
+        /// </summary>
+        private void NotifyIfUsageReportIsStale()
+        {
+            // 同じ起動中に何度も出さない
+            if (_usageReportReminderShown)
+            {
+                return;
+            }
+
+            var settings = _mainWindow?.ViewModel.GetSettings();
+            if (settings is null || !settings.UsageReportReminderEnabled)
+            {
+                return;
+            }
+
+            var threshold = Math.Max(1, settings.UsageReportReminderDays);
+            var last = settings.UsageReportLastGeneratedAt;
+
+            // 一度も生成していない場合も対象にする（履歴が消える前に 1 回作ってもらう）
+            var elapsedDays = last is { } t ? (DateTime.Now - t).TotalDays : double.MaxValue;
+            if (elapsedDays < threshold)
+            {
+                return;
+            }
+
+            _usageReportReminderShown = true;
+            var message = last is { } shown
+                ? $"使用量レポートを {(int)elapsedDays} 日間生成していません。" +
+                  "履歴ファイルは各ツールの保持期間で消えるため、生成しないままだとその分は集計できなくなります。" +
+                  $"（最終生成 {shown:yyyy-MM-dd}）"
+                : "使用量レポートをまだ生成していません。" +
+                  "履歴ファイルは各ツールの保持期間で消えるため、早めに一度生成しておくと過去分を残せます。";
+
+            _mainWindow?.ViewModel.NotifyInfo("AI Usage Overlay", message);
+        }
+
+        /// <summary>レポート生成の完了を設定へ記録する。次回の通知判定に使う。</summary>
+        /// <param name="generatedAt">生成した日時（ローカル）</param>
+        private void SaveUsageReportGeneratedAt(DateTime generatedAt)
+        {
+            var vm = _mainWindow?.ViewModel;
+            if (vm is null)
+            {
+                return;
+            }
+
+            var settings = vm.GetSettings();
+            settings.UsageReportLastGeneratedAt = generatedAt;
+            vm.SaveSettings(settings);
+            // 生成した直後は通知の対象外に戻す
+            _usageReportReminderShown = false;
+        }
+
+        /// <summary>
+        /// 生成済みレポートの保存フォルダをエクスプローラで開く。
+        /// フォルダが無い場合は作ってから開く（まだ 1 度も生成していない場合）。
+        /// </summary>
+        internal void OpenUsageReportFolder()
+        {
+            var folder = Services.SessionStats.UsageReportRenderer.DefaultOutputFolder;
+            try
+            {
+                System.IO.Directory.CreateDirectory(folder);
+                Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                _mainWindow?.ViewModel.NotifyInfo(
+                    "AI Usage Overlay",
+                    $"レポートのフォルダを開けませんでした（{ex.Message}）。場所: {folder}");
+            }
+        }
+
+        /// <summary>生成したレポートを既定ブラウザで開く。</summary>
+        /// <param name="path">HTML ファイルのパス</param>
+        private void OpenInDefaultBrowser(string path)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                _mainWindow?.ViewModel.NotifyInfo(
+                    "AI Usage Overlay",
+                    $"レポートを開けませんでした（{ex.Message}）。ファイル: {path}");
+            }
+        }
+
         /// <summary>更新確認タイマーと遅延・HTTP処理を終了時に停止する。</summary>
         private void StopUpdateChecks()
         {
             _updateCheckTimer?.Stop();
             _updateCheckCancellation.Cancel();
+            // 集計中に終了された場合、走査ループを次のファイルで抜けさせる
+            _usageReportCancellation.Cancel();
         }
 
         // ────────────────────────────────────────────────────────────────

@@ -238,6 +238,36 @@
                                       Style="{StaticResource ToggleSwitch}"/>
                         </Grid>
 
+                        <!-- S11: 使用量レポートに指示文の先頭 64 文字を出すかの切替 -->
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="使用量レポートに指示文を出力する" Style="{StaticResource BodyText}"/>
+                                <TextBlock Text="各セッションの最初の指示文の先頭64文字だけを出します。他人へ渡すレポートを作るときは OFF にしてください。"
+                                           Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                            <CheckBox x:Name="UsageReportPromptCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
+
+                        <!-- レポートをしばらく生成していないときの通知 -->
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="レポート未作成を通知する" Style="{StaticResource BodyText}"/>
+                                <TextBlock Text="7日以上レポートを作っていないと通知します。履歴ファイルは各ツールの保持期間で消えるため、作らないままだとその分を集計できなくなります。"
+                                           Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                            <CheckBox x:Name="UsageReportReminderCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
+
                         <StackPanel>
                             <TextBlock Text="バージョン情報" Style="{StaticResource SectionLabel}"/>
                             <DockPanel LastChildFill="False">

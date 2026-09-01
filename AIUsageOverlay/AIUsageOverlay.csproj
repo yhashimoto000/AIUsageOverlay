@@ -4,7 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <!-- 開発時の既定値。GitHub Release ビルドではタグ由来の値で上書きする -->
-    <Version>2.0.3</Version>
+    <Version>2.1.0</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -22,6 +22,16 @@
   <ItemGroup>
     <!-- トレイアイコン画像: pack://application:,,, で参照できるようにリソースとして埋め込む -->
     <Resource Include="Resources\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 使用量レポートの HTML テンプレート: UsageReportRenderer が実行時に読み出す -->
+    <EmbeddedResource Include="Resources\Report\report-template.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 単体テストから 1 ファイル分のパース処理を直接呼べるようにする -->
+    <InternalsVisibleTo Include="AIUsageOverlay.Tests" />
   </ItemGroup>
 
 </Project>
