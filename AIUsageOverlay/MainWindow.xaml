@@ -32,6 +32,9 @@
             <MenuItem Header="ログイン - Codex(_O)" Click="CodexLogin_Click" Background="#2A2A2A" Foreground="White"/>
             <MenuItem Header="セッションリセット(_R)" Click="ResetSession_Click" Background="#2A2A2A" Foreground="White"/>
             <Separator Background="#484848"/>
+            <MenuItem Header="使用量レポートを生成(_U)" Click="GenerateUsageReport_Click" Background="#2A2A2A" Foreground="White"/>
+            <MenuItem Header="レポートのフォルダを開く(_F)" Click="OpenUsageReportFolder_Click" Background="#2A2A2A" Foreground="White"/>
+            <Separator Background="#484848"/>
             <MenuItem Header="非表示にする(_H)" Click="Hide_Click" Background="#2A2A2A" Foreground="White"/>
             <Separator Background="#484848"/>
             <MenuItem Header="終了(_X)" Click="Exit_Click" Background="#2A2A2A" Foreground="White"/>

@@ -326,11 +326,11 @@ tr.hidden-by-filter{display:none}
 <header>
   <div class="hrow">
     <h1>AI 使用量ダッシュボード 詳細設計書</h1><span class="rev">Rev.1.2</span>
-    <span class="stat">見出し 87 / 表 60 / 外部参照なし</span>
+    <span class="stat">見出し 88 / 表 61 / 外部参照なし</span>
   </div>
   <div class="hsub">
     正は <code>SPEC_Usage_Dashboard.md</code>。<b>この HTML は生成物です。修正は Markdown 側で行い、再生成してください。</b>
-    再生成: <code>python gen_design_html.py SPEC_Usage_Dashboard.md SPEC_Usage_Dashboard.html</code>　生成: 2026-09-02 01:20 JST
+    再生成: <code>python gen_design_html.py SPEC_Usage_Dashboard.md SPEC_Usage_Dashboard.html</code>　生成: 2026-09-02 01:45 JST
   </div>
 </header>
 
@@ -423,6 +423,7 @@ tr.hidden-by-filter{display:none}
 <a class="sec" href="#sec-8-7" data-target="sec-8-7" data-num="8.7" data-title="埋め込み JSON のエスケープ"><span class="n">8.7</span><span class="t">埋め込み JSON のエスケープ</span></a>
 <a class="sec" href="#sec-8-8" data-target="sec-8-8" data-num="8.8" data-title="グラフの描画方式"><span class="n">8.8</span><span class="t">グラフの描画方式</span></a>
 <a class="sec" href="#sec-8-9" data-target="sec-8-9" data-num="8.9" data-title="レポート未生成の通知"><span class="n">8.9</span><span class="t">レポート未生成の通知</span></a>
+<a class="sec" href="#sec-8-10" data-target="sec-8-10" data-num="8.10" data-title="生成物の保存と整理"><span class="n">8.10</span><span class="t">生成物の保存と整理</span></a>
 </div></div>
 <div class="chgrp" data-ch="9">
 <a class="ch" href="#sec-9" data-target="sec-9" data-num="9" data-title="ファイル構成"><span class="ca"></span><span class="n">9</span><span class="t">ファイル構成</span></a>
@@ -458,7 +459,7 @@ tr.hidden-by-filter{display:none}
 <a class="sec" href="#sec-12-4" data-target="sec-12-4" data-num="12.4" data-title="受け入れ基準"><span class="n">12.4</span><span class="t">受け入れ基準</span></a>
 </div></div>
 <div class="chgrp" data-ch="13">
-<a class="ch" href="#sec-13" data-target="sec-13" data-num="13" data-title="対応方針一覧（トリアージ）"><span class="ca"></span><span class="n">13</span><span class="t">対応方針一覧（トリアージ）</span><span class="badge">54</span></a>
+<a class="ch" href="#sec-13" data-target="sec-13" data-num="13" data-title="対応方針一覧（トリアージ）"><span class="ca"></span><span class="n">13</span><span class="t">対応方針一覧（トリアージ）</span><span class="badge">55</span></a>
 <div class="secs">
 <a class="sec" href="#sec-13-1" data-target="sec-13-1" data-num="13.1" data-title="一覧"><span class="n">13.1</span><span class="t">一覧</span></a>
 <a class="sec" href="#sec-13-2" data-target="sec-13-2" data-num="13.2" data-title="実装ステップ"><span class="n">13.2</span><span class="t">実装ステップ</span></a>
@@ -555,7 +556,7 @@ tr.hidden-by-filter{display:none}
 <tr>
 <td>1.2</td>
 <td>2026-09-02</td>
-<td>実装と B0 の実機確認を反映。<strong>S12（当日表示）・S13（画面用語の平易化）・S14（月別の期間）・S15（未生成の通知）を追加。</strong> <strong>5.2 の重複排除規則が誤りだったため差し替えた</strong>（<code>session_id</code> → <code>session_meta.id</code>）。Q1 / Q2 / Q3 / Q6 を確定、Q5 を決定。7.3.2 の分類率を実測値へ更新。変更した章: 1.2 / 4.2 / 5.2 / 7.3 / 8.2 / 9 / 10 / 11 / 12 / 13 / 付録 B</td>
+<td>実装と B0 の実機確認を反映。<strong>S12（当日表示）・S13（画面用語の平易化）・S14（月別の期間）・S15（未生成の通知）・S17（レポートの整理）を追加。</strong> <strong>5.2 の重複排除規則が誤りだったため差し替えた</strong>（<code>session_id</code> → <code>session_meta.id</code>）。Q1 / Q2 / Q3 / Q6 を確定、Q5 を決定。7.3.2 の分類率を実測値へ更新。変更した章: 1.2 / 4.2 / 5.2 / 7.3 / 8.2 / 9 / 10 / 11 / 12 / 13 / 付録 B</td>
 </tr>
 </tbody>
 </table>
@@ -674,6 +675,11 @@ tr.hidden-by-filter{display:none}
 <td>S15</td>
 <td>レポート未生成の通知</td>
 <td>一定期間レポートを生成していないとき、トレイ通知で知らせる（→ 8.9）。Rev 1.2 で追加</td>
+</tr>
+<tr>
+<td>S17</td>
+<td>レポートの保存と整理</td>
+<td>生成物を日時付きで保存し、<strong>直近 5 件だけ残して古いものを削除する</strong>。保存先を開く導線も置く（→ 8.10）。Rev 1.2 で追加</td>
 </tr>
 </tbody>
 </table>
@@ -2837,6 +2843,55 @@ JS は <code>&lt;script&gt;</code> に直接書き、<strong>データだけを 
 （実測ではフルスキャン 7 秒、差分ならそれ以下）。本 Rev では入れていない。
 入れるかどうかは、通知の運用実績を見てから判断する。</p>
 </div>
+<h3 id="sec-8-10"><span class="num">8.10</span><span class="t">生成物の保存と整理</span></h3>
+<table>
+<thead>
+<tr>
+<th>事項</th>
+<th>決定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>保存先</td>
+<td><code>%AppData%\AIUsageOverlay\reports\usage-yyyyMMdd-HHmm.html</code></td>
+</tr>
+<tr>
+<td>上書き</td>
+<td>しない。生成のたびに日時付きの新しいファイルを作る</td>
+</tr>
+<tr>
+<td>保持件数</td>
+<td><strong>直近 5 件。</strong> 生成時に、それより古いものを削除する</td>
+</tr>
+<tr>
+<td>削除の対象</td>
+<td><strong><code>usage-*.html</code> に限る。</strong> 利用者が同じフォルダへ置いた別のファイルは触らない</td>
+</tr>
+<tr>
+<td>並べ替えの基準</td>
+<td><strong>ファイル名の降順。</strong> 名前に生成日時が入っているため時系列と一致する。更新時刻はコピーや同期で変わり得るので主キーにしない</td>
+</tr>
+<tr>
+<td>削除の失敗</td>
+<td>握って続行する。生成そのものは成功しており、次回の生成で消える</td>
+</tr>
+<tr>
+<td>保存先を開く</td>
+<td>トレイメニューとオーバーレイの右クリックメニューに「レポートのフォルダを開く」を置く</td>
+</tr>
+</tbody>
+</table>
+<p><strong>古いレポートを消してよい根拠。</strong> レポートはキャッシュ（<code>session-stats-cache.json</code>）からの
+派生物である。キャッシュは履歴ファイルが削除された分の集計レコードも保持し続けるため
+（→ 6 章「削除された履歴ファイル」）、<strong>HTML を消しても次回の生成で同じ期間を作り直せる。</strong>
+この性質は T18 で固定した。</p>
+<div class="note ng"><div class="lab">注意</div>
+<p>注意: <strong>キャッシュ自体を削除すると復元できない。</strong> そのとき復元できるのは、
+履歴ファイルが残っている分だけである。
+また <code>schemaVersion</code> を上げると全件再パースになるため、<strong>その時点で履歴が消えている
+セッションは失われる。</strong> 版を上げる変更では、この副作用を必ず確認する。</p>
+</div>
 <hr>
 <h2 id="sec-9"><span class="num">9</span><span class="t">ファイル構成</span></h2><div class="rule"></div>
 <pre><code>AIUsageOverlay/
@@ -2870,7 +2925,11 @@ JS は <code>&lt;script&gt;</code> に直接書き、<strong>データだけを 
 <tbody>
 <tr>
 <td><code>App.xaml.cs</code></td>
-<td><strong>メニュー項目 1 つ + 実行制御一式。</strong> 下記参照</td>
+<td><strong>メニュー項目 2 つ + 実行制御一式。</strong> 下記参照</td>
+</tr>
+<tr>
+<td><code>MainWindow.xaml(.cs)</code></td>
+<td><strong>改修。</strong> オーバーレイの右クリックメニューにも「使用量レポートを生成」「レポートのフォルダを開く」を追加（実処理は App 側を呼ぶ）</td>
 </tr>
 <tr>
 <td><code>Models/AppSettings.cs</code></td>
@@ -2903,6 +2962,10 @@ JS は <code>&lt;script&gt;</code> に直接書き、<strong>データだけを 
 <tr>
 <td><code>ViewModels/MainViewModel.cs</code></td>
 <td><strong>変更なし</strong></td>
+</tr>
+<tr>
+<td>~~<code>MainWindow.xaml(.cs)</code>（変更なしの想定）~~</td>
+<td><strong>Rev 1.2 で改修対象になった</strong>（上記）</td>
 </tr>
 <tr>
 <td>その他の既存 <code>Models/*.cs</code></td>
@@ -3297,6 +3360,16 @@ B1 で <code>AIUsageOverlay.Tests</code>（xUnit）を新規に作る。</p>
 <td>T17</td>
 <td>スキャン中の追記</td>
 <td>読み取り後に mtime を変えた状態を作り、そのファイルがキャッシュに登録されない</td>
+</tr>
+<tr>
+<td>T18</td>
+<td><strong>履歴削除後の保持</strong></td>
+<td>履歴ファイルを削除しても、キャッシュにあるセッションは次回スキャンの結果に残る。<strong>8.10 の「古いレポートを消してよい」根拠</strong>（Rev 1.2 で追加）</td>
+</tr>
+<tr>
+<td>T19</td>
+<td>レポートの整理</td>
+<td>8 件生成すると直近 5 件だけが残る。<code>usage-*.html</code> 以外は削除されない（Rev 1.2 で追加）</td>
 </tr>
 </tbody>
 </table>
@@ -3727,6 +3800,15 @@ B1 で <code>AIUsageOverlay.Tests</code>（xUnit）を新規に作る。</p>
 <td>S15</td>
 <td>M</td>
 <td>8.9 の注記。通知だけでは取りこぼしを無くせない。運用実績を見てから判断する</td>
+</tr>
+<tr>
+<td>S17</td>
+<td>スコープ</td>
+<td>レポートの保存と整理（直近 5 件）</td>
+<td>対応済み</td>
+<td>—</td>
+<td>S</td>
+<td>8.10。<strong>Rev 1.2 で追加</strong></td>
 </tr>
 <tr>
 <td>N1</td>

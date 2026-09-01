@@ -320,6 +320,100 @@ public class ScanAndRenderTests : IDisposable
         Assert.Equal(report.Periods["all"].SessionKeys.Count, sumOfMonths);
     }
 
+    /// <summary>
+    /// 履歴ファイルが消えても、キャッシュに取り込み済みのセッションは残り続ける。
+    ///
+    /// これが成り立つから、古いレポート HTML を消しても情報は失われない
+    /// （次回の生成で同じ期間を作り直せる）。逆にこれが崩れると、
+    /// レポートを消した時点で過去分が復元できなくなる。
+    /// </summary>
+    [Fact]
+    public void 履歴ファイルが消えてもキャッシュのセッションは残る()
+    {
+        var scanner = CreateScanner();
+        var first = scanner.Scan(cache: null, includePrompt: true);
+        var before = first.Sessions.Count;
+        Assert.True(before > 1, "テストデータが 2 件以上ある前提");
+
+        var cache = new SessionStatsCache
+        {
+            LastScanUtc = DateTime.UtcNow,
+            Files = first.Files,
+            Sessions = first.Sessions,
+        };
+
+        // 履歴ファイルを 1 つ削除する（各ツールの保持期間で消えた状況を再現）
+        var removed = Path.Combine(_claudeRoot, "claude_normal.jsonl");
+        var removedKey = first.Files.Single(f => f.Path == removed).SessionKey;
+        File.Delete(removed);
+
+        var second = scanner.Scan(cache, includePrompt: true);
+
+        // セッションは減らない。消えたファイルの分もキャッシュから復元される
+        Assert.Equal(before, second.Sessions.Count);
+        Assert.Contains(second.Sessions, s => s.Key == removedKey);
+
+        // 差分判定用のファイル一覧からは消える（次回スキャンで再読み込みしないため）
+        Assert.DoesNotContain(second.Files, f => f.Path == removed);
+    }
+
+    /// <summary>
+    /// 生成のたびにファイルが増え続けないよう、古いレポートは削除して直近だけを残す。
+    /// レポートはキャッシュからの派生物なので、消しても次回の生成で作り直せる。
+    /// </summary>
+    [Fact]
+    public void 古いレポートは直近5件だけ残る()
+    {
+        var scan = CreateScanner().Scan(cache: null, includePrompt: true);
+        var report = SessionStatsAggregator.Build(
+            scan, includePrompt: true, appVersion: "test", cacheWasCorrupted: false,
+            nowLocal: new DateTime(2026, 8, 20, 12, 0, 0, DateTimeKind.Local));
+
+        var folder = Path.Combine(_root, "reports");
+        var renderer = new UsageReportRenderer();
+
+        // 8 回生成する。ファイル名は分単位なので、生成時刻をずらして別ファイルにする
+        var paths = new List<string>();
+        for (var i = 0; i < 8; i++)
+        {
+            var at = new DateTime(2026, 8, 20, 12, 0, 0, DateTimeKind.Local).AddMinutes(i);
+            paths.Add(renderer.Render(report, folder, at));
+        }
+
+        var remaining = Directory.GetFiles(folder, "usage-*.html").Select(Path.GetFileName).ToList();
+        Assert.Equal(5, remaining.Count);
+
+        // 残るのは新しい 5 件。最新は必ず残る
+        Assert.Contains(Path.GetFileName(paths[^1]), remaining);
+        Assert.DoesNotContain(Path.GetFileName(paths[0]), remaining);
+    }
+
+    /// <summary>
+    /// 整理の対象は本機能が作った usage-*.html だけ。
+    /// 利用者が同じフォルダへ置いた別のファイルは消さない。
+    /// </summary>
+    [Fact]
+    public void 整理は自分が生成したファイルだけを対象にする()
+    {
+        var folder = Path.Combine(_root, "reports-mixed");
+        Directory.CreateDirectory(folder);
+
+        foreach (var i in Enumerable.Range(0, 8))
+        {
+            File.WriteAllText(Path.Combine(folder, $"usage-2026082{i}-1200.html"), "x");
+        }
+        var keepMe = Path.Combine(folder, "my-notes.html");
+        var keepMe2 = Path.Combine(folder, "usage-summary.txt");
+        File.WriteAllText(keepMe, "利用者が置いたファイル");
+        File.WriteAllText(keepMe2, "利用者が置いたファイル");
+
+        UsageReportRenderer.PruneOldReports(folder, 5);
+
+        Assert.Equal(5, Directory.GetFiles(folder, "usage-*.html").Length);
+        Assert.True(File.Exists(keepMe), "無関係な html を消してはいけない");
+        Assert.True(File.Exists(keepMe2), "拡張子が違うファイルを消してはいけない");
+    }
+
     /// <summary>合成データからレポート HTML を組み立てる。</summary>
     private string BuildHtml()
     {

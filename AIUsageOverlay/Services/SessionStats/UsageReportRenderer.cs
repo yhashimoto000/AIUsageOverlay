@@ -25,6 +25,20 @@ namespace AIUsageOverlay.Services.SessionStats
         private const string ReportFolderName = "reports";
 
         /// <summary>
+        /// 保持するレポートの件数。これより古いものは生成時に削除する。
+        ///
+        /// レポートは session-stats-cache.json からの派生物であり、
+        /// キャッシュは履歴ファイルが消えた分の集計も保持し続ける（設計書 6 章）。
+        /// そのため古い HTML を消しても、次回の生成で同じ期間を作り直せる。
+        /// </summary>
+        private const int KeepReportCount = 5;
+
+        /// <summary>レポートの既定の出力先（%AppData% 配下 AIUsageOverlay の reports フォルダ）。</summary>
+        public static string DefaultOutputFolder => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "AIUsageOverlay", ReportFolderName);
+
+        /// <summary>
         /// JSON 化の設定。プロパティ名は HTML 側の参照に合わせて camelCase にする。
         /// Encoder は既定のままとし、非 ASCII を \uXXXX へ展開する
         /// （既存ファイルとエスケープ規則を 1 つに保つ。設計書 3.3.2）。
@@ -44,15 +58,56 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <returns>生成した HTML のフルパス</returns>
         public string Render(UsageReport report, string? outputFolder, DateTime nowLocal)
         {
-            var folder = outputFolder ?? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "AIUsageOverlay", ReportFolderName);
+            var folder = outputFolder ?? DefaultOutputFolder;
             Directory.CreateDirectory(folder);
 
             var html = BuildHtml(report);
             var path = Path.Combine(folder, $"usage-{nowLocal:yyyyMMdd-HHmm}.html");
             File.WriteAllText(path, html, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            PruneOldReports(folder, KeepReportCount);
             return path;
+        }
+
+        /// <summary>
+        /// 古いレポートを削除し、新しいものから指定件数だけ残す。
+        ///
+        /// 対象は本機能が生成した「usage-*.html」だけに限定する。
+        /// 利用者が同じフォルダへ置いた別のファイルは触らない。
+        /// 削除に失敗しても生成そのものは成功しているため、例外は握って続行する。
+        /// </summary>
+        /// <param name="folder">レポートの出力先</param>
+        /// <param name="keep">残す件数</param>
+        internal static void PruneOldReports(string folder, int keep)
+        {
+            List<FileInfo> obsolete;
+            try
+            {
+                // ファイル名に生成日時（usage-yyyyMMdd-HHmm）が入っているため、
+                // 名前の降順がそのまま新しい順になる。
+                // 更新時刻はコピーや同期で変わり得るので主キーにしない。
+                obsolete = Directory.GetFiles(folder, "usage-*.html")
+                    .Select(p => new FileInfo(p))
+                    .OrderByDescending(f => f.Name, StringComparer.Ordinal)
+                    .ThenByDescending(f => f.LastWriteTimeUtc)
+                    .Skip(Math.Max(1, keep))
+                    .ToList();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return;
+            }
+
+            foreach (var file in obsolete)
+            {
+                try
+                {
+                    file.Delete();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // 開かれている等で消せない場合は次回の生成で消えるため、ここでは何もしない
+                }
+            }
         }
 
         /// <summary>テンプレートへレポートを差し込んだ HTML 文字列を作る。</summary>

@@ -301,6 +301,10 @@ namespace AIUsageOverlay
             _usageReportMenuItem = new ToolStripMenuItem("使用量レポートを生成");
             _usageReportMenuItem.Click += OnUsageReportMenuItemClick;
 
+            // 生成済みレポートの保存先を開く（過去分を見返す導線）
+            var reportFolderItem = new ToolStripMenuItem("レポートのフォルダを開く");
+            reportFolderItem.Click += (_, _) => OpenUsageReportFolder();
+
             var exitItem = new ToolStripMenuItem("終了");
             exitItem.Click += (_, _) => ExitApplication();
 
@@ -308,6 +312,7 @@ namespace AIUsageOverlay
             menu.Items.Add(snoozeItem);
             menu.Items.Add(_updateMenuItem);
             menu.Items.Add(_usageReportMenuItem);
+            menu.Items.Add(reportFolderItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(exitItem);
 
@@ -559,7 +564,14 @@ namespace AIUsageOverlay
         /// 実行中はメニュー項目を無効化して二度目の起動を無視する（設計書 8.6）。
         /// 多重起動しているインスタンスとの同時実行は名前付き Mutex で防ぐ。
         /// </summary>
-        private async void OnUsageReportMenuItemClick(object? sender, EventArgs e)
+        private void OnUsageReportMenuItemClick(object? sender, EventArgs e)
+            => GenerateUsageReport();
+
+        /// <summary>
+        /// 使用量レポートを生成して既定ブラウザで開く。
+        /// トレイメニューとオーバーレイの右クリックメニューの両方から呼ばれる。
+        /// </summary>
+        internal async void GenerateUsageReport()
         {
             // 生成中に再度押された場合は無視する
             if (!_usageReportGate.Wait(0))
@@ -734,6 +746,26 @@ namespace AIUsageOverlay
             vm.SaveSettings(settings);
             // 生成した直後は通知の対象外に戻す
             _usageReportReminderShown = false;
+        }
+
+        /// <summary>
+        /// 生成済みレポートの保存フォルダをエクスプローラで開く。
+        /// フォルダが無い場合は作ってから開く（まだ 1 度も生成していない場合）。
+        /// </summary>
+        internal void OpenUsageReportFolder()
+        {
+            var folder = Services.SessionStats.UsageReportRenderer.DefaultOutputFolder;
+            try
+            {
+                System.IO.Directory.CreateDirectory(folder);
+                Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                _mainWindow?.ViewModel.NotifyInfo(
+                    "AI Usage Overlay",
+                    $"レポートのフォルダを開けませんでした（{ex.Message}）。場所: {folder}");
+            }
         }
 
         /// <summary>生成したレポートを既定ブラウザで開く。</summary>
