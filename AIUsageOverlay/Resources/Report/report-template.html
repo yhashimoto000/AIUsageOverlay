@@ -207,8 +207,9 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
   <span class="meta" id="generated-at"></span>
   <div class="spacer"></div>
   <div role="group" aria-label="期間">
+    <button class="seg" data-period="today" aria-pressed="true">今日</button>
     <button class="seg" data-period="7" aria-pressed="false">7 日</button>
-    <button class="seg" data-period="30" aria-pressed="true">30 日</button>
+    <button class="seg" data-period="30" aria-pressed="false">30 日</button>
     <button class="seg" data-period="all" aria-pressed="false">全期間</button>
   </div>
   <button id="theme-toggle" title="ダーク / ライト / OS 追従 を切り替える">テーマ: OS 追従</button>
@@ -231,13 +232,18 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 
   <!-- 概要 ────────────────────────────────────────────────── -->
   <section class="panel active" id="panel-overview">
+    <div class="block" id="empty-notice" style="display:none">
+      <p class="note" style="margin:0">
+        この期間に記録された履歴はありません。上の期間ボタンで範囲を広げてください。
+      </p>
+    </div>
     <div class="cards" id="kpi-cards"></div>
 
-    <div class="block">
-      <h2>日別の課金相当トークン</h2>
+    <div class="block" id="block-daily">
+      <h2>日ごとの消費トークン</h2>
       <p class="note">
-        ターン基準で集計しています。各ターンの開始時刻が属する日（ローカル時刻）へ計上するため、
-        下のプロジェクト表（セッション基準）とは合計が一致しません。
+        やり取りが始まった時刻の日（お使いの PC の時刻）に数えています。
+        下のプロジェクト表はセッションが始まった日で数えているため、合計は一致しません。
       </p>
       <div class="scroll-x"><div id="chart-daily"></div></div>
       <div class="legend" style="margin-top:8px">
@@ -246,10 +252,10 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
     </div>
 
     <div class="block">
-      <h2>フェーズ内訳（実行回数の構成比）</h2>
+      <h2>何をしていたか（ツール実行回数の割合）</h2>
       <p class="note">
-        ツール実行の<strong>回数</strong>の構成比です。時間ではありません。
-        分類できなかったものは「未分類」として母数に含めています。
+        ツールを実行した<strong>回数</strong>の割合です。かけた時間ではありません。
+        判別できなかったものは「未分類」として、割合の分母に含めています。
       </p>
       <!-- 凡例は件数と構成比を添えて renderPhase が動的に描く -->
       <div id="chart-phase"></div>
@@ -257,7 +263,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 
     <div class="block">
       <h2>プロジェクト別</h2>
-      <p class="note">セッション基準（各セッションの単独値の総和）。パスは履歴に記録された実パスです。</p>
+      <p class="note">セッションが始まった日で数えています。各セッションの単独分の合計です。パスは履歴に記録されたそのままの値です。</p>
       <div class="filters">
         <input type="search" id="project-search" placeholder="プロジェクト名で絞り込み" size="30">
         <label><input type="checkbox" id="project-all"> 全件表示</label>
@@ -267,10 +273,10 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
         <thead><tr>
           <th class="sortable" data-sort="project">プロジェクト</th>
           <th class="num sortable" data-sort="sessionCount">セッション</th>
-          <th class="num sortable" data-sort="billable">課金相当</th>
-          <th class="num sortable" data-sort="processed">総処理</th>
+          <th class="num sortable" data-sort="billable">消費トークン</th>
+          <th class="num sortable" data-sort="processed">処理トークン</th>
           <th class="num sortable" data-sort="elapsedSec">経過時間</th>
-          <th>フェーズ構成比（回数）</th>
+          <th>何をしていたか</th>
         </tr></thead>
         <tbody></tbody>
       </table></div>
@@ -282,8 +288,9 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
     <div class="block">
       <h2>セッション一覧</h2>
       <p class="note">
-        サブエージェントは親の下に畳んでいます。親行は<strong>累計値</strong>（自身 + 配下の全サブエージェント）、
-        子行は<strong>単独値</strong>です。経過時間には読み待ち・離席を含みます（作業時間ではありません）。
+        サブエージェントは親の下に畳んでいます。親の行は<strong>子を含めた合計</strong>、
+        子の行は<strong>その子だけの分</strong>です。
+        経過時間は最初と最後の記録の差なので、読んでいた時間や離席も含みます（作業時間ではありません）。
       </p>
       <div class="filters">
         <label>ツール <select id="session-tool"><option value="">すべて</option>
@@ -299,11 +306,11 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
           <th>ツール</th>
           <th>プロジェクト</th>
           <th>指示文（先頭 64 文字）</th>
-          <th class="num sortable" data-sort="turns">ターン</th>
+          <th class="num sortable" data-sort="turns">やり取り</th>
           <th class="num sortable" data-sort="elapsedSec">経過時間</th>
-          <th class="num sortable" data-sort="billable">課金相当</th>
-          <th class="num sortable" data-sort="processed">総処理</th>
-          <th>フェーズ構成比（回数）</th>
+          <th class="num sortable" data-sort="billable">消費トークン</th>
+          <th class="num sortable" data-sort="processed">処理トークン</th>
+          <th>何をしていたか</th>
         </tr></thead>
         <tbody></tbody>
       </table></div>
@@ -325,9 +332,9 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
     </div>
 
     <div class="block">
-      <h2>未分類コマンド 上位</h2>
+      <h2>判別できなかったコマンド 上位</h2>
       <p class="note">
-        フェーズを決められなかったコマンドです。次の版で語彙表へ何を足せばよいかの手掛かりになります。
+        何の作業か決められなかったコマンドです。次の版でどの語を覚えさせればよいかの手掛かりになります。
       </p>
       <div class="filters">
         <input type="search" id="unknown-search" placeholder="コマンド名で絞り込み" size="26">
@@ -347,7 +354,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
       </div>
       <div class="scroll-x"><table id="model-table">
         <thead><tr>
-          <th>モデル</th><th class="num">ターン</th><th class="num">課金相当</th><th class="num">総処理</th>
+          <th>モデル</th><th class="num">やり取り</th><th class="num">消費トークン</th><th class="num">処理トークン</th>
         </tr></thead>
         <tbody></tbody>
       </table></div>
@@ -405,7 +412,8 @@ const PHASES = [
   { key: "unknown",     label: "未分類", varName: "--phase-unknown" },
 ];
 
-let currentPeriod = "30";
+// 既定は「今日」。まず当日の使用量を見て、必要なら期間を広げる流れにする
+let currentPeriod = "today";
 let projectSort = { key: "billable", desc: true };
 let sessionSort = { key: "start", desc: true };
 
@@ -479,10 +487,14 @@ function phaseBar(counts, width) {
 
 function renderDaily() {
   const host = document.getElementById("chart-daily");
+  const block = document.getElementById("block-daily");
   host.textContent = "";
   const days = period().byDay;
-  if (!days.length) {
-    host.appendChild(el("div", { class: "empty", text: "対象期間に履歴がありません。" }));
+
+  // 「今日」のように 1 日しか無い期間では、棒 1 本のグラフに読み取れることが無い。
+  // KPI とプロジェクト表で足りるのでブロックごと隠す
+  block.style.display = days.length > 1 ? "" : "none";
+  if (days.length <= 1) {
     return;
   }
 
@@ -597,18 +609,18 @@ function renderKpi() {
   host.textContent = "";
 
   const cards = [
-    { label: "課金相当トークン", value: fmt(p.billable),
-      sub: "キャッシュ読込を含めない。レート制限に効く量" },
-    { label: "総処理トークン", value: fmt(p.processed),
-      sub: "キャッシュ読込 " + fmt(p.cacheRead) + " を含む" },
+    { label: "消費トークン", value: fmt(p.billable),
+      sub: "使用量の枠（レート制限）を減らす分。キャッシュから読んだ分は含みません" },
+    { label: "処理トークン", value: fmt(p.processed),
+      sub: "AI が実際に読み書きした量。うちキャッシュから読んだ分が " + fmt(p.cacheRead) },
     { label: "セッション", value: fmt(p.sessionCount),
-      sub: fmt(p.turnCount) + " ターン / " + fmt(p.projectCount) + " プロジェクト" },
+      sub: fmt(p.turnCount) + " 回のやり取り / " + fmt(p.projectCount) + " プロジェクト" },
     { label: "経過時間", value: fmtDuration(p.elapsedSec),
       sub: p.elapsedUnmeasurableCount > 0
-        ? "測定不可 " + fmt(p.elapsedUnmeasurableCount) + " 件を除く。作業時間ではない"
-        : "読み待ち・離席を含む。作業時間ではない" },
-    { label: "フェーズ分類率", value: p.classifiedPercent.toFixed(1) + " %",
-      sub: "未分類を母数に含めた割合" },
+        ? "測れなかった " + fmt(p.elapsedUnmeasurableCount) + " 件を除く。作業時間ではありません"
+        : "読んでいた時間や離席も含みます。作業時間ではありません" },
+    { label: "作業内容の判別率", value: p.classifiedPercent.toFixed(1) + " %",
+      sub: "ツール実行のうち、何の作業か分かったものの割合" },
   ];
 
   cards.forEach(c => {
@@ -619,12 +631,15 @@ function renderKpi() {
     ]));
   });
 
+  // 期間内に履歴が無いときは、その旨をはっきり出す（0 と空欄の区別が付かなくなるため）
+  document.getElementById("empty-notice").style.display = p.sessionCount === 0 ? "" : "none";
+
   const warn = document.getElementById("classify-warning");
   if (p.classifiedPercent < 80 && (p.byPhase && Object.keys(p.byPhase).length > 0)) {
-    warn.textContent = "フェーズ分類率が " + p.classifiedPercent.toFixed(1) +
-      " % です。フェーズ内訳は" +
-      (p.classifiedPercent < 50 ? "確定値として扱えません。" : "参考値として扱ってください。") +
-      " 未分類の内訳は「ツール内訳」タブに出しています。";
+    warn.textContent = "何の作業をしていたか判別できたのは " + p.classifiedPercent.toFixed(1) +
+      " % です。内訳は" +
+      (p.classifiedPercent < 50 ? "確かな数字として扱えません。" : "目安として見てください。") +
+      " 判別できなかったコマンドは「ツール内訳」タブに出しています。";
     warn.classList.remove("hidden");
   } else {
     warn.classList.add("hidden");
@@ -876,7 +891,7 @@ function renderQuality() {
     ["今回パースしたファイル", fmt(q.parsedFiles) + " 件（キャッシュ流用 " + fmt(q.reusedFiles) + " 件）"],
     ["ワークフローの journal", fmt(q.journalFiles) + " 件（トークンを持たないため集計対象外）"],
     ["走査時間", (q.scanElapsedMs / 1000).toFixed(1) + " 秒"],
-    ["フェーズ分類率（この期間）", p.classifiedPercent.toFixed(1) + " %"],
+    ["作業内容の判別率（この期間）", p.classifiedPercent.toFixed(1) + " %"],
     ["壊れていた行", fmt(q.parseErrors) + " 行（その行だけスキップ）"],
     ["末尾行が壊れたセッション", fmt(q.lastLineBrokenSessions) + " 件（静かに過小計上される恐れ）"],
     ["経過時間を測れないセッション", fmt(q.unmeasurableSessions) + " 件"],

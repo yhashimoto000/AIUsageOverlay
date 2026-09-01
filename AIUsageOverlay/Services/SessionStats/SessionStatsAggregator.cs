@@ -292,9 +292,13 @@ namespace AIUsageOverlay.Services.SessionStats
     /// </summary>
     public static class SessionStatsAggregator
     {
-        /// <summary>期間セレクタの定義（キー、ラベル、遡る日数。日数 0 は全期間）。</summary>
+        /// <summary>
+        /// 期間セレクタの定義（キー、ラベル、遡る日数。日数 0 は全期間）。
+        /// 「今日」は当日分だけを見たいという要求のために置く（既定の表示期間）。
+        /// </summary>
         private static readonly (string Key, string Label, int Days)[] Periods =
         {
+            ("today", "今日", 1),
             ("7", "直近 7 日", 7),
             ("30", "直近 30 日", 30),
             ("all", "全期間", 0),

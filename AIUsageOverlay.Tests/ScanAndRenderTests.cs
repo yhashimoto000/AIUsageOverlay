@@ -261,10 +261,21 @@ public class ScanAndRenderTests : IDisposable
             scan, includePrompt: true, appVersion: "test", cacheWasCorrupted: false,
             nowLocal: new DateTime(2026, 8, 20, 12, 0, 0, DateTimeKind.Local));
 
-        Assert.Equal(3, report.Periods.Count);
+        // 今日 / 7 日 / 30 日 / 全期間 の 4 つ
+        Assert.Equal(4, report.Periods.Count);
         Assert.Equal(scan.Sessions.Count, report.Periods["all"].SessionKeys.Count);
+        Assert.True(report.Periods["today"].SessionKeys.Count <= report.Periods["7"].SessionKeys.Count);
         Assert.True(report.Periods["7"].SessionKeys.Count <= report.Periods["30"].SessionKeys.Count);
         Assert.True(report.Periods["30"].SessionKeys.Count <= report.Periods["all"].SessionKeys.Count);
+
+        // 「今日」は当日 0 時以降に始まったセッションだけを含む
+        var todayKeys = report.Periods["today"].SessionKeys.ToHashSet();
+        foreach (var s in scan.Sessions)
+        {
+            var startedToday = s.StartUtc.ToLocalTime().Date ==
+                               new DateTime(2026, 8, 20, 0, 0, 0, DateTimeKind.Local).Date;
+            Assert.Equal(startedToday, todayKeys.Contains(s.Key));
+        }
 
         // 分類率は未分類を母数に含めて計算する
         var all = report.Periods["all"];

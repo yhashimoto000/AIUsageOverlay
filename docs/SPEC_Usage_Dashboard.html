@@ -326,11 +326,11 @@ tr.hidden-by-filter{display:none}
 <header>
   <div class="hrow">
     <h1>AI 使用量ダッシュボード 詳細設計書</h1><span class="rev">Rev.1.2</span>
-    <span class="stat">見出し 85 / 表 58 / 外部参照なし</span>
+    <span class="stat">見出し 86 / 表 59 / 外部参照なし</span>
   </div>
   <div class="hsub">
     正は <code>SPEC_Usage_Dashboard.md</code>。<b>この HTML は生成物です。修正は Markdown 側で行い、再生成してください。</b>
-    再生成: <code>python gen_design_html.py SPEC_Usage_Dashboard.md SPEC_Usage_Dashboard.html</code>　生成: 2026-09-02 00:48 JST
+    再生成: <code>python gen_design_html.py SPEC_Usage_Dashboard.md SPEC_Usage_Dashboard.html</code>　生成: 2026-09-02 01:02 JST
   </div>
 </header>
 
@@ -414,6 +414,7 @@ tr.hidden-by-filter{display:none}
 <a class="ch" href="#sec-8" data-target="sec-8" data-num="8" data-title="画面仕様"><span class="ca"></span><span class="n">8</span><span class="t">画面仕様</span></a>
 <div class="secs">
 <a class="sec" href="#sec-8-1" data-target="sec-8-1" data-num="8.1" data-title="画面構成"><span class="n">8.1</span><span class="t">画面構成</span></a>
+<a class="sec" href="#sec-8-1-1" data-target="sec-8-1-1" data-num="8.1.1" data-title="画面に出す言葉"><span class="n">8.1.1</span><span class="t">画面に出す言葉</span></a>
 <a class="sec" href="#sec-8-2" data-target="sec-8-2" data-num="8.2" data-title="概要画面"><span class="n">8.2</span><span class="t">概要画面</span></a>
 <a class="sec" href="#sec-8-3" data-target="sec-8-3" data-num="8.3" data-title="プロジェクト画面（Rev 1.1 で廃止）"><span class="n">8.3</span><span class="t">プロジェクト画面（Rev 1.1 で廃止）</span></a>
 <a class="sec" href="#sec-8-4" data-target="sec-8-4" data-num="8.4" data-title="セッション画面"><span class="n">8.4</span><span class="t">セッション画面</span></a>
@@ -456,7 +457,7 @@ tr.hidden-by-filter{display:none}
 <a class="sec" href="#sec-12-4" data-target="sec-12-4" data-num="12.4" data-title="受け入れ基準"><span class="n">12.4</span><span class="t">受け入れ基準</span></a>
 </div></div>
 <div class="chgrp" data-ch="13">
-<a class="ch" href="#sec-13" data-target="sec-13" data-num="13" data-title="対応方針一覧（トリアージ）"><span class="ca"></span><span class="n">13</span><span class="t">対応方針一覧（トリアージ）</span><span class="badge">49</span></a>
+<a class="ch" href="#sec-13" data-target="sec-13" data-num="13" data-title="対応方針一覧（トリアージ）"><span class="ca"></span><span class="n">13</span><span class="t">対応方針一覧（トリアージ）</span><span class="badge">51</span></a>
 <div class="secs">
 <a class="sec" href="#sec-13-1" data-target="sec-13-1" data-num="13.1" data-title="一覧"><span class="n">13.1</span><span class="t">一覧</span></a>
 <a class="sec" href="#sec-13-2" data-target="sec-13-2" data-num="13.2" data-title="実装ステップ"><span class="n">13.2</span><span class="t">実装ステップ</span></a>
@@ -553,7 +554,7 @@ tr.hidden-by-filter{display:none}
 <tr>
 <td>1.2</td>
 <td>2026-09-02</td>
-<td>実装と B0 の実機確認を反映。<strong>5.2 の重複排除規則が誤りだったため差し替えた</strong>（<code>session_id</code> → <code>session_meta.id</code>）。Q1 / Q2 / Q3 / Q6 を確定、Q5 を決定。7.3.2 の分類率を実測値へ更新。変更した章: 1.2 / 4.2 / 5.2 / 7.3 / 8.2 / 9 / 10 / 11 / 12 / 13 / 付録 B</td>
+<td>実装と B0 の実機確認を反映。<strong>S12（当日表示）と S13（画面用語の平易化）を追加。</strong> <strong>5.2 の重複排除規則が誤りだったため差し替えた</strong>（<code>session_id</code> → <code>session_meta.id</code>）。Q1 / Q2 / Q3 / Q6 を確定、Q5 を決定。7.3.2 の分類率を実測値へ更新。変更した章: 1.2 / 4.2 / 5.2 / 7.3 / 8.2 / 9 / 10 / 11 / 12 / 13 / 付録 B</td>
 </tr>
 </tbody>
 </table>
@@ -652,6 +653,16 @@ tr.hidden-by-filter{display:none}
 <td>S11</td>
 <td>指示文出力の ON/OFF</td>
 <td>指示文の先頭 64 文字をレポートに出すかを設定で切り替える（→ 3.5 R1 / Q5）。Rev 1.1 で追加</td>
+</tr>
+<tr>
+<td>S12</td>
+<td>当日の使用量表示</td>
+<td>期間セレクタに「今日」を置き、<strong>既定の表示期間とする</strong>（→ 8.1）。Rev 1.2 で追加</td>
+</tr>
+<tr>
+<td>S13</td>
+<td>画面用語の平易化</td>
+<td>「課金相当トークン」等の設計用語を画面に出さず、日常の言葉と説明文に置き換える（→ 8.1.1）。Rev 1.2 で追加</td>
 </tr>
 </tbody>
 </table>
@@ -2047,7 +2058,62 @@ Rev 1.2 で要求側へ変更した。</p>
 </table>
 <p>Rev 1.0 にあった「プロジェクト」タブは概要タブへ統合した。
 プロジェクト表に「全件表示」トグルを付ければ足り、列も操作も同じ画面を 2 つ持つ理由が無い（→ N13）。</p>
-<p>共通ヘッダに期間セレクタ（7 日 / 30 日 / 全期間）を置く。
+<p>共通ヘッダに期間セレクタ（<strong>今日</strong> / 7 日 / 30 日 / 全期間）を置く。<strong>既定は「今日」。</strong>
+まず当日の使用量を見て、必要に応じて範囲を広げる流れにする。</p>
+<p>「今日」のように対象が 1 日しかない期間では、<strong>日別グラフのブロックごと隠す</strong>。
+棒 1 本のグラフから読み取れることが無いためである。KPI とプロジェクト表で足りる。
+期間内に履歴が 1 件も無いときは、概要タブの先頭に「この期間に記録された履歴はありません」と出す。</p>
+<h3 id="sec-8-1-1"><span class="num">8.1.1</span><span class="t">画面に出す言葉</span></h3>
+<p><strong>設計上の呼び方をそのまま画面に出さない。</strong> 集計の正確さは定義で担保し、
+画面では日常の言葉を使う。対応は次のとおり。</p>
+<table>
+<thead>
+<tr>
+<th>設計上の呼び方（本書）</th>
+<th>画面の表示</th>
+<th>画面に添える説明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>課金相当トークン</td>
+<td><strong>消費トークン</strong></td>
+<td>使用量の枠（レート制限）を減らす分。キャッシュから読んだ分は含みません</td>
+</tr>
+<tr>
+<td>総処理トークン</td>
+<td><strong>処理トークン</strong></td>
+<td>AI が実際に読み書きした量。うちキャッシュから読んだ分が N</td>
+</tr>
+<tr>
+<td>ターン</td>
+<td><strong>やり取り</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>フェーズ</td>
+<td><strong>何をしていたか</strong></td>
+<td>ツールを実行した回数の割合です。かけた時間ではありません</td>
+</tr>
+<tr>
+<td>フェーズ分類率</td>
+<td><strong>作業内容の判別率</strong></td>
+<td>ツール実行のうち、何の作業か分かったものの割合</td>
+</tr>
+<tr>
+<td>単独値 / 累計値</td>
+<td><strong>その子だけの分 / 子を含めた合計</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>未分類コマンド</td>
+<td><strong>判別できなかったコマンド</strong></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>本書の本文では設計上の呼び方を使い続ける。<strong>画面の文言を変えるときは、この表も併せて直す。</strong>
+片方だけ変えると、レビューのときに画面と設計書が別物に見える。
 <strong>再スキャン・CSV 出力のボタンは置かない。</strong> HTML は外部通信も C# 呼び出しも持たないため実行できず、
 押せないボタンを置くと利用者を迷わせる。更新は AIUsageOverlay のトレイメニューから行う旨を
 ヘッダに 1 行で書く。</p>
@@ -3556,10 +3622,28 @@ B1 で <code>AIUsageOverlay.Tests</code>（xUnit）を新規に作る。</p>
 <td>S11</td>
 <td>スコープ</td>
 <td>指示文出力の ON/OFF</td>
-<td>対応する</td>
+<td>対応済み</td>
 <td>Q5</td>
 <td>S</td>
-<td>3.5 R1。Rev 1.1 で追加</td>
+<td>3.5 R1。Rev 1.1 で追加。既定 ON</td>
+</tr>
+<tr>
+<td>S12</td>
+<td>スコープ</td>
+<td>当日（今日）の使用量表示</td>
+<td>対応済み</td>
+<td>—</td>
+<td>S</td>
+<td>8.1。<strong>Rev 1.2 で追加。既定の表示期間</strong></td>
+</tr>
+<tr>
+<td>S13</td>
+<td>スコープ</td>
+<td>画面用語の平易化</td>
+<td>対応済み</td>
+<td>—</td>
+<td>S</td>
+<td>8.1.1。<strong>Rev 1.2 で追加</strong></td>
 </tr>
 <tr>
 <td>N1</td>
