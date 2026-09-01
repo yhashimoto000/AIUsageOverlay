@@ -24,4 +24,9 @@
     <Resource Include="Resources\app.ico" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 使用量レポートの HTML テンプレート: UsageReportRenderer が実行時に読み出す -->
+    <EmbeddedResource Include="Resources\Report\report-template.html" />
+  </ItemGroup>
+
 </Project>

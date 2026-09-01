@@ -179,5 +179,20 @@ namespace AIUsageOverlay.Models
         /// </summary>
         [JsonPropertyName("skippedUpdateVersion")]
         public string SkippedUpdateVersion { get; set; } = string.Empty;
+
+        // ────────────────────────────────────────────────────────────────
+        // 使用量レポート（AI 使用量ダッシュボード）
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// 使用量レポートに各セッションの最初の指示文（先頭 64 文字）を出力するか。S11。
+        ///
+        /// 既定 true。日時とトークン数だけでは「どの作業か」を人間が判別できないため、
+        /// 自分の PC で自分の履歴を見る既定の用途では出力する。
+        /// レポートを他人へ渡す場合は、この設定を false にしてから生成する。
+        /// 出力するのは先頭 64 文字のみで、会話本文は一切出力しない。
+        /// </summary>
+        [JsonPropertyName("usageReportIncludePrompt")]
+        public bool UsageReportIncludePrompt { get; set; } = true;
     }
 }
