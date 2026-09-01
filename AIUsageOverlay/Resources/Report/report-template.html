@@ -205,6 +205,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 <header class="top">
   <h1>AI 使用量レポート</h1>
   <span class="meta" id="generated-at"></span>
+  <span class="meta" id="current-period"></span>
   <div class="spacer"></div>
   <div role="group" aria-label="期間">
     <button class="seg" data-period="today" aria-pressed="true">今日</button>
@@ -212,6 +213,9 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
     <button class="seg" data-period="30" aria-pressed="false">30 日</button>
     <button class="seg" data-period="all" aria-pressed="false">全期間</button>
   </div>
+  <select id="month-select" aria-label="月を選ぶ">
+    <option value="">月を選ぶ…</option>
+  </select>
   <button id="theme-toggle" title="ダーク / ライト / OS 追従 を切り替える">テーマ: OS 追従</button>
 </header>
 
@@ -949,6 +953,7 @@ function renderQuality() {
 /* ── 描画のとりまとめ ─────────────────────────────────────── */
 
 function renderAll() {
+  document.getElementById("current-period").textContent = "表示期間: " + period().label;
   renderKpi();
   renderDaily();
   renderPhase();
@@ -1003,10 +1008,36 @@ document.querySelectorAll("header.top button.seg").forEach(btn => {
     currentPeriod = btn.dataset.period;
     document.querySelectorAll("header.top button.seg").forEach(b =>
       b.setAttribute("aria-pressed", String(b === btn)));
+    // 月の選択とボタンは排他。ボタンを押したら月の選択を外す
+    document.getElementById("month-select").value = "";
     // 期間を変えるとセッションの選択も変わり得るため、絞り込みは維持したまま描き直す
     renderAll();
   });
 });
+
+// 履歴に存在する月だけを選択肢にする（空の月を並べない）
+(function fillMonthSelect() {
+  const select = document.getElementById("month-select");
+  Object.keys(DATA.periods)
+    .filter(k => k.indexOf("month:") === 0)
+    .sort()
+    .reverse()
+    .forEach(k => select.appendChild(
+      el("option", { value: k, text: DATA.periods[k].label })));
+
+  select.addEventListener("change", () => {
+    if (!select.value) {
+      // 「月を選ぶ…」に戻したら既定の期間へ戻す
+      const btn = document.querySelector('header.top button.seg[data-period="today"]');
+      btn.click();
+      return;
+    }
+    currentPeriod = select.value;
+    document.querySelectorAll("header.top button.seg").forEach(b =>
+      b.setAttribute("aria-pressed", "false"));
+    renderAll();
+  });
+})();
 
 document.querySelectorAll("#project-table th.sortable").forEach(th => {
   th.addEventListener("click", () => {

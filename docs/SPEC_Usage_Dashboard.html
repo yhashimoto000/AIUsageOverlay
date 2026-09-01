@@ -326,11 +326,11 @@ tr.hidden-by-filter{display:none}
 <header>
   <div class="hrow">
     <h1>AI 使用量ダッシュボード 詳細設計書</h1><span class="rev">Rev.1.2</span>
-    <span class="stat">見出し 86 / 表 59 / 外部参照なし</span>
+    <span class="stat">見出し 87 / 表 60 / 外部参照なし</span>
   </div>
   <div class="hsub">
     正は <code>SPEC_Usage_Dashboard.md</code>。<b>この HTML は生成物です。修正は Markdown 側で行い、再生成してください。</b>
-    再生成: <code>python gen_design_html.py SPEC_Usage_Dashboard.md SPEC_Usage_Dashboard.html</code>　生成: 2026-09-02 01:07 JST
+    再生成: <code>python gen_design_html.py SPEC_Usage_Dashboard.md SPEC_Usage_Dashboard.html</code>　生成: 2026-09-02 01:20 JST
   </div>
 </header>
 
@@ -422,6 +422,7 @@ tr.hidden-by-filter{display:none}
 <a class="sec" href="#sec-8-6" data-target="sec-8-6" data-num="8.6" data-title="未定義ケース"><span class="n">8.6</span><span class="t">未定義ケース</span></a>
 <a class="sec" href="#sec-8-7" data-target="sec-8-7" data-num="8.7" data-title="埋め込み JSON のエスケープ"><span class="n">8.7</span><span class="t">埋め込み JSON のエスケープ</span></a>
 <a class="sec" href="#sec-8-8" data-target="sec-8-8" data-num="8.8" data-title="グラフの描画方式"><span class="n">8.8</span><span class="t">グラフの描画方式</span></a>
+<a class="sec" href="#sec-8-9" data-target="sec-8-9" data-num="8.9" data-title="レポート未生成の通知"><span class="n">8.9</span><span class="t">レポート未生成の通知</span></a>
 </div></div>
 <div class="chgrp" data-ch="9">
 <a class="ch" href="#sec-9" data-target="sec-9" data-num="9" data-title="ファイル構成"><span class="ca"></span><span class="n">9</span><span class="t">ファイル構成</span></a>
@@ -457,7 +458,7 @@ tr.hidden-by-filter{display:none}
 <a class="sec" href="#sec-12-4" data-target="sec-12-4" data-num="12.4" data-title="受け入れ基準"><span class="n">12.4</span><span class="t">受け入れ基準</span></a>
 </div></div>
 <div class="chgrp" data-ch="13">
-<a class="ch" href="#sec-13" data-target="sec-13" data-num="13" data-title="対応方針一覧（トリアージ）"><span class="ca"></span><span class="n">13</span><span class="t">対応方針一覧（トリアージ）</span><span class="badge">51</span></a>
+<a class="ch" href="#sec-13" data-target="sec-13" data-num="13" data-title="対応方針一覧（トリアージ）"><span class="ca"></span><span class="n">13</span><span class="t">対応方針一覧（トリアージ）</span><span class="badge">54</span></a>
 <div class="secs">
 <a class="sec" href="#sec-13-1" data-target="sec-13-1" data-num="13.1" data-title="一覧"><span class="n">13.1</span><span class="t">一覧</span></a>
 <a class="sec" href="#sec-13-2" data-target="sec-13-2" data-num="13.2" data-title="実装ステップ"><span class="n">13.2</span><span class="t">実装ステップ</span></a>
@@ -554,7 +555,7 @@ tr.hidden-by-filter{display:none}
 <tr>
 <td>1.2</td>
 <td>2026-09-02</td>
-<td>実装と B0 の実機確認を反映。<strong>S12（当日表示）と S13（画面用語の平易化）を追加。</strong> <strong>5.2 の重複排除規則が誤りだったため差し替えた</strong>（<code>session_id</code> → <code>session_meta.id</code>）。Q1 / Q2 / Q3 / Q6 を確定、Q5 を決定。7.3.2 の分類率を実測値へ更新。変更した章: 1.2 / 4.2 / 5.2 / 7.3 / 8.2 / 9 / 10 / 11 / 12 / 13 / 付録 B</td>
+<td>実装と B0 の実機確認を反映。<strong>S12（当日表示）・S13（画面用語の平易化）・S14（月別の期間）・S15（未生成の通知）を追加。</strong> <strong>5.2 の重複排除規則が誤りだったため差し替えた</strong>（<code>session_id</code> → <code>session_meta.id</code>）。Q1 / Q2 / Q3 / Q6 を確定、Q5 を決定。7.3.2 の分類率を実測値へ更新。変更した章: 1.2 / 4.2 / 5.2 / 7.3 / 8.2 / 9 / 10 / 11 / 12 / 13 / 付録 B</td>
 </tr>
 </tbody>
 </table>
@@ -663,6 +664,16 @@ tr.hidden-by-filter{display:none}
 <td>S13</td>
 <td>画面用語の平易化</td>
 <td>「課金相当トークン」等の設計用語を画面に出さず、日常の言葉と説明文に置き換える（→ 8.1.1）。Rev 1.2 で追加</td>
+</tr>
+<tr>
+<td>S14</td>
+<td>月別の期間選択</td>
+<td>履歴に現れる月を選べるようにする（→ 8.1）。履歴は保持期間で消えるため、過ぎた月を後から見返す用途がある。Rev 1.2 で追加</td>
+</tr>
+<tr>
+<td>S15</td>
+<td>レポート未生成の通知</td>
+<td>一定期間レポートを生成していないとき、トレイ通知で知らせる（→ 8.9）。Rev 1.2 で追加</td>
 </tr>
 </tbody>
 </table>
@@ -2058,7 +2069,8 @@ Rev 1.2 で要求側へ変更した。</p>
 </table>
 <p>Rev 1.0 にあった「プロジェクト」タブは概要タブへ統合した。
 プロジェクト表に「全件表示」トグルを付ければ足り、列も操作も同じ画面を 2 つ持つ理由が無い（→ N13）。</p>
-<p>共通ヘッダに期間セレクタ（<strong>今日</strong> / 7 日 / 30 日 / 全期間）を置く。<strong>既定は「今日」。</strong>
+<p>共通ヘッダに期間セレクタ（<strong>今日</strong> / 7 日 / 30 日 / 全期間）と、<strong>月を選ぶドロップダウン</strong>を置く。<strong>既定は「今日」。</strong></p>
+<p>月の選択肢は<strong>履歴に現れる月だけ</strong>を新しい順に並べる（空の月を並べない）。期間ボタンと月の選択は排他で、片方を選ぶともう片方は解除する。現在どの期間を見ているかはヘッダに「表示期間: 2026 年 7 月」のように出す。
 まず当日の使用量を見て、必要に応じて範囲を広げる流れにする。</p>
 <p>「今日」のように対象が 1 日しかない期間では、<strong>日別グラフのブロックごと隠す</strong>。
 棒 1 本のグラフから読み取れることが無いためである。KPI とプロジェクト表で足りる。
@@ -2776,6 +2788,55 @@ JavaScript の行終端子として扱われるため、いずれも JSON とし
 上の 3 種類で読み取れることが増えない。</strong></p>
 <p>描画はブラウザ側の JS で行う（期間セレクタで再描画するため）。
 JS は <code>&lt;script&gt;</code> に直接書き、<strong>データだけを 8.7 の方式で分離する。</strong></p>
+<h3 id="sec-8-9"><span class="num">8.9</span><span class="t">レポート未生成の通知</span></h3>
+<p><strong>なぜ要るか。</strong> 履歴ファイルは各ツールの保持期間で削除される。
+本機能のキャッシュは一度取り込んだセッションを保持し続けるため（→ 6 章「削除された履歴ファイル」）、
+<strong>レポートを生成した時点までの記録は残る。</strong> 逆に言えば、
+<strong>生成しないまま履歴が消えた分は復元できない。</strong></p>
+<table>
+<thead>
+<tr>
+<th>事項</th>
+<th>決定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>判定</td>
+<td>設定に持つ最終生成日時と現在時刻の差が、しきい値（既定 7 日）以上か</td>
+</tr>
+<tr>
+<td>未生成の場合</td>
+<td>一度も生成していないときも対象にする。「早めに一度生成しておくと過去分を残せます」と出す</td>
+</tr>
+<tr>
+<td>タイミング</td>
+<td><strong>既存の更新確認タイマー（6 時間周期）に相乗りする。</strong> 専用タイマーを増やさない</td>
+</tr>
+<tr>
+<td>頻度</td>
+<td><strong>同じ起動中は 1 回だけ。</strong> 6 時間ごとに繰り返し出さない</td>
+</tr>
+<tr>
+<td>通知手段</td>
+<td>既存の <code>NotificationService</code>（トレイのバルーン）。外部通信は行わない</td>
+</tr>
+<tr>
+<td>設定</td>
+<td>「レポート未作成を通知する」（既定 ON）。しきい値の日数は設定 UI に出さず、<code>settings.json</code> の値を使う</td>
+</tr>
+<tr>
+<td>生成成功時</td>
+<td>最終生成日時を保存し、通知フラグを戻す</td>
+</tr>
+</tbody>
+</table>
+<div class="note ng"><div class="lab">注意</div>
+<p>注意: <strong>通知は「押し忘れ」を減らすだけで、取りこぼしを無くすものではない。</strong>
+確実にするには、レポートを開かずキャッシュだけを定期的に更新する仕組みが要る
+（実測ではフルスキャン 7 秒、差分ならそれ以下）。本 Rev では入れていない。
+入れるかどうかは、通知の運用実績を見てから判断する。</p>
+</div>
 <hr>
 <h2 id="sec-9"><span class="num">9</span><span class="t">ファイル構成</span></h2><div class="rule"></div>
 <pre><code>AIUsageOverlay/
@@ -2813,11 +2874,11 @@ JS は <code>&lt;script&gt;</code> に直接書き、<strong>データだけを 
 </tr>
 <tr>
 <td><code>Models/AppSettings.cs</code></td>
-<td><strong>1 点改修。</strong> S11（指示文を出力するか）のプロパティを追加</td>
+<td><strong>改修。</strong> S11（指示文を出力するか）に加え、S15 の最終生成日時・通知の有効可否・しきい値日数を追加</td>
 </tr>
 <tr>
 <td><code>SettingsWindow.xaml(.cs)</code></td>
-<td><strong>1 点改修。</strong> S11 のチェックボックスと読み書きを追加</td>
+<td><strong>改修。</strong> S11 と S15 のチェックボックスと読み書きを追加</td>
 </tr>
 <tr>
 <td><code>AIUsageOverlay.csproj</code></td>
@@ -3639,6 +3700,33 @@ B1 で <code>AIUsageOverlay.Tests</code>（xUnit）を新規に作る。</p>
 <td>—</td>
 <td>S</td>
 <td>8.1.1。<strong>Rev 1.2 で追加</strong></td>
+</tr>
+<tr>
+<td>S14</td>
+<td>スコープ</td>
+<td>月別の期間選択</td>
+<td>対応済み</td>
+<td>—</td>
+<td>S</td>
+<td>8.1。<strong>Rev 1.2 で追加</strong></td>
+</tr>
+<tr>
+<td>S15</td>
+<td>スコープ</td>
+<td>レポート未生成の通知</td>
+<td>対応済み</td>
+<td>—</td>
+<td>S</td>
+<td>8.9。<strong>Rev 1.2 で追加</strong></td>
+</tr>
+<tr>
+<td>S16</td>
+<td>スコープ</td>
+<td>キャッシュの定期自動更新</td>
+<td><strong>保留</strong></td>
+<td>S15</td>
+<td>M</td>
+<td>8.9 の注記。通知だけでは取りこぼしを無くせない。運用実績を見てから判断する</td>
 </tr>
 <tr>
 <td>N1</td>

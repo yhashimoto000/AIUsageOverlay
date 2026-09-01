@@ -261,8 +261,8 @@ public class ScanAndRenderTests : IDisposable
             scan, includePrompt: true, appVersion: "test", cacheWasCorrupted: false,
             nowLocal: new DateTime(2026, 8, 20, 12, 0, 0, DateTimeKind.Local));
 
-        // 今日 / 7 日 / 30 日 / 全期間 の 4 つ
-        Assert.Equal(4, report.Periods.Count);
+        // 今日 / 7 日 / 30 日 / 全期間 + 履歴に現れる月
+        Assert.True(report.Periods.Count > 4, "月別の期間が追加されている");
         Assert.Equal(scan.Sessions.Count, report.Periods["all"].SessionKeys.Count);
         Assert.True(report.Periods["today"].SessionKeys.Count <= report.Periods["7"].SessionKeys.Count);
         Assert.True(report.Periods["7"].SessionKeys.Count <= report.Periods["30"].SessionKeys.Count);
@@ -282,6 +282,42 @@ public class ScanAndRenderTests : IDisposable
         var total = all.ByPhase.Values.Sum();
         var unknown = all.ByPhase.GetValueOrDefault(PhaseClassifier.Unknown);
         Assert.Equal(Math.Round((double)(total - unknown) * 100 / total, 1), all.ClassifiedPercent);
+    }
+
+    /// <summary>
+    /// 履歴に現れる月だけが期間として追加され、その月のセッションだけを含む。
+    /// 履歴は保持期間で消えるため、過去の月を後から見返せるようにしている。
+    /// </summary>
+    [Fact]
+    public void 月別の期間が履歴のある月だけ作られる()
+    {
+        var scan = CreateScanner().Scan(cache: null, includePrompt: true);
+        var report = SessionStatsAggregator.Build(
+            scan, includePrompt: true, appVersion: "test", cacheWasCorrupted: false,
+            nowLocal: new DateTime(2026, 8, 20, 12, 0, 0, DateTimeKind.Local));
+
+        var monthKeys = report.Periods.Keys.Where(k => k.StartsWith("month:", StringComparison.Ordinal))
+            .ToList();
+        Assert.NotEmpty(monthKeys);
+
+        // 合成データは 2026-08 に集中している
+        Assert.Contains("month:2026-08", monthKeys);
+
+        // 各月の期間には、その月に始まったセッションだけが入る
+        foreach (var key in monthKeys)
+        {
+            var yearMonth = key["month:".Length..];
+            var keys = report.Periods[key].SessionKeys.ToHashSet();
+            foreach (var s in scan.Sessions)
+            {
+                var actual = s.StartUtc.ToLocalTime().ToString("yyyy-MM");
+                Assert.Equal(actual == yearMonth, keys.Contains(s.Key));
+            }
+        }
+
+        // 月をすべて足すと全期間のセッション数に一致する（取りこぼし・重複がない）
+        var sumOfMonths = monthKeys.Sum(k => report.Periods[k].SessionKeys.Count);
+        Assert.Equal(report.Periods["all"].SessionKeys.Count, sumOfMonths);
     }
 
     /// <summary>合成データからレポート HTML を組み立てる。</summary>

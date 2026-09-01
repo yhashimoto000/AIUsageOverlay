@@ -194,5 +194,29 @@ namespace AIUsageOverlay.Models
         /// </summary>
         [JsonPropertyName("usageReportIncludePrompt")]
         public bool UsageReportIncludePrompt { get; set; } = true;
+
+        /// <summary>
+        /// 使用量レポートを最後に生成した日時（ローカル）。未生成なら null。
+        ///
+        /// 履歴ファイルは各ツールの保持期間で削除される。レポートを生成した時点の集計は
+        /// キャッシュに残るが、生成しないまま履歴が消えるとその分は復元できない。
+        /// この値は「しばらく生成していない」ことを検知するために使う。
+        /// </summary>
+        [JsonPropertyName("usageReportLastGeneratedAt")]
+        public DateTime? UsageReportLastGeneratedAt { get; set; }
+
+        /// <summary>
+        /// 一定期間レポートを生成していないときに通知するか。既定 true。
+        /// 通知は外部通信を伴わず、ローカルの日付比較だけで判定する。
+        /// </summary>
+        [JsonPropertyName("usageReportReminderEnabled")]
+        public bool UsageReportReminderEnabled { get; set; } = true;
+
+        /// <summary>
+        /// 通知を出すまでの日数。既定 7 日。
+        /// 実測で履歴は 3 か月ほど残っていたが、保持期間の既定値は未確認のため短めに置く。
+        /// </summary>
+        [JsonPropertyName("usageReportReminderDays")]
+        public int UsageReportReminderDays { get; set; } = 7;
     }
 }

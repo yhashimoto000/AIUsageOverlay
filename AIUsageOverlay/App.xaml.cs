@@ -104,6 +104,9 @@ namespace AIUsageOverlay
         /// <summary>終了時に集計処理を中断するキャンセルトークン。</summary>
         private readonly CancellationTokenSource _usageReportCancellation = new();
 
+        /// <summary>レポート未生成の通知を、同じ起動中に繰り返さないためのフラグ。</summary>
+        private bool _usageReportReminderShown;
+
         // ────────────────────────────────────────────────────────────────
         // 公開プロパティ
         // ────────────────────────────────────────────────────────────────
@@ -343,7 +346,11 @@ namespace AIUsageOverlay
                     Interval = UpdateCheckTimerInterval
                 };
                 _updateCheckTimer.Tick += async (_, _) =>
+                {
                     await CheckForUpdatesAsync(force: false, notifyAvailable: true);
+                    // 履歴の取りこぼしを防ぐため、レポートの生成間隔もここで見る
+                    NotifyIfUsageReportIsStale();
+                };
             }
 
             _updateCheckTimer.Start();
@@ -359,6 +366,7 @@ namespace AIUsageOverlay
             {
                 await Task.Delay(InitialUpdateCheckDelay, _updateCheckCancellation.Token);
                 await CheckForUpdatesAsync(force: false, notifyAvailable: true);
+                NotifyIfUsageReportIsStale();
             }
             catch (OperationCanceledException)
             {
@@ -591,6 +599,7 @@ namespace AIUsageOverlay
                     return;
                 }
 
+                SaveUsageReportGeneratedAt(DateTime.Now);
                 OpenInDefaultBrowser(path);
             }
             catch (OperationCanceledException)
@@ -666,6 +675,65 @@ namespace AIUsageOverlay
             {
                 mutex.ReleaseMutex();
             }
+        }
+
+        /// <summary>
+        /// レポートをしばらく生成していない場合に一度だけ通知する。
+        ///
+        /// 履歴ファイルは各ツールの保持期間で削除される。レポートを生成した時点の集計は
+        /// キャッシュへ残るが、生成しないまま履歴が消えた分は後から復元できない。
+        /// 通知は外部通信を伴わず、設定に持つ最終生成日時との差だけで判定する。
+        /// </summary>
+        private void NotifyIfUsageReportIsStale()
+        {
+            // 同じ起動中に何度も出さない
+            if (_usageReportReminderShown)
+            {
+                return;
+            }
+
+            var settings = _mainWindow?.ViewModel.GetSettings();
+            if (settings is null || !settings.UsageReportReminderEnabled)
+            {
+                return;
+            }
+
+            var threshold = Math.Max(1, settings.UsageReportReminderDays);
+            var last = settings.UsageReportLastGeneratedAt;
+
+            // 一度も生成していない場合も対象にする（履歴が消える前に 1 回作ってもらう）
+            var elapsedDays = last is { } t ? (DateTime.Now - t).TotalDays : double.MaxValue;
+            if (elapsedDays < threshold)
+            {
+                return;
+            }
+
+            _usageReportReminderShown = true;
+            var message = last is { } shown
+                ? $"使用量レポートを {(int)elapsedDays} 日間生成していません。" +
+                  "履歴ファイルは各ツールの保持期間で消えるため、生成しないままだとその分は集計できなくなります。" +
+                  $"（最終生成 {shown:yyyy-MM-dd}）"
+                : "使用量レポートをまだ生成していません。" +
+                  "履歴ファイルは各ツールの保持期間で消えるため、早めに一度生成しておくと過去分を残せます。";
+
+            _mainWindow?.ViewModel.NotifyInfo("AI Usage Overlay", message);
+        }
+
+        /// <summary>レポート生成の完了を設定へ記録する。次回の通知判定に使う。</summary>
+        /// <param name="generatedAt">生成した日時（ローカル）</param>
+        private void SaveUsageReportGeneratedAt(DateTime generatedAt)
+        {
+            var vm = _mainWindow?.ViewModel;
+            if (vm is null)
+            {
+                return;
+            }
+
+            var settings = vm.GetSettings();
+            settings.UsageReportLastGeneratedAt = generatedAt;
+            vm.SaveSettings(settings);
+            // 生成した直後は通知の対象外に戻す
+            _usageReportReminderShown = false;
         }
 
         /// <summary>生成したレポートを既定ブラウザで開く。</summary>

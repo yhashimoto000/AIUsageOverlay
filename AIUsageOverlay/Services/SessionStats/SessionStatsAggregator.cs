@@ -341,10 +341,37 @@ namespace AIUsageOverlay.Services.SessionStats
             foreach (var (key, label, days) in Periods)
             {
                 var from = days == 0 ? DateTime.MinValue : nowLocal.Date.AddDays(-(days - 1));
-                report.Periods[key] = BuildPeriod(label, sessions, from);
+                report.Periods[key] = BuildPeriod(label, sessions, from, DateTime.MaxValue);
             }
 
+            AddMonthlyPeriods(report, sessions);
             return report;
+        }
+
+        /// <summary>
+        /// 履歴に現れる月を新しい順に期間として追加する。
+        ///
+        /// 履歴は各ツールの保持期間で消えるため、過去の月を後から見返す用途がある。
+        /// キーは「month:yyyy-MM」。存在しない月は作らない（空の選択肢を並べない）。
+        /// </summary>
+        /// <param name="report">追加先のレポート</param>
+        /// <param name="sessions">全セッション</param>
+        private static void AddMonthlyPeriods(
+            UsageReport report, IReadOnlyCollection<SessionStatsRecord> sessions)
+        {
+            var months = sessions
+                .Select(s => s.StartUtc.ToLocalTime())
+                .Select(d => new DateTime(d.Year, d.Month, 1))
+                .Distinct()
+                .OrderByDescending(d => d)
+                .ToList();
+
+            foreach (var month in months)
+            {
+                var label = $"{month.Year} 年 {month.Month} 月";
+                report.Periods[$"month:{month:yyyy-MM}"] =
+                    BuildPeriod(label, sessions, month, month.AddMonths(1));
+            }
         }
 
         /// <summary>
@@ -443,16 +470,23 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <param name="label">期間名</param>
         /// <param name="sessions">全セッション</param>
         /// <param name="fromLocal">期間の開始日（ローカル）。MinValue なら全期間</param>
+        /// <param name="toLocalExclusive">期間の終端（ローカル・この日を含まない）。MaxValue なら上限なし</param>
         private static PeriodView BuildPeriod(
             string label,
             IReadOnlyCollection<SessionStatsRecord> sessions,
-            DateTime fromLocal)
+            DateTime fromLocal,
+            DateTime toLocalExclusive)
         {
             var view = new PeriodView { Label = label };
 
             // セッション基準: 開始時刻が期間内のもの（設計書 7.4）
             var inPeriod = sessions
-                .Where(s => s.StartUtc.ToLocalTime().Date >= fromLocal.Date)
+                .Where(s =>
+                {
+                    var day = s.StartUtc.ToLocalTime().Date;
+                    return day >= fromLocal.Date &&
+                           (toLocalExclusive == DateTime.MaxValue || day < toLocalExclusive.Date);
+                })
                 .ToList();
 
             var projects = new Dictionary<string, ProjectView>(StringComparer.Ordinal);
@@ -521,6 +555,10 @@ namespace AIUsageOverlay.Services.SessionStats
                 foreach (var d in s.ByDay)
                 {
                     if (!DateTime.TryParse(d.DateLocal, out var date) || date.Date < fromLocal.Date)
+                    {
+                        continue;
+                    }
+                    if (toLocalExclusive != DateTime.MaxValue && date.Date >= toLocalExclusive.Date)
                     {
                         continue;
                     }
