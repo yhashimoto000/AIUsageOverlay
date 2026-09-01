@@ -113,6 +113,12 @@ namespace AIUsageOverlay.Services.Parsing
 
         /// <summary>custom_tool_call から取り出したシェルコマンド本体。</summary>
         public string? ShellCommand { get; init; }
+
+        /// <summary>
+        /// この custom_tool_call がパッチ適用かどうか。
+        /// name が apply_patch の場合と、exec の input が直接パッチ本文の場合がある。
+        /// </summary>
+        public bool IsPatchApply { get; init; }
     }
 
     /// <summary>
@@ -150,6 +156,25 @@ namespace AIUsageOverlay.Services.Parsing
                     payload.ValueKind != JsonValueKind.Object)
                 {
                     return new CodexRolloutLine { Kind = CodexLineKind.Other, TimestampUtc = timestamp };
+                }
+
+                // session_meta と turn_context は payload に type を持たず、
+                // 行の root 側の type だけで種別が決まる（実測で確認）。
+                // payload.type だけを見ると cwd・session_id・model を丸ごと取りこぼす。
+                var rootType = ReadString(root, "type");
+                if (rootType == "session_meta")
+                {
+                    return ParseSessionMeta(payload, timestamp);
+                }
+                if (rootType == "turn_context")
+                {
+                    return new CodexRolloutLine
+                    {
+                        Kind = CodexLineKind.TurnContext,
+                        TimestampUtc = timestamp,
+                        Model = ReadString(payload, "model"),
+                        Cwd = ReadString(payload, "cwd"),
+                    };
                 }
 
                 var payloadType = ReadString(payload, "type");
@@ -215,9 +240,36 @@ namespace AIUsageOverlay.Services.Parsing
                 ForkedFromId   = ReadString(body, "forked_from_id"),
                 ParentThreadId = ReadString(body, "parent_thread_id"),
                 ThreadSource   = ReadString(body, "thread_source"),
-                AgentNickname  = ReadString(body, "agent_nickname"),
+                AgentNickname  = ReadString(body, "agent_nickname") ?? ReadSubagentName(body),
                 Cwd            = ReadString(body, "cwd"),
             };
+        }
+
+        /// <summary>
+        /// サブエージェントの表示名を取り出す。
+        /// 実測の session_meta では「source: { subagent: { other: "guardian" } }」の形で入る。
+        /// </summary>
+        /// <param name="body">session_meta の本体</param>
+        /// <returns>表示名。取り出せない場合は null</returns>
+        private static string? ReadSubagentName(JsonElement body)
+        {
+            if (!body.TryGetProperty("source", out var source) ||
+                source.ValueKind != JsonValueKind.Object ||
+                !source.TryGetProperty("subagent", out var subagent) ||
+                subagent.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            // 種別ごとにキーが変わるため、最初に見つかった文字列値を採る
+            foreach (var property in subagent.EnumerateObject())
+            {
+                if (property.Value.ValueKind == JsonValueKind.String)
+                {
+                    return property.Value.GetString();
+                }
+            }
+            return null;
         }
 
         /// <summary>token_count 行を読む。total は累積、last はターン差分。</summary>
@@ -265,13 +317,36 @@ namespace AIUsageOverlay.Services.Parsing
         /// <param name="payload">payload 要素</param>
         /// <param name="timestamp">行の時刻</param>
         private static CodexRolloutLine ParseCustomToolCall(JsonElement payload, DateTime? timestamp)
-            => new()
+        {
+            var name = ReadString(payload, "name");
+            var input = ReadString(payload, "input");
+
+            return new CodexRolloutLine
             {
                 Kind         = CodexLineKind.CustomToolCall,
                 TimestampUtc = timestamp,
-                ToolName     = ReadString(payload, "name"),
-                ShellCommand = ExtractShellCommand(ReadString(payload, "input")),
+                ToolName     = name,
+                ShellCommand = ExtractShellCommand(input),
+                IsPatchApply = IsPatch(name, input),
             };
+        }
+
+        /// <summary>
+        /// パッチ適用の呼び出しかどうかを判定する。
+        /// 実測では name=apply_patch の他に、name=exec の input が
+        /// 「*** Begin Patch」で始まるパッチ本文になっている場合がある。
+        /// </summary>
+        /// <param name="name">ツール名</param>
+        /// <param name="input">input 文字列</param>
+        private static bool IsPatch(string? name, string? input)
+        {
+            if (string.Equals(name, "apply_patch", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            return input is not null &&
+                   input.Contains("*** Begin Patch", StringComparison.Ordinal);
+        }
 
         /// <summary>
         /// custom_tool_call の input からシェルコマンド本体を取り出す。
@@ -303,23 +378,142 @@ namespace AIUsageOverlay.Services.Parsing
                 return null;
             }
 
-            var json = input.Substring(argStart, end - argStart).Trim();
-            if (json.Length == 0)
+            var body = input.Substring(argStart, end - argStart).Trim();
+            if (body.Length == 0)
             {
                 return null;
             }
 
             try
             {
-                using var doc = JsonDocument.Parse(json);
-                return doc.RootElement.ValueKind == JsonValueKind.Object
-                    ? ReadString(doc.RootElement, "command")
-                    : null;
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    return ReadString(doc.RootElement, "command");
+                }
             }
             catch (JsonException)
             {
+                // 実データではキーが引用符無しの JavaScript オブジェクトリテラル
+                // （{command:"..."}）になっている場合がある。下のフォールバックで拾う
+            }
+
+            return ExtractCommandLiteral(body);
+        }
+
+        /// <summary>
+        /// JavaScript オブジェクトリテラルから command の値だけを取り出すフォールバック。
+        ///
+        /// 実測では「{command:"...", workdir:"..."}」のようにキーが引用符で囲まれておらず、
+        /// 厳密な JSON としてはパースできない。値の側は二重引用符の文字列リテラルなので、
+        /// エスケープを解釈しながら 1 文字ずつ読む。
+        /// </summary>
+        /// <param name="body">shell_command の引数部分</param>
+        /// <returns>コマンド本体。取り出せない場合は null</returns>
+        private static string? ExtractCommandLiteral(string body)
+        {
+            var keyIndex = FindCommandKey(body);
+            if (keyIndex < 0)
+            {
                 return null;
             }
+
+            // キーの後ろのコロンを飛ばし、最初の二重引用符まで進む
+            var i = keyIndex;
+            while (i < body.Length && body[i] != ':')
+            {
+                i++;
+            }
+            while (i < body.Length && body[i] != '"')
+            {
+                i++;
+            }
+            if (i >= body.Length)
+            {
+                return null;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            for (i++; i < body.Length; i++)
+            {
+                var c = body[i];
+                if (c == '"')
+                {
+                    return sb.ToString();
+                }
+                if (c != '\\' || i + 1 >= body.Length)
+                {
+                    sb.Append(c);
+                    continue;
+                }
+
+                // JSON と同じエスケープ規則で復元する
+                var next = body[++i];
+                switch (next)
+                {
+                    case 'n': sb.Append('\n'); break;
+                    case 'r': sb.Append('\r'); break;
+                    case 't': sb.Append('\t'); break;
+                    case 'b': sb.Append('\b'); break;
+                    case 'f': sb.Append('\f'); break;
+                    case 'u' when i + 4 < body.Length &&
+                                  ushort.TryParse(
+                                      body.AsSpan(i + 1, 4),
+                                      System.Globalization.NumberStyles.HexNumber,
+                                      System.Globalization.CultureInfo.InvariantCulture,
+                                      out var code):
+                        sb.Append((char)code);
+                        i += 4;
+                        break;
+                    default: sb.Append(next); break;
+                }
+            }
+            // 閉じ引用符が見つからない場合も、読めたところまでを返す（切り捨てない）
+            return sb.Length > 0 ? sb.ToString() : null;
+        }
+
+        /// <summary>
+        /// オブジェクトリテラル内で command キーの位置を探す。
+        /// 引用符付き・無しの両方に対応し、文字列リテラルの内側は見ない。
+        /// </summary>
+        /// <param name="body">shell_command の引数部分</param>
+        /// <returns>キーの開始位置。見つからなければ -1</returns>
+        private static int FindCommandKey(string body)
+        {
+            var inString = false;
+            var escaped = false;
+
+            for (var i = 0; i < body.Length; i++)
+            {
+                var c = body[i];
+                if (inString)
+                {
+                    if (escaped) { escaped = false; }
+                    else if (c == '\\') { escaped = true; }
+                    else if (c == '"') { inString = false; }
+                    continue;
+                }
+                if (c == '"')
+                {
+                    // 引用符付きキー「"command"」の可能性を先に判定する
+                    if (string.CompareOrdinal(body, i, "\"command\"", 0, 9) == 0)
+                    {
+                        return i;
+                    }
+                    inString = true;
+                    continue;
+                }
+                if (c == 'c' && string.CompareOrdinal(body, i, "command", 0, 7) == 0)
+                {
+                    // 直前が識別子の一部でないことを確かめる（workdir_command 等の誤検出を防ぐ）
+                    var prevOk = i == 0 || !char.IsLetterOrDigit(body[i - 1]) && body[i - 1] != '_';
+                    if (prevOk)
+                    {
+                        return i;
+                    }
+                }
+            }
+            return -1;
         }
 
         /// <summary>

@@ -214,8 +214,13 @@ namespace AIUsageOverlay.Services.SessionStats
                 return "(不明)";
             }
             var (first, second) = head.Value;
-            // git / dotnet / npm のようなサブコマンド型は 2 語で見ないと意図が分からない
-            return second is not null && IsSubcommandDriver(first) ? $"{first} {second}" : first;
+            // git / dotnet / npm のようなサブコマンド型は 2 語で見ないと意図が分からない。
+            // ただし 2 語目がオプション（-c / --version 等）なら意図を持たないので 1 語に留める
+            var hasSubcommand = second is not null &&
+                                second.Length > 0 &&
+                                second[0] != '-' &&
+                                IsSubcommandDriver(first);
+            return hasSubcommand ? $"{first} {second}" : first;
         }
 
         /// <summary>サブコマンドまで見ないと意図が定まらないコマンドかどうか。</summary>

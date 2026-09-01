@@ -576,8 +576,8 @@ namespace AIUsageOverlay.Services.SessionStats
             {
                 ClaudeStatus = StatusText(scan.ClaudeStatus),
                 CodexStatus = StatusText(scan.CodexStatus),
-                ClaudeRoot = SessionStatsScanner.ClaudeRoot,
-                CodexRoot = SessionStatsScanner.CodexRoot,
+                ClaudeRoot = scan.ClaudeRootPath,
+                CodexRoot = scan.CodexRootPath,
                 ParsedFiles = scan.ParsedFileCount,
                 ReusedFiles = scan.ReusedFileCount,
                 JournalFiles = scan.JournalFileCount,

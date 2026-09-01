@@ -43,6 +43,12 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>走査に要した時間（ミリ秒）。Q6 の計測値。</summary>
         public long ElapsedMs { get; set; }
+
+        /// <summary>走査した Claude Code の履歴ルート。データ品質タブに出す。</summary>
+        public string ClaudeRootPath { get; set; } = string.Empty;
+
+        /// <summary>走査した Codex の履歴ルート。データ品質タブに出す。</summary>
+        public string CodexRootPath { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -53,6 +59,32 @@ namespace AIUsageOverlay.Services.SessionStats
     {
         /// <summary>Codex の履歴ルートを差し替える環境変数名。</summary>
         private const string CodexHomeVariable = "CODEX_HOME";
+
+        /// <summary>このインスタンスが走査する Claude Code の履歴ルート。</summary>
+        private readonly string _claudeRoot;
+
+        /// <summary>このインスタンスが走査する Codex の履歴ルート。</summary>
+        private readonly string _codexRoot;
+
+        /// <summary>実機の履歴ルートで初期化する。</summary>
+        public SessionStatsScanner() : this(ClaudeRoot, CodexRoot)
+        {
+        }
+
+        /// <summary>走査するルートを指定して初期化する（テスト用）。</summary>
+        /// <param name="claudeRoot">Claude Code の履歴ルート</param>
+        /// <param name="codexRoot">Codex の履歴ルート</param>
+        public SessionStatsScanner(string claudeRoot, string codexRoot)
+        {
+            _claudeRoot = claudeRoot;
+            _codexRoot = codexRoot;
+        }
+
+        /// <summary>走査対象の Claude Code 履歴ルート。</summary>
+        public string ClaudeRootPath => _claudeRoot;
+
+        /// <summary>走査対象の Codex 履歴ルート。</summary>
+        public string CodexRootPath => _codexRoot;
 
         /// <summary>指示文として切り出す最大文字数（設計書 3.5 R1）。</summary>
         private const int PromptMaxLength = 64;
@@ -97,7 +129,11 @@ namespace AIUsageOverlay.Services.SessionStats
             CancellationToken cancellationToken = default)
         {
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            var result = new ScanResult();
+            var result = new ScanResult
+            {
+                ClaudeRootPath = _claudeRoot,
+                CodexRootPath = _codexRoot,
+            };
 
             // スキーマ版が違えば流用しない（設計書 6 章）
             var reusable = cache is not null && cache.SchemaVersion == SessionStatsCache.CurrentSchemaVersion
@@ -105,13 +141,16 @@ namespace AIUsageOverlay.Services.SessionStats
                 : new Dictionary<string, (ScannedHistoryFile File, SessionStatsRecord Session)>(
                     StringComparer.OrdinalIgnoreCase);
 
-            var claudeFiles = EnumerateFiles(ClaudeRoot, "*.jsonl", out var claudeStatus);
-            var codexFiles = EnumerateFiles(CodexRoot, "rollout-*.jsonl", out var codexStatus);
+            var claudeFiles = EnumerateFiles(_claudeRoot, "*.jsonl", out var claudeStatus);
+            var codexFiles = EnumerateFiles(_codexRoot, "rollout-*.jsonl", out var codexStatus);
             result.ClaudeStatus = claudeStatus;
             result.CodexStatus = codexStatus;
 
             var total = claudeFiles.Count + codexFiles.Count;
             var done = 0;
+            // 同じキーのセッションを取り違えないための索引。
+            // 実運用では衝突しないが、衝突しても後勝ちで消さないために持つ
+            var seenKeys = new HashSet<string>(StringComparer.Ordinal);
 
             foreach (var path in claudeFiles)
             {
@@ -123,14 +162,14 @@ namespace AIUsageOverlay.Services.SessionStats
                     progress?.Report((++done, total));
                     continue;
                 }
-                ProcessFile(path, SessionStatsRecord.ToolClaudeCode, includePrompt, reusable, result);
+                ProcessFile(path, SessionStatsRecord.ToolClaudeCode, includePrompt, reusable, result, seenKeys);
                 progress?.Report((++done, total));
             }
 
             foreach (var path in codexFiles)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                ProcessFile(path, SessionStatsRecord.ToolCodex, includePrompt, reusable, result);
+                ProcessFile(path, SessionStatsRecord.ToolCodex, includePrompt, reusable, result, seenKeys);
                 progress?.Report((++done, total));
             }
 
@@ -216,12 +255,14 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <param name="includePrompt">指示文を保持するか</param>
         /// <param name="reusable">流用索引</param>
         /// <param name="result">結果の出力先</param>
+        /// <param name="seenKeys">すでに採用したセッションキー</param>
         private void ProcessFile(
             string path,
             string tool,
             bool includePrompt,
             IReadOnlyDictionary<string, (ScannedHistoryFile File, SessionStatsRecord Session)> reusable,
-            ScanResult result)
+            ScanResult result,
+            HashSet<string> seenKeys)
         {
             FileInfo info;
             try
@@ -250,7 +291,10 @@ namespace AIUsageOverlay.Services.SessionStats
                 cached.File.SizeBytes == sizeBefore &&
                 cached.File.MtimeUtc == mtimeBefore)
             {
-                result.Sessions.Add(cached.Session);
+                if (seenKeys.Add(cached.Session.Key))
+                {
+                    result.Sessions.Add(cached.Session);
+                }
                 result.Files.Add(cached.File);
                 result.ReusedFileCount++;
                 return;
@@ -289,6 +333,13 @@ namespace AIUsageOverlay.Services.SessionStats
                 return;
             }
 
+            if (!seenKeys.Add(record.Key))
+            {
+                // 別ファイルが同じキーを主張した場合。実運用では起きないが、
+                // 後勝ちで消すと消費が落ちるため、ファイル名を足して別セッションとして残す
+                record.Key = $"{record.Key}@{Path.GetFileNameWithoutExtension(path)}";
+                seenKeys.Add(record.Key);
+            }
             result.Sessions.Add(record);
 
             // 読み取り中に追記されていないかを確認する。変わっていたらキャッシュに登録せず、
@@ -557,6 +608,13 @@ namespace AIUsageOverlay.Services.SessionStats
                             break;
 
                         case CodexLineKind.CustomToolCall:
+                            if (parsed.IsPatchApply)
+                            {
+                                // パッチ適用は実装として確定できる（設計書 7.3.2）
+                                builder.CountTool("apply_patch");
+                                builder.CountPhase(PhaseClassifier.Implement);
+                                break;
+                            }
                             builder.CountTool(parsed.ToolName ?? "exec");
                             var phase = PhaseClassifier.ClassifyCommand(parsed.ShellCommand);
                             builder.CountPhase(phase);
@@ -568,9 +626,9 @@ namespace AIUsageOverlay.Services.SessionStats
                             break;
 
                         case CodexLineKind.PatchApplyEnd:
-                            // 結果イベントで実装フェーズを確定できる（設計書 7.3.2）
-                            builder.CountTool("patch_apply");
-                            builder.CountPhase(PhaseClassifier.Implement);
+                            // 結果イベント。要求側（custom_tool_call）で既に実装として数えているため、
+                            // ここで数えると 1 回のパッチ適用が 2 回の実行になる。
+                            // 回数の基準を「要求」に揃えるため、フェーズには計上しない。
                             break;
 
                         case CodexLineKind.McpToolCallEnd:
@@ -694,7 +752,10 @@ namespace AIUsageOverlay.Services.SessionStats
                 }
             }
 
-            /// <summary>ターンの開始を記録する。日別集計はこの時刻が属する日へ計上する（設計書 7.4）。</summary>
+            /// <summary>
+            /// ターンの開始を記録する。日別集計はこの時刻が属する日へ計上する（設計書 7.4）。
+            /// モデル別のターン数は、そのターンで最初に観測したモデルへ 1 回だけ数える。
+            /// </summary>
             /// <param name="utc">ターン開始時刻</param>
             public void BeginTurn(DateTime? utc)
             {
@@ -703,6 +764,26 @@ namespace AIUsageOverlay.Services.SessionStats
                 {
                     _currentDay = ToLocalDay(t);
                 }
+                if (_currentDay is not null)
+                {
+                    _dayTurns[_currentDay] = _dayTurns.GetValueOrDefault(_currentDay) + 1;
+                }
+                _turnModelCounted = false;
+            }
+
+            /// <summary>現在のターンでモデル別ターン数を数え済みか。</summary>
+            private bool _turnModelCounted;
+
+            /// <summary>そのターンで最初に観測したモデルとして 1 回だけ数える。</summary>
+            /// <param name="model">モデル名</param>
+            private void CountTurnForModel(string model)
+            {
+                if (_turnModelCounted)
+                {
+                    return;
+                }
+                _modelTurns[model] = _modelTurns.GetValueOrDefault(model) + 1;
+                _turnModelCounted = true;
             }
 
             /// <summary>Claude Code の 1 レコード分のトークンを加算する。</summary>
@@ -728,6 +809,7 @@ namespace AIUsageOverlay.Services.SessionStats
                 _totals.Add(delta);
                 Bucket(_byModel, model).Add(delta);
                 Bucket(_byDay, _currentDay ?? (utc is { } t ? ToLocalDay(t) : "(不明)")).Add(delta);
+                CountTurnForModel(model);
             }
 
             /// <summary>
@@ -753,8 +835,7 @@ namespace AIUsageOverlay.Services.SessionStats
                 var day = _currentDay ?? (utc is { } t ? ToLocalDay(t) : "(不明)");
                 Bucket(_byModel, model).Add(delta);
                 Bucket(_byDay, day).Add(delta);
-                _modelTurns[model] = _modelTurns.GetValueOrDefault(model) + 1;
-                _dayTurns[day] = _dayTurns.GetValueOrDefault(day) + 1;
+                CountTurnForModel(model);
             }
 
             /// <summary>Codex のセッション合計（最終行の累積値）を設定する。</summary>

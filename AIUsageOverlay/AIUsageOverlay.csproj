@@ -29,4 +29,9 @@
     <EmbeddedResource Include="Resources\Report\report-template.html" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 単体テストから 1 ファイル分のパース処理を直接呼べるようにする -->
+    <InternalsVisibleTo Include="AIUsageOverlay.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -1,0 +1,3 @@
+{"type": "user", "timestamp": "2026-08-05T03:00:00.000Z", "sessionId": "11111111-2222-3333-4444-555555555554", "cwd": "C:\\Work\\SampleApp", "message": {"role": "user", "content": "壊れた行を含む"}}
+{ this is not json
+{"type": "assistant", "timestamp": "2026-08-05T03:00:10.000Z", "sessionId": "11111111-2222-3333-4444-555555555554", "cwd": "C:\\Work\\SampleApp", "message": {"id": "msg_b1", "model": "claude-opus-5", "content": [{"type": "tool_use", "name": "Read", "input": {}}], "usage": {"input_tokens": 1, "output_tokens": 40, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "iterations": [{"input_tokens": 1, "output_tokens": 40}], "cache_creation": {"ephemeral_1h_input_tokens": 0, "ephemeral_5m_input_tokens": 0}}}, "requestId": "req_b1"}
