@@ -108,3 +108,16 @@
 ### Policy（追記 2026-09-02）
 - **「生成物を自動削除してよいか」は、元データから再生成できるかで決める。** 再生成できるなら消してよく、できないなら残す。本機能ではキャッシュの保持性をテスト（T18）で固定してから自動削除を入れた。根拠をテストにしておくと、後の変更で前提が崩れたときに気付ける。
 - 自動削除の対象は**自分が生成した命名規則のファイルに限定する**（`usage-*.html`）。同じフォルダに利用者が置いたファイルを巻き込まない。
+
+## 2026-09-02（リリース: v2.1.0）
+### Facts（事実）
+- **`build-release.bat` の publish は、`publish\AIUsageOverlay.exe` が実行中だと必ず失敗する。** エラーは `GenerateBundle` タスクの `System.UnauthorizedAccessException: Access to the path '...\publish\AIUsageOverlay.exe' is denied.`。原因はコードではなく、publish の出力先そのものを起動して常駐させていたこと。プロセスを終了すれば通る。
+- 本リポジトリのリモートは 2 つ（`github` = 公開リポジトリ、`backlog` = 社内）。**過去のリリース（v2.0.3）は master とタグを両方へ push している**。`github/master` と `backlog/master` は同じ位置にあり、タグも両方に存在する。
+- 本流ブランチは **`master`**。`main` は存在しない。`develop` は master より 53 コミット遅れており、実質使われていない。
+- `v*` タグを `github` へ push すると `release.yml` が走り、self-contained zip（66.1 MB）と `checksums.txt` を添付した Release が **`draft: false` で即時公開**される。実測で push から完了まで約 2 分。
+- リリース後に `/releases/latest` が新タグを返すことを確認すると、既存ユーザーの自動更新確認が新版を検知できる状態かを判定できる（v2.1.0 で確認済み）。
+
+### Policy（方針）
+- **配布用 exe を動作確認に使うときは、publish 先ではなく `bin\Release` の exe を起動する。** publish 先を起動すると次のリリースビルドが必ず失敗する。
+- リリースは「csproj の版数更新 → master へ `--no-ff` マージ → 注釈付きタグ → 両リモートへ master とタグを push」の順で行う。マージコミットの件名は `merge: <内容>（vX.Y.Z）` に揃える。
+- **タグ push は GitHub Release の即時公開を伴う。** 公開を伴う push は、実行前に push 先（github / backlog / 両方）を確認してから行う。
