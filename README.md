@@ -296,6 +296,115 @@ GitHub公式Releaseは`v*`タグのpushで`.github/workflows/release.yml`が生�
 
 ---
 
+## 開発フロー
+
+ブランチ運用のルールは `.claude/git-rules.json` に記録しています。
+人が読む形は [GIT_WORKFLOW.md](GIT_WORKFLOW.md)、規約の要約は `CLAUDE.md` / `AGENTS.md` にあります。
+**ルールを変えるときは `.claude/git-rules.json` を直してから再生成**してください（手で書き換えない）。
+
+```
+wip                                    ローカル限定・push しない・1 本を使い回す
+ |  --squash（1 サブタスク = 1 コミット / refs/wip-archive/<トピック> へ退避）
+feat/  fix/  docs/  refactor/  perf/  build/  chore/     種別ブランチ・push する
+ |  --no-ff（マージ単位で履歴を残す）
+master                                 統合ブランチ・タグを打つ
+```
+
+### git-flow.ps1
+
+手順の多い操作（とくに squash 取り込み）をまとめたヘルパーです。
+**PowerShell 7 (pwsh) 推奨**。リポジトリのどこから実行しても動きます。
+
+```powershell
+.\scripts\git-flow.ps1 help
+```
+
+| コマンド | 動作 |
+|---------|------|
+| `status` | 現在のブランチ・wip の有無・退避の一覧・未 push の件数を表示 |
+| `start <種別> <トピック>` | master を最新化して `<種別>/<トピック>` を作り、push して `wip` を用意 |
+| `wip` | 現在の種別ブランチから `wip` を作り直す |
+| `squash [<トピック>]` | `wip` を種別ブランチへ squash 取り込み → 退避 → `wip` 作り直し |
+| `integrate` | 種別ブランチを master へ `--no-ff` マージして push |
+| `archives` | 退避した作業履歴の一覧 |
+| `show <トピック>` | 退避した作業履歴のコミットログ |
+
+`-Yes` を付けると確認プロンプトを飛ばします。
+
+**このスクリプトは破壊的なコマンドを実行しません。**
+`push --force` / `reset --hard` / `clean -fd` / `push --all` / `push --mirror` は使わず、
+push は対象を明示した `git push <remote> <branch>` だけです。
+
+#### 典型的な流れ
+
+```powershell
+# 1. トピックを始める（master 最新化 → feat/xxx 作成 → push → wip 用意）
+.\scripts\git-flow.ps1 start feat usage-dashboard
+
+# 2. wip で細かくコミットする（push はされない）
+git add -A
+git commit -m "feat(usage-dashboard): 走査の骨組みを追加"
+
+# 3. サブタスクが片付いたら種別ブランチへまとめる
+.\scripts\git-flow.ps1 squash
+#    エディタが開くので SQUASH_MSG の先頭 1 行だけ残して保存する。
+#    そのあと自動で refs/wip-archive/<トピック> へ退避し、wip を作り直す。
+
+# 4. 2〜3 を繰り返す
+
+# 5. トピックが完成したら master へ入れる
+git switch feat/usage-dashboard
+.\scripts\git-flow.ps1 integrate
+```
+
+squash 後にエディタで `-m` を付けずにコミットするのは意図的です。
+`git merge --squash` が `.git/SQUASH_MSG` へ書き出した wip 側のログが初期内容になるため、
+先頭 1 行を残せば wip と種別ブランチのメッセージが一致します（`-m` を付けると無視されます）。
+
+退避した履歴は通常の push では飛ばず、`git gc` でも回収されません。読むときは次のとおり。
+
+```powershell
+.\scripts\git-flow.ps1 archives
+.\scripts\git-flow.ps1 show usage-dashboard
+```
+
+### リリース手順
+
+**自動化していません。** 版数の決定とタグ push（＝ GitHub Release の即時公開）は
+人が確認しながら行います。手順は次の 5 つです。
+
+```powershell
+# 1. 版数を上げる（AIUsageOverlay/AIUsageOverlay.csproj の <Version>）
+#    タグと csproj を一致させないと、引数なしのローカルビルドが誤った更新判定を出す
+git add AIUsageOverlay/AIUsageOverlay.csproj
+git commit -m "chore(release): 開発用既定バージョンを2.1.0へ更新"
+
+# 2. master へ統合する
+.\scripts\git-flow.ps1 integrate
+
+# 3. ビルドとテストを通す
+dotnet build AIUsageOverlay/AIUsageOverlay.csproj -c Release
+dotnet test AIUsageOverlay.Tests/AIUsageOverlay.Tests.csproj
+
+# 4. 注釈付きタグを打つ（厳密な 3 成分 SemVer。v1.40 のような 2 成分は CI が弾く）
+git tag -a v2.1.0 -m "AI Usage Overlay v2.1.0"
+
+# 5. master とタグを両リモートへ push する
+git push github master;  git push github v2.1.0
+git push backlog master; git push backlog v2.1.0
+```
+
+**タグを `github` へ push した時点で GitHub Actions が走り、Release が即時公開されます**
+（`draft: false`）。self-contained zip と `checksums.txt` が自動で添付され、
+所要時間は約 2 分です。公開後は `/releases/latest` が新しいタグを返すようになり、
+既存利用者の自動更新確認に乗ります。
+
+> **注意**: 動作確認には `publish\` ではなく `AIUsageOverlay\bin\Release\` の exe を使ってください。
+> `publish\AIUsageOverlay.exe` を起動したままにすると、次の `build-release.bat` が
+> `GenerateBundle` の `UnauthorizedAccessException` で失敗します（出力先を上書きできないため）。
+
+---
+
 ## アーキテクチャ
 
 ```

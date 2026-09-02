@@ -149,6 +149,33 @@
 - 自動でファイルに書き込まない。提案 → 承認 → 差分で追記、の順を守る。
 - 1セッションで提案を乱発しない。明確なトリガーがある時のみ。
 
+<!-- git-rules-keeper:begin -->
+## Git 運用ルール（AI Usage Overlay）
+
+このセクションは `.claude/git-rules.json` から生成されている。手で書き換えず、
+ルールを変えるときは `.claude/git-rules.json` を直して再生成する。詳細は `GIT_WORKFLOW.md`。
+
+- 統合ブランチ: `master`
+- 種別ブランチ: `feat/` `fix/` `docs/` `refactor/` `perf/` `build/` `chore/`（push する）
+- 作業ブランチ: `wip`（ローカル限定・push しない）
+- マージ方針: 作業→種別 `--squash` / 種別→`master` `--no-ff`
+- squash 後は `git commit` を **`-m` なし**で実行し、`.git/SQUASH_MSG` の先頭 1 行（`wip` 側の代表コミットの文言）だけ残す。要約を書き直さない（squash はマージ関係を残さないため、同じ文言だけが対応の手がかりになる）
+- 作業ブランチは `wip` の 1 本を使い回す。取り込んだ直後に `git update-ref refs/wip-archive/<トピック> wip` で退避してから `git switch -C wip <種別ブランチ>` で作り直す。新しい名前のブランチを作らない
+- push 先: 種別 `backlog` / `github` / `master` `backlog` / `github`
+- コミットメッセージ: `<種別>(<範囲>): <要約>（日本語・Conventional Commits 風。例: fix(viewmodel): GitHub Copilot表示のちらつきを修正）`
+- 配布: ソース公開。`github` にはコードもドキュメントも push する
+
+禁止:
+
+- `master` / 種別ブランチへの直接コミット（必ず 1 段下からマージする）
+- `wip` のリモート push（ローカル限定）
+- `git push --all`（push しない約束の作業ブランチまで送られる）
+- 退避 ref（`refs/wip-archive/*`）の削除（squash 前の内訳が復元できなくなる）
+- `git push --mirror`（`refs/wip-archive/*` まで送られ、隠したはずの試行錯誤が公開される）
+- `push --force` / `reset --hard` / `clean -fd` などの破壊的コマンド
+- ビルド成果物・生成物のコミット（`.gitignore` 準拠）
+<!-- git-rules-keeper:end -->
+
 ## プロジェクト固有
 - 概要: **AI Usage Overlay**（`AIUsageOverlay`）— Claude.ai / GitHub Copilot / Codex の使用量を Windows デスクトップに常時表示するオーバーレイ。タスクトレイ常駐で、使用率に応じてトレイアイコンの色が変化する。
 - 言語・FW: **C# / .NET 9 (WPF)** — `net9.0-windows`、Windows 専用。配布は単一 self-contained exe。

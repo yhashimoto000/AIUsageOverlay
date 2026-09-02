@@ -1,0 +1,105 @@
+{
+  "project": "AI Usage Overlay",
+  "repo_kind": "code",
+  "distribution": {
+    "channel": "public-source",
+    "asset_pattern": "AIUsageOverlay_v*.zip",
+    "tag_on": "master",
+    "build_by": "ci"
+  },
+  "remotes": [
+    {
+      "name": "backlog",
+      "url": "https://miwalock.backlog.com/git/TOOL/Claude-UsageTool.git",
+      "role": "internal"
+    },
+    {
+      "name": "github",
+      "url": "https://github.com/yhashimoto000/AIUsageOverlay.git",
+      "role": "public"
+    }
+  ],
+  "base_branch": "master",
+  "release_branch": null,
+  "types": [
+    {
+      "name": "feat",
+      "desc": "機能追加"
+    },
+    {
+      "name": "fix",
+      "desc": "不具合修正"
+    },
+    {
+      "name": "docs",
+      "desc": "ドキュメント・設計書"
+    },
+    {
+      "name": "refactor",
+      "desc": "挙動を変えない整理"
+    },
+    {
+      "name": "perf",
+      "desc": "性能改善"
+    },
+    {
+      "name": "build",
+      "desc": "ビルド・配布まわり"
+    },
+    {
+      "name": "chore",
+      "desc": "雑務・バージョン更新"
+    }
+  ],
+  "work_branch": {
+    "prefix": "wip",
+    "branch": "wip",
+    "pattern": "wip/<種別>-<トピック>",
+    "push": false,
+    "cleanup": "archive",
+    "archive_namespace": "refs/wip-archive"
+  },
+  "type_branch": {
+    "cleanup": "keep"
+  },
+  "merge_policy": {
+    "work_to_type": "squash",
+    "type_to_base": "no-ff",
+    "base_to_release": "no-ff"
+  },
+  "push_targets": {
+    "work": [],
+    "type": [
+      "backlog",
+      "github"
+    ],
+    "base": [
+      "backlog",
+      "github"
+    ],
+    "release": [
+      "backlog",
+      "github"
+    ]
+  },
+  "public_docs": null,
+  "tag_scheme": {
+    "pattern": "v<version>",
+    "source": "AIUsageOverlay/AIUsageOverlay.csproj の <Version>"
+  },
+  "commit_message": "<種別>(<範囲>): <要約>（日本語・Conventional Commits 風。例: fix(viewmodel): GitHub Copilot表示のちらつきを修正）",
+  "notes": [
+    "手順を補助する PowerShell ヘルパーを scripts/git-flow.ps1 に置いている（status / start / wip / squash / integrate / archives / show）。使い方は README の「開発フロー」。ルールを変えたらスクリプト側も見直す。スクリプトは破壊的コマンド（push --force / reset --hard / clean -fd / push --all / push --mirror）を実行しない。",
+    "release ブランチは作らない。master を統合兼公開確定とし、master にタグを打つ。",
+    "タグは厳密な 3 成分 SemVer（v2.1.0）でのみ打つ。release.yml が正規表現で検査しており、v1.40 のような 2 成分は弾かれる（v1.40 / v1.50 / v1.60 は旧表記の残骸）。",
+    "タグを github へ push すると release.yml が走り、self-contained zip と checksums.txt を添付した Release が draft:false で即時公開される。push から完了まで約 2 分。",
+    "リリース手順: csproj の <Version> 更新 → 種別ブランチを master へ --no-ff マージ → 注釈付きタグ → master とタグを両リモートへ push。マージコミットの件名は「merge: <内容>（vX.Y.Z）」に揃える。",
+    "master とタグは backlog / github の両方へ push する。片方だけに入れない（過去の v2.0.1〜v2.1.0 は両方に存在する）。",
+    "自動アップデートは GitHub Releases の /releases/latest を見る。github へタグを push しないと既存利用者へ新版が届かない。",
+    "ブランチ接頭辞は feat / fix を正とする。過去の feature/* bugfix/* feat/* は旧表記であり、遡って改名しない。",
+    "種別ブランチは削除しない方針を選択している。マージ済みの検出は git branch --merged master で行える。",
+    "配布用 exe の動作確認は publish\\ ではなく bin\\Release\\ の exe を使う。publish 先の exe を起動したままだと、次の publish が GenerateBundle の UnauthorizedAccessException で失敗する。",
+    "public-source の確認（2026-09-02 実施）: 社内 URL・Backlog の URL・メールアドレスは公開ファイルに含まれていない。docs/SPEC_Usage_Dashboard.md に社内プロジェクト名 Y_SmartApp が 3 箇所あり（cwd 正規化の実例）、公開済み。今後の設計書でも社内固有名を実例に使うときは公開可否を判断する。",
+    "生成される使用量レポート（%AppData%\\AIUsageOverlay\\reports）はコミットしない。利用者の履歴由来の情報を含む。"
+  ]
+}
