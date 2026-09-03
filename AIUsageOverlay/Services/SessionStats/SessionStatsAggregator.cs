@@ -198,6 +198,9 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>推論トークンの合計（Codex のみ）。</summary>
         public long Reasoning { get; set; }
 
+        /// <summary>単価で重み付けしたコスト換算の構成比（Claude Code のみ）。</summary>
+        public CostView Cost { get; set; } = new();
+
         /// <summary>経過時間の合計（秒）。測定可能なセッションのみ。作業時間ではない。</summary>
         public long ElapsedSec { get; set; }
 
@@ -281,6 +284,49 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>ターン数。</summary>
         public int Turns { get; set; }
+    }
+
+    /// <summary>
+    /// 単価で重み付けしたコスト換算の内訳。すべて構成比（0〜100）で持ち、金額は出さない。
+    ///
+    /// トークン数の比とは別物であることが分かるように、画面では併記せず別枠に出す。
+    /// 例えばキャッシュ読込はトークン数では 9 割を占めても、単価が入力の 0.1 倍のため
+    /// コスト換算では半分以下になる。
+    /// </summary>
+    public class CostView
+    {
+        /// <summary>換算できる実績があったか。false のとき画面は理由だけ出す。</summary>
+        public bool Available { get; set; }
+
+        /// <summary>新規入力（キャッシュに当たらなかった分）の構成比。</summary>
+        public double InputPercent { get; set; }
+
+        /// <summary>キャッシュ書き込み（5 分 TTL、入力単価の 1.25 倍）の構成比。</summary>
+        public double CacheWrite5mPercent { get; set; }
+
+        /// <summary>キャッシュ書き込み（1 時間 TTL、入力単価の 2.0 倍）の構成比。</summary>
+        public double CacheWrite1hPercent { get; set; }
+
+        /// <summary>
+        /// TTL の内訳が記録されていなかったキャッシュ書き込みの構成比。
+        /// 既定 TTL（5 分）の単価で見積もっている。
+        /// </summary>
+        public double CacheWriteUnknownPercent { get; set; }
+
+        /// <summary>キャッシュ読込（入力単価の 0.1 倍）の構成比。</summary>
+        public double CacheReadPercent { get; set; }
+
+        /// <summary>出力（入力単価の 5 倍）の構成比。</summary>
+        public double OutputPercent { get; set; }
+
+        /// <summary>換算に含めたトークン数（課金相当）。</summary>
+        public long CoveredTokens { get; set; }
+
+        /// <summary>単価が判明せず除外したトークン数（課金相当）。</summary>
+        public long ExcludedTokens { get; set; }
+
+        /// <summary>除外したモデル名。除外を隠さないため必ず出す。</summary>
+        public List<string> ExcludedModels { get; set; } = new();
     }
 
     /// <summary>名前と件数だけの汎用行。</summary>
@@ -628,6 +674,7 @@ namespace AIUsageOverlay.Services.SessionStats
             var tools = new Dictionary<string, int>(StringComparer.Ordinal);
             var phases = new Dictionary<string, int>(StringComparer.Ordinal);
             var unknownCommands = new Dictionary<string, int>(StringComparer.Ordinal);
+            var cost = new CostAccumulator();
 
             foreach (var s in inPeriod)
             {
@@ -675,6 +722,9 @@ namespace AIUsageOverlay.Services.SessionStats
                     model.Billable += m.Tokens.Billable(s.Tool);
                     model.Processed += m.Tokens.Processed(s.Tool);
                     model.Turns += m.Turns;
+
+                    // 単価はモデルごとに違うため、コスト換算もモデル別内訳から積む
+                    cost.Add(s.Tool, m.Model, m.Tokens);
                 }
 
                 Merge(tools, s.ToolCounts);
@@ -717,6 +767,7 @@ namespace AIUsageOverlay.Services.SessionStats
             view.ProjectCount = projects.Count;
             view.ByProject = projects.Values.OrderByDescending(p => p.Billable).ToList();
             view.ByModel = models.Values.OrderByDescending(m => m.Billable).ToList();
+            view.Cost = cost.Build();
             view.ByPhase = phases;
             view.ByTool = tools
                 .OrderByDescending(kv => kv.Value)

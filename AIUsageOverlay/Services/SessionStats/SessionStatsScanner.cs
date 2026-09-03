@@ -448,6 +448,8 @@ namespace AIUsageOverlay.Services.SessionStats
                                         parsed.InputTokens,
                                         parsed.OutputTokens,
                                         parsed.CacheCreationTokens,
+                                        parsed.CacheCreation5mTokens,
+                                        parsed.CacheCreation1hTokens,
                                         parsed.CacheReadTokens,
                                         reasoning: 0);
                                 }
@@ -792,17 +794,22 @@ namespace AIUsageOverlay.Services.SessionStats
             /// <param name="input">入力トークン</param>
             /// <param name="output">出力トークン</param>
             /// <param name="cacheCreate">キャッシュ作成トークン</param>
+            /// <param name="cacheCreate5m">キャッシュ作成のうち 5 分 TTL 分（cacheCreate の内数）</param>
+            /// <param name="cacheCreate1h">キャッシュ作成のうち 1 時間 TTL 分（cacheCreate の内数）</param>
             /// <param name="cacheRead">キャッシュ読込トークン</param>
             /// <param name="reasoning">推論トークン</param>
             public void AddTokens(
                 string model, DateTime? utc,
-                long input, long output, long cacheCreate, long cacheRead, long reasoning)
+                long input, long output, long cacheCreate,
+                long cacheCreate5m, long cacheCreate1h, long cacheRead, long reasoning)
             {
                 var delta = new TokenTotals
                 {
                     Input = input,
                     Output = output,
                     CacheCreate = cacheCreate,
+                    CacheCreate5m = cacheCreate5m,
+                    CacheCreate1h = cacheCreate1h,
                     CacheRead = cacheRead,
                     Reasoning = reasoning,
                 };

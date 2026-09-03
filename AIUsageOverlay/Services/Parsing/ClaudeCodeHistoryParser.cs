@@ -55,6 +55,18 @@ namespace AIUsageOverlay.Services.Parsing
         /// <summary>キャッシュ作成トークン。</summary>
         public long CacheCreationTokens { get; init; }
 
+        /// <summary>
+        /// キャッシュ作成トークンのうち 5 分 TTL 分（CacheCreationTokens の内数）。
+        /// usage.cache_creation.ephemeral_5m_input_tokens。TTL ごとに単価が違うため分けて持つ。
+        /// </summary>
+        public long CacheCreation5mTokens { get; init; }
+
+        /// <summary>
+        /// キャッシュ作成トークンのうち 1 時間 TTL 分（CacheCreationTokens の内数）。
+        /// usage.cache_creation.ephemeral_1h_input_tokens。
+        /// </summary>
+        public long CacheCreation1hTokens { get; init; }
+
         /// <summary>キャッシュ読込トークン。</summary>
         public long CacheReadTokens { get; init; }
 
@@ -100,8 +112,12 @@ namespace AIUsageOverlay.Services.Parsing
                     ? (JsonElement?)m
                     : null;
 
-                // usage: iterations / cache_creation の入れ子は同じ値の再掲なので加算に使わない（設計書 4.1）
+                // usage: iterations / cache_creation の入れ子は cache_creation_input_tokens の再掲なので
+                // 合計へは加算しない（設計書 4.1）。ただし cache_creation の中身は TTL 別（5m / 1h）で
+                // 単価が異なるため、内数として別に読む。古い履歴には cache_creation 自体が無く、
+                // その場合は両方 0 のまま（合計との差は呼び出し側で「TTL 不明分」として扱う）。
                 long input = 0, output = 0, cacheCreate = 0, cacheRead = 0;
+                long cacheCreate5m = 0, cacheCreate1h = 0;
                 var hasUsage = false;
                 if (message is { } msg &&
                     msg.TryGetProperty("usage", out var usage) &&
@@ -112,6 +128,13 @@ namespace AIUsageOverlay.Services.Parsing
                     output      = ReadLong(usage, "output_tokens");
                     cacheCreate = ReadLong(usage, "cache_creation_input_tokens");
                     cacheRead   = ReadLong(usage, "cache_read_input_tokens");
+
+                    if (usage.TryGetProperty("cache_creation", out var cacheCreationDetail) &&
+                        cacheCreationDetail.ValueKind == JsonValueKind.Object)
+                    {
+                        cacheCreate5m = ReadLong(cacheCreationDetail, "ephemeral_5m_input_tokens");
+                        cacheCreate1h = ReadLong(cacheCreationDetail, "ephemeral_1h_input_tokens");
+                    }
                 }
 
                 return new ClaudeCodeLine
@@ -128,6 +151,8 @@ namespace AIUsageOverlay.Services.Parsing
                     InputTokens         = input,
                     OutputTokens        = output,
                     CacheCreationTokens = cacheCreate,
+                    CacheCreation5mTokens = cacheCreate5m,
+                    CacheCreation1hTokens = cacheCreate1h,
                     CacheReadTokens     = cacheRead,
                     HasUsage            = hasUsage,
                     ToolUses            = ExtractToolUses(message),

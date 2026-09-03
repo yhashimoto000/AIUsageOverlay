@@ -284,6 +284,20 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
     </div>
     <div class="cards" id="kpi-cards"></div>
 
+    <div class="block" id="block-cost">
+      <h2>コスト換算の内訳</h2>
+      <p class="note">
+        トークンは種別ごとに単価が違います。キャッシュ読み込みは入力の 0.1 倍、
+        キャッシュ書き込みは 1.25 倍（5 分保持）または 2.0 倍（1 時間保持）、出力は 5 倍です。
+        その重みを掛けた構成比を出しています。<strong>トークン数の割合とは別物</strong>です。
+        金額は出していません（定額プランでは支払額と結び付かないためです）。
+      </p>
+      <div class="scroll-x"><div id="chart-cost"></div></div>
+      <div class="legend" id="cost-legend" style="margin-top:8px"></div>
+      <p class="note" id="cost-diagnosis"></p>
+      <p class="note" id="cost-excluded"></p>
+    </div>
+
     <div class="block" id="block-daily">
       <h2>日ごとの消費トークン</h2>
       <p class="note">
@@ -690,6 +704,62 @@ function renderKpi() {
     warn.classList.remove("hidden");
   } else {
     warn.classList.add("hidden");
+  }
+}
+
+/* ── コスト換算 ───────────────────────────────────────────── */
+
+/* 単価で重み付けした構成比を出す。
+   トークン数の比ではキャッシュ読み込みが実態より大きく、出力が小さく見えるため、
+   何にコストが偏っているかはこちらで判断する。 */
+function renderCost() {
+  const c = period().cost || {};
+  const chart = document.getElementById("chart-cost");
+  const legend = document.getElementById("cost-legend");
+  const diag = document.getElementById("cost-diagnosis");
+  const excl = document.getElementById("cost-excluded");
+  chart.textContent = "";
+  legend.textContent = "";
+  excl.textContent = "";
+
+  if (!c.available) {
+    diag.textContent = "単価が分かっているモデルの実績がないため、この期間は換算できません。";
+    return;
+  }
+
+  // 書き込みは TTL で単価が違うが、帯は 1 本にまとめて内訳は文章で添える
+  const write = (c.cacheWrite5mPercent || 0) + (c.cacheWrite1hPercent || 0) +
+                (c.cacheWriteUnknownPercent || 0);
+  const parts = [
+    { key: "in",  label: "新規入力",        value: c.inputPercent || 0,     varName: "--phase-investigate" },
+    { key: "cc",  label: "キャッシュ書き込み", value: write,                  varName: "--phase-dialogue" },
+    { key: "cr",  label: "キャッシュ読み込み", value: c.cacheReadPercent || 0, varName: "--phase-unknown" },
+    { key: "out", label: "出力",            value: c.outputPercent || 0,    varName: "--phase-implement" },
+  ];
+  chart.appendChild(stackedBar(parts, 800, 22));
+  parts.forEach(p => {
+    legend.appendChild(el("span", {
+      class: "lg-" + p.key, text: p.label + " " + p.value.toFixed(1) + " %",
+    }));
+  });
+
+  const read = c.cacheReadPercent || 0;
+  let text = "キャッシュ読み込みはコスト換算で " + read.toFixed(1) + " % です。" +
+    (read > 50
+      ? "半分を超えています。同じ内容を読み直している場面がないか見てください。"
+      : "半分を超えていないため、キャッシュは意図どおり働いています。");
+  text += " キャッシュ書き込みの内訳は 5 分保持 " + (c.cacheWrite5mPercent || 0).toFixed(1) +
+    " % / 1 時間保持 " + (c.cacheWrite1hPercent || 0).toFixed(1) + " % です。";
+  if ((c.cacheWriteUnknownPercent || 0) > 0) {
+    text += " うち " + c.cacheWriteUnknownPercent.toFixed(1) +
+      " % は保持時間の記録が無く、5 分保持の単価で見積もっています。";
+  }
+  diag.textContent = text;
+
+  if ((c.excludedTokens || 0) > 0) {
+    excl.textContent = "単価が分からないモデルの " + fmt(c.excludedTokens) +
+      " トークンは換算から除いています（" + (c.excludedModels || []).join(" / ") +
+      "）。Codex はキャッシュ書き込み量が記録されず保持時間の区分も無いため、常に除外します。";
   }
 }
 
@@ -1251,6 +1321,7 @@ function renderQuality() {
 function renderAll() {
   document.getElementById("current-period").textContent = "表示期間: " + period().label;
   renderKpi();
+  renderCost();
   renderDaily();
   renderPhase();
   renderProjects();
