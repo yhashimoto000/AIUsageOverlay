@@ -155,11 +155,12 @@
 ルールを変えるときは `.claude/git-rules.json` を直して再生成する。詳細は `GIT_WORKFLOW.md`。
 
 - 統合ブランチ: `master`
-- 種別ブランチ: `feat/` `fix/` `docs/` `refactor/` `perf/` `build/` `chore/`（push する）
+- 種別ブランチ: `feat/` `fix/` `docs/` `refactor/` `perf/` `test/` `build/` `chore/`（push する）
 - 作業ブランチ: `wip`（ローカル限定・push しない）
 - マージ方針: 作業→種別 `--squash` / 種別→`master` `--no-ff`
 - squash 後は `git commit` を **`-m` なし**で実行し、`.git/SQUASH_MSG` の先頭 1 行（`wip` 側の代表コミットの文言）だけ残す。要約を書き直さない（squash はマージ関係を残さないため、同じ文言だけが対応の手がかりになる）
 - 作業ブランチは `wip` の 1 本を使い回す。取り込んだ直後に `git update-ref refs/wip-archive/<トピック> wip` で退避してから `git switch -C wip <種別ブランチ>` で作り直す。新しい名前のブランチを作らない
+- 種別ブランチの削除: リリース後に `git branch --merged master` で候補を出し、リモートとローカルの両方から削除する
 - push 先: 種別 `backlog` / `github` / `master` `backlog` / `github`
 - コミットメッセージ: `<種別>(<範囲>): <要約>（日本語・Conventional Commits 風。例: fix(viewmodel): GitHub Copilot表示のちらつきを修正）`
 - 配布: ソース公開。`github` にはコードもドキュメントも push する
@@ -183,7 +184,7 @@
   - 実行: `dotnet run --project AIUsageOverlay/AIUsageOverlay.csproj`
   - リリース exe: リポジトリルートの `build-release.bat`（bin/obj/publish をクリーンしてから publish。出力は `publish\AIUsageOverlay.exe`）
   - `v*` タグ push で `.github/workflows/release.yml` が自動 publish & GitHub Release 添付。
-- テスト: **自動テストプロジェクトなし。** 動作確認は exe 起動 + 各サービスのログイン → 使用量表示の手動確認で行う。
+- テスト: `AIUsageOverlay.Tests/`（xUnit 2.9.2 / `net9.0-windows`。`ParsingTests.cs` / `ScanAndRenderTests.cs` / `RealHistoryScanTests.cs`）。実行は `dotnet test AIUsageOverlay.Tests/AIUsageOverlay.Tests.csproj`。**カバーするのはパース処理とレポート生成のみ**で、WebView2 経由の取得・オーバーレイ表示・トレイ常駐は対象外。これらは exe 起動 + 各サービスのログイン → 使用量表示の手動確認で行う。
 - ディレクトリ構成:
   - `Models/` — POCO（`AppSettings` / `ScrapedUsageData` / `CodexUsageData` / `GitHubCopilotData` / `UsageRecord`）
   - `Services/` — `ClaudeApiClient` / `GitHubWebScraper` / `CodexWebScraper`（WebView2 で傍受）、`UsageService`（統合窓口）、`Parsing/`（JSON パース専用クラス）
