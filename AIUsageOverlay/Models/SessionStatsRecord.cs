@@ -20,6 +20,21 @@ namespace AIUsageOverlay.Models
         [JsonPropertyName("cacheCreate")]
         public long CacheCreate { get; set; }
 
+        /// <summary>
+        /// キャッシュ作成トークンのうち 5 分 TTL 分（cacheCreate の内数）。
+        /// 単価が 1 時間 TTL と異なるためコスト換算で分ける必要がある。
+        /// Claude Code の usage.cache_creation にのみ記録があり、Codex では常に 0。
+        /// </summary>
+        [JsonPropertyName("cacheCreate5m")]
+        public long CacheCreate5m { get; set; }
+
+        /// <summary>
+        /// キャッシュ作成トークンのうち 1 時間 TTL 分（cacheCreate の内数）。
+        /// 5 分 TTL より単価が高い（入力単価の 2.0 倍）。
+        /// </summary>
+        [JsonPropertyName("cacheCreate1h")]
+        public long CacheCreate1h { get; set; }
+
         /// <summary>キャッシュ読込トークン。Codex の cached_input_tokens（input の内数）。</summary>
         [JsonPropertyName("cacheRead")]
         public long CacheRead { get; set; }
@@ -53,11 +68,13 @@ namespace AIUsageOverlay.Models
         /// <param name="other">加算元</param>
         public void Add(TokenTotals other)
         {
-            Input       += other.Input;
-            Output      += other.Output;
-            CacheCreate += other.CacheCreate;
-            CacheRead   += other.CacheRead;
-            Reasoning   += other.Reasoning;
+            Input         += other.Input;
+            Output        += other.Output;
+            CacheCreate   += other.CacheCreate;
+            CacheCreate5m += other.CacheCreate5m;
+            CacheCreate1h += other.CacheCreate1h;
+            CacheRead     += other.CacheRead;
+            Reasoning     += other.Reasoning;
         }
     }
 
