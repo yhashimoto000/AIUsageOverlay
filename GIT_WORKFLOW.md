@@ -23,7 +23,7 @@ git remote -v
 ```
 wip   ローカル限定・push しない・1 本を使い回す
    |  --squash（1 サブタスク = 1 コミットに圧縮／refs/wip-archive/<トピック> へ退避）
-feat/*  fix/*  docs/*  refactor/*  perf/*  build/*  chore/*   種別ブランチ・push する・削除しない
+feat/*  fix/*  docs/*  refactor/*  perf/*  test/*  build/*  chore/*   種別ブランチ・push する・リリース後に削除
    |  --no-ff（マージ単位で履歴を残す）
 master   統合ブランチ・push する
 ```
@@ -31,7 +31,7 @@ master   統合ブランチ・push する
 | ブランチ | 役割 | push 先 | 親へのマージ |
 | --- | --- | --- | --- |
 | `wip` | 作業。細かく commit（1 本を使い回す） | push しない | `--squash` |
-| 種別 `*/` | トピック単位のまとめ（削除しない） | `backlog` / `github` | `--no-ff` |
+| 種別 `*/` | トピック単位のまとめ（リリース後に削除） | `backlog` / `github` | `--no-ff` |
 | `master` | 統合 | `backlog` / `github` | - |
 
 ### 種別ブランチ
@@ -45,6 +45,7 @@ master   統合ブランチ・push する
 | `docs/` | ドキュメント・設計書 |
 | `refactor/` | 挙動を変えない整理 |
 | `perf/` | 性能改善 |
+| `test/` | テストの追加・修正 |
 | `build/` | ビルド・配布まわり |
 | `chore/` | 雑務・バージョン更新 |
 
@@ -96,6 +97,15 @@ push しない。ブランチは `wip` の 1 本だけを使い回す。種別�
    git push github master
    ```
 
+5. **リリース後の後始末** — `--no-ff` のマージコミットにブランチ名が残るので、種別ブランチ自体は消してよい。`-d`（小文字）で消えることが、`master` へ取り込み済みであることの確認になる。
+
+   ```
+   git branch --merged master   # 削除候補。master 自身と wip は除いて見る
+   git push backlog --delete feat/<トピック>
+   git push github --delete feat/<トピック>
+   git branch -d feat/<トピック>
+   ```
+
 コミットメッセージ: `<種別>(<範囲>): <要約>（日本語・Conventional Commits 風。例: fix(viewmodel): GitHub Copilot表示のちらつきを修正）`
 
 `master` 上で `git log --first-parent --oneline` を打つと、トピック単位のマージが 1 行ずつ並ぶ。変更履歴の作成やレビュー範囲の把握はこの一覧で行う。種別ブランチ側は 1 コミットに圧縮されているため作業中の細かい経緯は載らないが、経緯は `refs/wip-archive/<トピック>` に退避してある。`git log refs/wip-archive/<トピック>` で読み、`git for-each-ref refs/wip-archive/` で一覧できる。
@@ -118,15 +128,9 @@ push しない。ブランチは `wip` の 1 本だけを使い回す。種別�
 ## 6. 申し送り
 
 - 手順を補助する PowerShell ヘルパーを scripts/git-flow.ps1 に置いている（status / start / wip / squash / integrate / archives / show）。使い方は README の「開発フロー」。ルールを変えたらスクリプト側も見直す。スクリプトは破壊的コマンド（push --force / reset --hard / clean -fd / push --all / push --mirror）を実行しない。
-- release ブランチは作らない。master を統合兼公開確定とし、master にタグを打つ。
-- タグは厳密な 3 成分 SemVer（v2.1.0）でのみ打つ。release.yml が正規表現で検査しており、v1.40 のような 2 成分は弾かれる（v1.40 / v1.50 / v1.60 は旧表記の残骸）。
-- タグを github へ push すると release.yml が走り、self-contained zip と checksums.txt を添付した Release が draft:false で即時公開される。push から完了まで約 2 分。
-- リリース手順: csproj の <Version> 更新 → 種別ブランチを master へ --no-ff マージ → 注釈付きタグ → master とタグを両リモートへ push。マージコミットの件名は「merge: <内容>（vX.Y.Z）」に揃える。
-- master とタグは backlog / github の両方へ push する。片方だけに入れない（過去の v2.0.1〜v2.1.0 は両方に存在する）。
-- 自動アップデートは GitHub Releases の /releases/latest を見る。github へタグを push しないと既存利用者へ新版が届かない。
-- ブランチ接頭辞は feat / fix を正とする。過去の feature/* bugfix/* feat/* は旧表記であり、遡って改名しない。
-- 種別ブランチは削除しない方針を選択している。マージ済みの検出は git branch --merged master で行える。
-- 配布用 exe の動作確認は publish\ ではなく bin\Release\ の exe を使う。publish 先の exe を起動したままだと、次の publish が GenerateBundle の UnauthorizedAccessException で失敗する。
+- リリース手順: csproj の <Version> 更新 → 種別ブランチを master へ --no-ff マージ → 注釈付きタグ → master とタグを backlog / github の両方へ push。マージコミットの件名は「merge: <内容>（vX.Y.Z）」に揃える。片方のリモートだけに入れない（過去の v2.0.1〜v2.1.0 は両方に存在する）。
+- タグは厳密な 3 成分 SemVer（v2.1.0）でのみ打つ。release.yml が正規表現で検査しており、v1.40 のような 2 成分は弾かれる（v1.40 / v1.50 / v1.60 は旧表記の残骸）。タグを github へ push すると release.yml が走り、self-contained zip（AIUsageOverlay_v<version>.zip）と checksums.txt を添付した Release が draft:false で即時公開される（push から約 2 分）。自動アップデートは /releases/latest を見るため、github へタグを push しないと既存利用者へ新版が届かない。
+- ブランチ接頭辞は feat / fix を正とする。過去の feature/* bugfix/* は旧表記であり、遡って改名しない。
 - public-source の確認（2026-09-02 実施）: 社内 URL・Backlog の URL・メールアドレスは公開ファイルに含まれていない。docs/SPEC_Usage_Dashboard.md に社内プロジェクト名 Y_SmartApp が 3 箇所あり（cwd 正規化の実例）、公開済み。今後の設計書でも社内固有名を実例に使うときは公開可否を判断する。
 - 生成される使用量レポート（%AppData%\AIUsageOverlay\reports）はコミットしない。利用者の履歴由来の情報を含む。
 

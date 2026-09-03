@@ -121,3 +121,17 @@
 - **配布用 exe を動作確認に使うときは、publish 先ではなく `bin\Release` の exe を起動する。** publish 先を起動すると次のリリースビルドが必ず失敗する。
 - リリースは「csproj の版数更新 → master へ `--no-ff` マージ → 注釈付きタグ → 両リモートへ master とタグを push」の順で行う。マージコミットの件名は `merge: <内容>（vX.Y.Z）` に揃える。
 - **タグ push は GitHub Release の即時公開を伴う。** 公開を伴う push は、実行前に push 先（github / backlog / 両方）を確認してから行う。
+
+## 2026-09-04（git 運用ルールの更新）
+### Facts（事実）
+- **`.git` は `gitdir:` でファイルサーバー（`//isea5/Public/...`）を指しており、Cowork の Linux サンドボックスからは git コマンドが一切通らない**（`fatal: not a git repository`）。ブランチ・タグの使用実績を実測で確認する手段が無い。
+- **`render_rules.py` は `--rules` に渡したパス文字列をそのまま生成物のヘッダへ埋め込む。** 絶対パスを渡すと `GIT_WORKFLOW.md` / `CLAUDE_git_section.md` の冒頭が絶対パス表記になる。リポジトリルートを cwd にして `.claude/git-rules.json` と相対で渡せば正しい表記になる。
+- **`type_branch.cleanup` を `keep` → `after-release` に変えると、`GIT_WORKFLOW.md` に「リリース後の後始末」節が自動生成される**（`git branch --merged master` → `git push <remote> --delete` → `git branch -d` の手順付き）。同じ内容を `notes` に書くと重複する。
+- CLAUDE.md / AGENTS.md の「テスト: 自動テストプロジェクトなし」は誤りだった。実際には `AIUsageOverlay.Tests/`（xUnit 2.9.2 / `net9.0-windows`、`ParsingTests.cs` / `ScanAndRenderTests.cs` / `RealHistoryScanTests.cs`）が存在する。
+- `git-rules.json` の `work_branch.pattern` が `wip/<種別>-<トピック>` のまま残っていたが、レンダラはこのフィールドを `cleanup: archive` のとき参照しないため、生成物には現れず気付けなかった。
+
+### Policy（方針）
+- **`notes` に書く前に、その内容をレンダラがフィールドから自動生成しないか確認する。** フィールドで表現できる方針を `notes` にも書くと二重管理になり、片方だけ古くなる。
+- **レンダラは必ずリポジトリルートを cwd にして相対パスで実行する。** `python3 <skill>/scripts/render_rules.py --rules .claude/git-rules.json --out <一時ディレクトリ>` で生成し、diff で確認してから配置する。
+- **サンドボックスから git が使えないため、運用実績に基づく判断（使われていない接頭辞の削除など）は推測で行わずユーザーに確認する。**
+- 生成物に現れないフィールド（`work_branch.pattern` 等）は diff では検出できない。`git-rules.json` を更新したときは、生成物の diff だけでなく **json 自体を通読して方針と矛盾していないか確認する。**
