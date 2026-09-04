@@ -108,6 +108,12 @@ namespace AIUsageOverlay.Services.SessionStats
         private readonly SortedSet<string> _excludedModels = new(StringComparer.Ordinal);
 
         /// <summary>
+        /// 換算に実際に使ったモデルと単価。参考値として画面に出す。
+        /// 単価は改定され得るため、どの前提で計算したレポートかを残す意味がある。
+        /// </summary>
+        private readonly SortedDictionary<string, ModelPrice> _usedPrices = new(StringComparer.Ordinal);
+
+        /// <summary>
         /// モデル 1 種類分の内訳を加算する。
         ///
         /// 対象は Claude Code のみ。Codex はキャッシュ書込量が常に 0 で記録され、
@@ -135,6 +141,7 @@ namespace AIUsageOverlay.Services.SessionStats
             }
 
             _coveredTokens += tokens.Billable(tool);
+            _usedPrices[model] = price;
 
             // TTL の内訳が取れなかった分。古い履歴には usage.cache_creation が無い。
             // 既定 TTL は 5 分なのでその単価で見積もるが、量は別に持って画面へ出す。
@@ -158,8 +165,12 @@ namespace AIUsageOverlay.Services.SessionStats
             => tokens <= 0 ? 0m : tokens / 1_000_000m * perMillion;
 
         /// <summary>溜め込んだ結果を構成比へ変換する。</summary>
+        /// <param name="withPrices">
+        /// 使った単価の一覧を含めるか。期間の集計では参考値として出すが、
+        /// セッションごとの明細では同じ表が何百回も JSON に載るため含めない。
+        /// </param>
         /// <returns>画面へ渡すコスト換算の内訳</returns>
-        public CostView Build()
+        public CostView Build(bool withPrices = false)
         {
             var total = _input + _write5m + _write1h + _writeUnknownTtl + _read + _output;
             var view = new CostView
@@ -168,6 +179,19 @@ namespace AIUsageOverlay.Services.SessionStats
                 ExcludedTokens = _excludedTokens,
                 ExcludedModels = _excludedModels.ToList(),
                 Available = total > 0m,
+                Prices = withPrices
+                    ? _usedPrices
+                        .Select(kv => new ModelPriceView
+                        {
+                            Model = kv.Key,
+                            Input = (double)kv.Value.InputPerMillion,
+                            Output = (double)kv.Value.OutputPerMillion,
+                            CacheRead = (double)(kv.Value.InputPerMillion * kv.Value.CacheReadRatio),
+                            CacheWrite5m = (double)(kv.Value.InputPerMillion * ModelPricing.CacheWrite5mRatio),
+                            CacheWrite1h = (double)(kv.Value.InputPerMillion * ModelPricing.CacheWrite1hRatio),
+                        })
+                        .ToList()
+                    : new List<ModelPriceView>(),
             };
             if (!view.Available)
             {
