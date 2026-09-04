@@ -64,6 +64,12 @@ namespace AIUsageOverlay
                     case nameof(MainViewModel.CodexPaceBrush):
                         UpdateCodexMeta();
                         break;
+                    case nameof(MainViewModel.CursorMetaPrimary):
+                    case nameof(MainViewModel.CursorPaceText):
+                    case nameof(MainViewModel.CursorPaceVisibility):
+                    case nameof(MainViewModel.CursorPaceBrush):
+                        UpdateCursorMeta();
+                        break;
                     // 取得サイクル完了 → スパークライン再描画（%同値でも履歴は伸びる）
                     case nameof(MainViewModel.SparklineRevision):
                         RefreshAllSparklines();
@@ -87,6 +93,7 @@ namespace AIUsageOverlay
             UpdateWeeklyColor(_viewModel.WeeklyPercent);
             UpdateClaudeMeta();
             UpdateCodexMeta();
+            UpdateCursorMeta();
             Loaded += (_, _) => RefreshAllSparklines();
 
             // デザイン刷新: オーバーレイ表示形式（1a/1b）と 1b の展開状態を適用する
@@ -143,6 +150,9 @@ namespace AIUsageOverlay
 
         private async void CodexLogin_Click(object sender, RoutedEventArgs e)
             => await ShowLoginWindowSafeAsync(_usageService.ShowCodexLoginWindowAsync, "Codex");
+
+        private async void CursorLogin_Click(object sender, RoutedEventArgs e)
+            => await ShowLoginWindowSafeAsync(_usageService.ShowCursorLoginWindowAsync, "Cursor");
 
         /// <summary>
         /// ログインウィンドウ表示を例外安全に呼び出す。
@@ -319,6 +329,7 @@ namespace AIUsageOverlay
             SessionMarkers.Thresholds = thresholds;
             GitHubMarkers.Thresholds  = thresholds;
             CodexMarkers.Thresholds   = thresholds;
+            CursorMarkers.Thresholds  = thresholds;
         }
 
         // ────────────────────────────────────────────────────────────────
@@ -369,6 +380,11 @@ namespace AIUsageOverlay
             => UpdateMeta(CodexMeta, ViewModel.CodexMetaPrimary, ViewModel.CodexPaceText,
                 ViewModel.CodexPaceBrush, ViewModel.CodexPaceVisibility == Visibility.Visible);
 
+        /// <summary>Cursor のメタ行 Inlines を「残り時間（Text2 色）＋ ペース（ペース色）」で組み立てる。</summary>
+        private void UpdateCursorMeta()
+            => UpdateMeta(CursorMeta, ViewModel.CursorMetaPrimary, ViewModel.CursorPaceText,
+                ViewModel.CursorPaceBrush, ViewModel.CursorPaceVisibility == Visibility.Visible);
+
         /// <summary>
         /// メタ行 TextBlock を 2 つの Run（主テキスト＋ペース）で再構築する。
         /// 主テキストは TextBlock の Foreground（Brush.Text2）を継承し、ペースだけレベル/ペース色を付ける。
@@ -387,7 +403,7 @@ namespace AIUsageOverlay
         // スパークライン描画（使用率%の自己記録の推移）— デザイン刷新（1a）
         // ────────────────────────────────────────────────────────────────
 
-        /// <summary>3 サービスのスパークラインをまとめて描き直す（取得サイクル完了・設定変更・初回表示時）。</summary>
+        /// <summary>4 サービスのスパークラインをまとめて描き直す（取得サイクル完了・設定変更・初回表示時）。</summary>
         private void RefreshAllSparklines()
         {
             UpdateSparkline(ClaudeSparkline,  UsageHistoryService.SeriesClaude,  sectionAllows: true);
@@ -395,6 +411,8 @@ namespace AIUsageOverlay
                 sectionAllows: ViewModel.GitHubSectionVisibility == Visibility.Visible);
             UpdateSparkline(CodexSparkline,   UsageHistoryService.SeriesCodex,
                 sectionAllows: ViewModel.CodexSectionVisibility == Visibility.Visible);
+            UpdateSparkline(CursorSparkline,  UsageHistoryService.SeriesCursor,
+                sectionAllows: ViewModel.CursorSectionVisibility == Visibility.Visible);
         }
 
         /// <summary>Polyline のサイズ確定・変化に追従して当該スパークラインを引き直す。</summary>
@@ -408,6 +426,9 @@ namespace AIUsageOverlay
             else if (sender == CodexSparkline)
                 UpdateSparkline(CodexSparkline, UsageHistoryService.SeriesCodex,
                     sectionAllows: ViewModel.CodexSectionVisibility == Visibility.Visible);
+            else if (sender == CursorSparkline)
+                UpdateSparkline(CursorSparkline, UsageHistoryService.SeriesCursor,
+                    sectionAllows: ViewModel.CursorSectionVisibility == Visibility.Visible);
         }
 
         /// <summary>

@@ -14,7 +14,7 @@ namespace AIUsageOverlay.Services
     ///   その推移（直近の傾き＝いまのペース）をオーバーレイのスパークラインに描く。
     ///
     /// 仕様:
-    ///   - サービスごと（Claude / Copilot / Codex）に (timestamp, session%, weekly%) を記録。
+        ///   - サービスごと（Claude / Copilot / Codex / Cursor）に (timestamp, session%, weekly%) を記録。
     ///   - 保持は設定の保持窓（既定 24h、F-16）/ 保持窓を基準間隔で満たす点数のリングバッファ。
     ///   - 永続化は %AppData%\AIUsageOverlay\history.json（settings.json / usage.json とは分離）。
     ///   - 起動時に読み込み、保持窓より古い点は破棄する。
@@ -36,6 +36,8 @@ namespace AIUsageOverlay.Services
         /// 5時間枠が取得できない期間だけ週間枠を記録するため、切替直後は両者が混在した線になる）。
         /// </summary>
         public const string SeriesCodex = "codex";
+        /// <summary>Cursor 月次プラン枠の履歴系列キー。</summary>
+        public const string SeriesCursor = "cursor";
 
         /// <summary>
         /// 保持する最大の時間窓（F-16）。既定は AppSettings.SparklineRetentionHours（24h）。

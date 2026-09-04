@@ -32,6 +32,9 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>Codex 履歴の読み取り状態。</summary>
         public ToolScanStatus CodexStatus { get; set; } = ToolScanStatus.NotUsed;
 
+        /// <summary>Cursor 履歴の読み取り状態。</summary>
+        public ToolScanStatus CursorStatus { get; set; } = ToolScanStatus.NotUsed;
+
         /// <summary>今回パースしたファイル数（キャッシュ流用を除く）。</summary>
         public int ParsedFileCount { get; set; }
 
@@ -49,6 +52,9 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>走査した Codex の履歴ルート。データ品質タブに出す。</summary>
         public string CodexRootPath { get; set; } = string.Empty;
+
+        /// <summary>走査した Cursor の履歴ルート。データ品質タブに出す。</summary>
+        public string CursorRootPath { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -66,18 +72,34 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>このインスタンスが走査する Codex の履歴ルート。</summary>
         private readonly string _codexRoot;
 
+        /// <summary>このインスタンスが走査する Cursor の履歴ルート。</summary>
+        private readonly string _cursorRoot;
+
         /// <summary>実機の履歴ルートで初期化する。</summary>
-        public SessionStatsScanner() : this(ClaudeRoot, CodexRoot)
+        public SessionStatsScanner() : this(ClaudeRoot, CodexRoot, CursorRoot)
+        {
+        }
+
+        /// <summary>
+        /// 走査するルートを指定して初期化する（テスト用）。
+        /// Cursor ルートを省略すると走査しない（既存テストが実機の Cursor 履歴を拾わないようにする）。
+        /// </summary>
+        /// <param name="claudeRoot">Claude Code の履歴ルート</param>
+        /// <param name="codexRoot">Codex の履歴ルート</param>
+        public SessionStatsScanner(string claudeRoot, string codexRoot)
+            : this(claudeRoot, codexRoot, cursorRoot: string.Empty)
         {
         }
 
         /// <summary>走査するルートを指定して初期化する（テスト用）。</summary>
         /// <param name="claudeRoot">Claude Code の履歴ルート</param>
         /// <param name="codexRoot">Codex の履歴ルート</param>
-        public SessionStatsScanner(string claudeRoot, string codexRoot)
+        /// <param name="cursorRoot">Cursor の履歴ルート</param>
+        public SessionStatsScanner(string claudeRoot, string codexRoot, string cursorRoot)
         {
             _claudeRoot = claudeRoot;
             _codexRoot = codexRoot;
+            _cursorRoot = cursorRoot;
         }
 
         /// <summary>走査対象の Claude Code 履歴ルート。</summary>
@@ -85,6 +107,9 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>走査対象の Codex 履歴ルート。</summary>
         public string CodexRootPath => _codexRoot;
+
+        /// <summary>走査対象の Cursor 履歴ルート。</summary>
+        public string CursorRootPath => _cursorRoot;
 
         /// <summary>指示文として切り出す最大文字数（設計書 3.5 R1）。</summary>
         private const int PromptMaxLength = 64;
@@ -114,6 +139,13 @@ namespace AIUsageOverlay.Services.SessionStats
         }
 
         /// <summary>
+        /// Cursor の履歴ルート（%USERPROFILE%\.cursor\projects）。
+        /// 走査対象は配下の agent-transcripts/**/*.jsonl に限定する。
+        /// </summary>
+        public static string CursorRoot => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "projects");
+
+        /// <summary>
         /// 両ツールの履歴を走査し、セッションレコードを作る。
         /// 変化のないファイルは既存キャッシュのレコードを流用する（設計書 3.4 の [2]）。
         /// </summary>
@@ -133,6 +165,7 @@ namespace AIUsageOverlay.Services.SessionStats
             {
                 ClaudeRootPath = _claudeRoot,
                 CodexRootPath = _codexRoot,
+                CursorRootPath = _cursorRoot,
             };
 
             // スキーマ版が違えば流用しない（設計書 6 章）
@@ -143,10 +176,12 @@ namespace AIUsageOverlay.Services.SessionStats
 
             var claudeFiles = EnumerateFiles(_claudeRoot, "*.jsonl", out var claudeStatus);
             var codexFiles = EnumerateFiles(_codexRoot, "rollout-*.jsonl", out var codexStatus);
+            var cursorFiles = EnumerateCursorTranscripts(_cursorRoot, out var cursorStatus);
             result.ClaudeStatus = claudeStatus;
             result.CodexStatus = codexStatus;
+            result.CursorStatus = cursorStatus;
 
-            var total = claudeFiles.Count + codexFiles.Count;
+            var total = claudeFiles.Count + codexFiles.Count + cursorFiles.Count;
             var done = 0;
             // 同じキーのセッションを取り違えないための索引。
             // 実運用では衝突しないが、衝突しても後勝ちで消さないために持つ
@@ -170,6 +205,13 @@ namespace AIUsageOverlay.Services.SessionStats
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ProcessFile(path, SessionStatsRecord.ToolCodex, includePrompt, reusable, result, seenKeys);
+                progress?.Report((++done, total));
+            }
+
+            foreach (var path in cursorFiles)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ProcessFile(path, SessionStatsRecord.ToolCursor, includePrompt, reusable, result, seenKeys);
                 progress?.Report((++done, total));
             }
 
@@ -247,6 +289,26 @@ namespace AIUsageOverlay.Services.SessionStats
         }
 
         /// <summary>
+        /// Cursor の agent-transcripts JSONL だけを列挙する。
+        /// projects 配下には MCP 設定など別の JSON もあり、それらを集計対象にしない。
+        /// </summary>
+        /// <param name="root">%USERPROFILE%\.cursor\projects</param>
+        /// <param name="status">読み取り状態の出力</param>
+        private static List<string> EnumerateCursorTranscripts(string root, out ToolScanStatus status)
+        {
+            var files = EnumerateFiles(root, "*.jsonl", out status);
+            if (status != ToolScanStatus.Ok)
+            {
+                return files;
+            }
+
+            return files
+                .Where(p => p.Replace('\\', '/')
+                    .Contains("/agent-transcripts/", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        /// <summary>
         /// 履歴ファイル 1 件を処理する。差分が無ければキャッシュを流用し、
         /// あればパースする。読み取り後に更新されていたらキャッシュへ登録しない（設計書 3.4）。
         /// </summary>
@@ -303,9 +365,12 @@ namespace AIUsageOverlay.Services.SessionStats
             SessionStatsRecord? record;
             try
             {
-                record = tool == SessionStatsRecord.ToolClaudeCode
-                    ? ParseClaudeFile(path, includePrompt)
-                    : ParseCodexFile(path, includePrompt);
+                record = tool switch
+                {
+                    SessionStatsRecord.ToolClaudeCode => ParseClaudeFile(path, includePrompt),
+                    SessionStatsRecord.ToolCursor => ParseCursorFile(path, includePrompt),
+                    _ => ParseCodexFile(path, includePrompt),
+                };
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -663,6 +728,150 @@ namespace AIUsageOverlay.Services.SessionStats
             record.IsSubagent = string.Equals(threadSource, "subagent", StringComparison.OrdinalIgnoreCase);
             record.AgentLabel = agentNickname;
             return record;
+        }
+
+        // ────────────────────────────────────────────────────────────────
+        // Cursor
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Cursor の agent-transcripts ファイル 1 件をセッションレコードへ変換する。
+        ///
+        /// 実測では token / usage フィールドが無いため、トークン内訳は 0 のままにする。
+        /// 一意化の鍵はファイル名の UUID。サブエージェントは subagents/ 配下に置き、
+        /// 親フォルダの UUID を parentKey にする。
+        /// </summary>
+        /// <param name="path">履歴ファイルのパス</param>
+        /// <param name="includePrompt">指示文を保持するか</param>
+        /// <returns>セッションレコード。集計対象が無ければ null</returns>
+        internal static SessionStatsRecord? ParseCursorFile(string path, bool includePrompt)
+        {
+            var builder = new SessionBuilder(SessionStatsRecord.ToolCursor);
+            var hasAnyLine = false;
+            string? lastLine = null;
+
+            using (var reader = OpenRead(path))
+            {
+                string? line;
+                while ((line = reader.ReadLine()) is not null)
+                {
+                    if (line.Length == 0)
+                    {
+                        continue;
+                    }
+                    lastLine = line;
+                    var parsed = CursorHistoryParser.ParseLine(line);
+                    if (parsed is null)
+                    {
+                        builder.ParseErrors++;
+                        continue;
+                    }
+                    hasAnyLine = true;
+                    builder.ObserveTimestamp(parsed.TimestampUtc);
+
+                    if (string.Equals(parsed.Role, "user", StringComparison.OrdinalIgnoreCase))
+                    {
+                        builder.BeginTurn(parsed.TimestampUtc);
+                        if (includePrompt && builder.FirstPrompt is null)
+                        {
+                            builder.FirstPrompt = SessionNormalizer.TrimPrompt(
+                                parsed.UserText, PromptMaxLength);
+                        }
+                    }
+
+                    foreach (var use in parsed.ToolUses)
+                    {
+                        builder.CountTool(use.Name);
+                        var phase = PhaseClassifier.ClassifyClaudeTool(use.Name, use.Command);
+                        builder.CountPhase(phase);
+                        if (phase == PhaseClassifier.Unknown && use.Command is not null)
+                        {
+                            builder.CountUnknownCommand(
+                                PhaseClassifier.ExtractCommandName(use.Command));
+                        }
+                    }
+                }
+            }
+
+            if (!hasAnyLine)
+            {
+                return null;
+            }
+
+            if (lastLine is not null && CursorHistoryParser.ParseLine(lastLine) is null)
+            {
+                builder.LastLineBroken = true;
+            }
+
+            try
+            {
+                builder.ObserveTimestamp(File.GetLastWriteTimeUtc(path));
+            }
+            catch (IOException)
+            {
+                // 時刻が取れなくてもセッション自体は残す
+            }
+
+            var (key, parentKey, sessionId) = BuildCursorKeys(path);
+            var cwd = ExtractCursorProjectSlug(path);
+            var record = builder.Build(key, sessionId, cwd);
+            record.ParentKey = parentKey;
+            record.IsSubagent = parentKey is not null;
+            record.RootId = sessionId;
+            if (record.ByDay.Count == 0 && record.StartUtc > DateTime.UnixEpoch)
+            {
+                record.ByDay.Add(new DayBreakdown
+                {
+                    DateLocal = record.StartUtc.ToLocalTime().ToString("yyyy-MM-dd"),
+                    Turns = record.Turns,
+                    Tokens = new TokenTotals(),
+                });
+            }
+            return record;
+        }
+
+        /// <summary>
+        /// Cursor のファイルパスからセッションキー・親キー・セッション ID を決める。
+        /// 親: .../agent-transcripts/{uuid}/{uuid}.jsonl
+        /// 子: .../agent-transcripts/{uuid}/subagents/{child}.jsonl
+        /// </summary>
+        /// <param name="path">履歴ファイルのパス</param>
+        private static (string Key, string? ParentKey, string SessionId) BuildCursorKeys(string path)
+        {
+            var id = Path.GetFileNameWithoutExtension(path);
+            var normalized = path.Replace('\\', '/');
+            var marker = normalized.IndexOf("/subagents/", StringComparison.OrdinalIgnoreCase);
+            if (marker < 0)
+            {
+                return ($"cursor:{id}", null, id);
+            }
+
+            var parentFolder = Path.GetFileName(
+                Path.GetDirectoryName(Path.GetDirectoryName(path)) ?? string.Empty);
+            if (string.IsNullOrEmpty(parentFolder))
+            {
+                return ($"cursor:{id}", null, id);
+            }
+            return ($"cursor:{id}", $"cursor:{parentFolder}", id);
+        }
+
+        /// <summary>
+        /// `.cursor/projects/{slug}/agent-transcripts/...` からプロジェクト識別子を取り出す。
+        /// slug はパス区切りを `-` にした Cursor 側のフォルダ名であり、実パスへは戻せない。
+        /// </summary>
+        /// <param name="path">履歴ファイルのパス</param>
+        internal static string? ExtractCursorProjectSlug(string path)
+        {
+            var normalized = path.Replace('\\', '/');
+            const string marker = "/projects/";
+            var start = normalized.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (start < 0)
+            {
+                return Path.GetFileName(Path.GetDirectoryName(path));
+            }
+            var rest = normalized[(start + marker.Length)..];
+            var slash = rest.IndexOf('/');
+            return slash < 0 ? rest : rest[..slash];
         }
 
         // ────────────────────────────────────────────────────────────────

@@ -28,28 +28,31 @@ namespace AIUsageOverlay.Services.SessionStats
         public static readonly string[] AllPhases =
             { Investigate, Implement, Test, Dialogue, Unknown };
 
-        /// <summary>Claude Code の調査系ツール名（設計書 7.3.1）。</summary>
+        /// <summary>Claude Code の調査系ツール名（設計書 7.3.1）。Cursor の同名ツールも含む。</summary>
         private static readonly HashSet<string> ClaudeInvestigateTools = new(StringComparer.Ordinal)
         {
             "Read", "Glob", "Grep", "WebFetch", "WebSearch", "NotebookRead", "Task", "Agent", "Explore",
+            "ReadFile", "SemanticSearch", "GetMcpTools", "ReadLints", "rg",
         };
 
-        /// <summary>Claude Code の実装系ツール名。</summary>
+        /// <summary>Claude Code の実装系ツール名。Cursor の編集系も含む。</summary>
         private static readonly HashSet<string> ClaudeImplementTools = new(StringComparer.Ordinal)
         {
             "Edit", "Write", "MultiEdit", "NotebookEdit",
+            "ApplyPatch", "StrReplace", "Delete", "EditNotebook",
         };
 
-        /// <summary>Claude Code の対話系ツール名。</summary>
+        /// <summary>Claude Code の対話系ツール名。Cursor の確認・計画系も含む。</summary>
         private static readonly HashSet<string> ClaudeDialogueTools = new(StringComparer.Ordinal)
         {
             "AskUserQuestion", "TodoWrite", "TaskCreate", "TaskUpdate", "ExitPlanMode", "EnterPlanMode",
+            "AskQuestion", "CreatePlan", "SwitchMode", "GenerateImage",
         };
 
-        /// <summary>シェル実行を表す Claude Code のツール名。中身のコマンドで判定する。</summary>
+        /// <summary>シェル実行を表す Claude Code / Cursor のツール名。中身のコマンドで判定する。</summary>
         private static readonly HashSet<string> ClaudeShellTools = new(StringComparer.Ordinal)
         {
-            "Bash", "PowerShell",
+            "Bash", "PowerShell", "Shell", "AwaitShell",
         };
 
         /// <summary>

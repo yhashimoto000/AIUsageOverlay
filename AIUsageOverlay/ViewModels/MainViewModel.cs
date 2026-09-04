@@ -80,11 +80,12 @@ namespace AIUsageOverlay.ViewModels
 
         // ── stale（取得失敗で情報が古い）状態と、それに応じたセクション不透明度（F-02）──
         // Claude のみトレイ減光（App.xaml.cs）で bool を参照するため IsClaudeStale として公開する。
-        // GitHub / Codex は不透明度（ClaudeSectionOpacity 等）のみで表現するため bool は持たない。
+        // GitHub / Codex / Cursor は不透明度（ClaudeSectionOpacity 等）のみで表現するため bool は持たない。
         private bool       _claudeStale;
         private double     _claudeSectionOpacity = 1.0;
         private double     _gitHubSectionOpacity = 1.0;
         private double     _codexSectionOpacity  = 1.0;
+        private double     _cursorSectionOpacity = 1.0;
 
         // ── ペース表示（F-06）──────────────────────────────────────
         private string     _sessionPaceText = "";
@@ -93,6 +94,9 @@ namespace AIUsageOverlay.ViewModels
         private string     _codexPaceText = "";
         private MediaBrush _codexPaceBrush = PaceGray;
         private Visibility _codexPaceVisibility = Visibility.Collapsed;
+        private string     _cursorPaceText = "";
+        private MediaBrush _cursorPaceBrush = PaceGray;
+        private Visibility _cursorPaceVisibility = Visibility.Collapsed;
 
         // ── メタ行・週チップ（デザイン刷新 2b）──────────────────────
         // 縦積みレイアウトでは各サービスの「残り時間＋ペース」を 1 行のメタ行に統合し、
@@ -157,6 +161,21 @@ namespace AIUsageOverlay.ViewModels
         /// 起動直後の一時的なネットワーク失敗で前回表示を消さないために使用する。
         /// </summary>
         private bool       _codexEverLoaded;
+
+        // Cursor バッキングフィールド
+        private Visibility _cursorSectionVisibility = Visibility.Collapsed;
+        private Visibility _cursorBarVisibility     = Visibility.Collapsed;
+        private double     _cursorUsagePercent;
+        private string     _cursorUsagePercentText  = "0%";
+        private string     _cursorMetaPrimary       = "--";
+        private string     _cursorChipText          = "";
+        private Visibility _cursorChipVisibility    = Visibility.Collapsed;
+
+        /// <summary>
+        /// 一度でも Cursor 使用量の取得に成功したかを表すフラグ。
+        /// 一時的な取得失敗の際に前回の正常表示を維持するために使用する。
+        /// </summary>
+        private bool       _cursorEverLoaded;
 
         // ────────────────────────────────────────────────────────────────
         // バインディングプロパティ（Claude）
@@ -244,6 +263,13 @@ namespace AIUsageOverlay.ViewModels
             private set => SetProperty(ref _codexSectionOpacity, value);
         }
 
+        /// <summary>Cursor セクションの不透明度。stale のとき 0.55、通常 1.0。</summary>
+        public double CursorSectionOpacity
+        {
+            get => _cursorSectionOpacity;
+            private set => SetProperty(ref _cursorSectionOpacity, value);
+        }
+
         // ── ペース表示（F-06）──────────────────────────────────────
 
         /// <summary>Claude セッションのペース表示テキスト（例: "ペース: 予定比 +8%"）。</summary>
@@ -288,6 +314,27 @@ namespace AIUsageOverlay.ViewModels
             private set => SetProperty(ref _codexPaceVisibility, value);
         }
 
+        /// <summary>Cursor のペース表示テキスト（月次プラン枠）。</summary>
+        public string CursorPaceText
+        {
+            get => _cursorPaceText;
+            private set => SetProperty(ref _cursorPaceText, value);
+        }
+
+        /// <summary>Cursor のペース表示色。</summary>
+        public MediaBrush CursorPaceBrush
+        {
+            get => _cursorPaceBrush;
+            private set => SetProperty(ref _cursorPaceBrush, value);
+        }
+
+        /// <summary>Cursor のペース行の表示/非表示。</summary>
+        public Visibility CursorPaceVisibility
+        {
+            get => _cursorPaceVisibility;
+            private set => SetProperty(ref _cursorPaceVisibility, value);
+        }
+
         // ── メタ行・週チップ（デザイン刷新 2b）──────────────────────
 
         /// <summary>Claude メタ行の主テキスト（残り時間 or 絶対リセット時刻）。ペースは別 Run で連結する。</summary>
@@ -330,6 +377,27 @@ namespace AIUsageOverlay.ViewModels
         {
             get => _codexWeeklyChipVisibility;
             private set => SetProperty(ref _codexWeeklyChipVisibility, value);
+        }
+
+        /// <summary>Cursor メタ行の主テキスト（請求サイクルの残り日数 or リセット日）。</summary>
+        public string CursorMetaPrimary
+        {
+            get => _cursorMetaPrimary;
+            private set => SetProperty(ref _cursorMetaPrimary, value);
+        }
+
+        /// <summary>Cursor 見出し行のチップ文字（プラン名または API 枠%）。</summary>
+        public string CursorChipText
+        {
+            get => _cursorChipText;
+            private set => SetProperty(ref _cursorChipText, value);
+        }
+
+        /// <summary>Cursor チップの表示可否。</summary>
+        public Visibility CursorChipVisibility
+        {
+            get => _cursorChipVisibility;
+            private set => SetProperty(ref _cursorChipVisibility, value);
         }
 
         /// <summary>Copilot メタ行のテキスト（クレジット + 更新情報。ペースは持たない）。</summary>
@@ -519,6 +587,41 @@ namespace AIUsageOverlay.ViewModels
         }
 
         // ────────────────────────────────────────────────────────────────
+        // バインディングプロパティ（Cursor）
+        // ────────────────────────────────────────────────────────────────
+
+        /// <summary>Cursor セクションの表示/非表示（未設定時は Collapsed）</summary>
+        public Visibility CursorSectionVisibility
+        {
+            get => _cursorSectionVisibility;
+            set => SetProperty(ref _cursorSectionVisibility, value);
+        }
+
+        /// <summary>Cursor 使用率バーの表示/非表示。</summary>
+        public Visibility CursorBarVisibility
+        {
+            get => _cursorBarVisibility;
+            set => SetProperty(ref _cursorBarVisibility, value);
+        }
+
+        /// <summary>
+        /// Cursor 月次プラン枠の使用率（0.0 ～ 100.0）。
+        /// ProgressBar.Value は既定で TwoWay のため public セッターにする。
+        /// </summary>
+        public double CursorUsagePercent
+        {
+            get => _cursorUsagePercent;
+            set => SetProperty(ref _cursorUsagePercent, value);
+        }
+
+        /// <summary>Cursor 使用率テキスト（例: "72%"）</summary>
+        public string CursorUsagePercentText
+        {
+            get => _cursorUsagePercentText;
+            set => SetProperty(ref _cursorUsagePercentText, value);
+        }
+
+        // ────────────────────────────────────────────────────────────────
         // コンストラクタ
         // ────────────────────────────────────────────────────────────────
 
@@ -641,6 +744,9 @@ namespace AIUsageOverlay.ViewModels
 
                 // ── Codex / OpenAI ──
                 await RefreshCodexAsync();
+
+                // ── Cursor ──
+                await RefreshCursorAsync();
 
                 // デザイン刷新: 取得サイクル完了 → スパークライン再描画を促す（%同値でも履歴は伸びる）
                 SparklineRevision++;
@@ -879,6 +985,125 @@ namespace AIUsageOverlay.ViewModels
                 _notificationService.Evaluate(UsageWindowKey.CodexSession, data.SessionPercent, null, settings);
             if (data.HasWeeklyData)
                 _notificationService.Evaluate(UsageWindowKey.CodexWeekly, data.WeeklyPercent, null, settings);
+        }
+
+        /// <summary>
+        /// Cursor の月次プラン枠を取得してバインディングプロパティを更新する。
+        /// ちらつき対策は Copilot / Codex と同じ（await 前にバーを消さない、失敗時は前回値維持）。
+        /// </summary>
+        private async Task RefreshCursorAsync()
+        {
+            var settings = _usageService.GetSettings();
+
+            if (!settings.CursorEnabled)
+            {
+                CursorSectionVisibility = Visibility.Collapsed;
+                return;
+            }
+
+            CursorSectionVisibility = Visibility.Visible;
+
+            var data = await _usageService.FetchCursorAsync();
+
+            // 初回成功時は当月トークンを全件取得。以降は傍受差分マージ。
+            // WebView2 は共有のため fire-and-forget せず await する（並行 Navigate を避ける）。
+            if (data != null)
+            {
+                if (!_cursorEverLoaded)
+                    await _usageService.FetchAndSaveAllCurrentMonthCursorTokensAsync();
+                else
+                    await _usageService.MergeCursorTokenEventsFromCacheAsync();
+            }
+
+            if (data == null)
+            {
+                if (!_cursorEverLoaded)
+                {
+                    CursorUsagePercentText = "--";
+                    CursorMetaPrimary = _usageService.GetLastCursorError() ?? "接続失敗";
+                    CursorBarVisibility = Visibility.Collapsed;
+                    CursorChipVisibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    CursorSectionOpacity = StaleOpacity;
+                }
+                CursorPaceVisibility = Visibility.Collapsed;
+                return;
+            }
+
+            var absolute = settings.ResetDisplayMode == "absolute";
+
+            if (data.HasPlanData)
+            {
+                CursorBarVisibility = Visibility.Visible;
+                CursorUsagePercent = data.IsUnlimited ? 0 : data.PlanPercent;
+                CursorUsagePercentText = data.IsUnlimited ? "--" : $"{data.PlanPercent}%";
+
+                string resetText;
+                if (data.IsUnlimited)
+                    resetText = "無制限";
+                else if (absolute && data.BillingCycleEnd.HasValue)
+                    resetText = $"{data.BillingCycleEnd.Value.ToLocalTime():M/d} リセット";
+                else if (data.DaysUntilReset >= 0)
+                    resetText = data.DaysUntilReset == 0 ? "本日リセット" : $"{data.DaysUntilReset}日";
+                else
+                    resetText = "--";
+
+                CursorMetaPrimary = data.IsUnlimited || absolute || resetText == "--"
+                    ? resetText
+                    : BuildMetaPrimary("relative", resetText);
+
+                if (data.ApiPercentUsed >= 0 && data.ApiPercentUsed != data.PlanPercent)
+                {
+                    CursorChipText = $"API {data.ApiPercentUsed}%";
+                    CursorChipVisibility = Visibility.Visible;
+                }
+                else if (!string.IsNullOrEmpty(data.MembershipType))
+                {
+                    CursorChipText = data.MembershipType;
+                    CursorChipVisibility = Visibility.Visible;
+                }
+                else
+                {
+                    CursorChipVisibility = Visibility.Collapsed;
+                }
+
+                _usageService.RecordHistory(UsageHistoryService.SeriesCursor,
+                    data.IsUnlimited ? 0 : data.PlanPercent, 0);
+            }
+            else
+            {
+                CursorBarVisibility = Visibility.Collapsed;
+                CursorUsagePercent = 0;
+                CursorUsagePercentText = "--";
+                CursorMetaPrimary = "--";
+                CursorChipVisibility = Visibility.Collapsed;
+            }
+
+            _cursorEverLoaded = true;
+            CursorSectionOpacity = 1.0;
+
+            if (settings.PaceEnabled && data.HasPlanData && !data.IsUnlimited &&
+                data.RemainingMinutes >= 0)
+            {
+                var windowMinutes = Math.Max(data.RemainingMinutes, 1);
+                // 月次枠の総分は「使用済み分 + 残り分」。percent から逆算する
+                var totalMinutes = data.PlanPercent >= 100
+                    ? windowMinutes
+                    : (int)Math.Round(windowMinutes / Math.Max(0.01, (100.0 - data.PlanPercent) / 100.0));
+                var pace = UsagePaceCalculator.Compute(data.PlanPercent, totalMinutes, data.RemainingMinutes);
+                ApplyPace(pace,
+                    v => CursorPaceText = v, b => CursorPaceBrush = b, vis => CursorPaceVisibility = vis);
+            }
+            else
+            {
+                CursorPaceVisibility = Visibility.Collapsed;
+            }
+
+            if (data.HasPlanData && !data.IsUnlimited)
+                _notificationService.Evaluate(UsageWindowKey.CursorPlan, data.PlanPercent,
+                    data.BillingCycleEnd?.LocalDateTime, settings);
         }
 
         /// <summary>同期版リフレッシュ（後方互換用）</summary>

@@ -48,6 +48,7 @@ namespace AIUsageOverlay
             // ── 表示項目 ──
             GitHubCopilotCheckBox.IsChecked = settings.GitHubCopilotEnabled;
             CodexCheckBox.IsChecked         = settings.CodexEnabled;
+            CursorCheckBox.IsChecked        = settings.CursorEnabled;
             // リセット表示形式（セグメント）: relative / absolute
             if (settings.ResetDisplayMode == "absolute") ResetAbsolute.IsChecked = true;
             else                                          ResetRelative.IsChecked = true;
@@ -191,6 +192,7 @@ namespace AIUsageOverlay
             // 表示項目
             settings.GitHubCopilotEnabled   = GitHubCopilotCheckBox.IsChecked == true;
             settings.CodexEnabled           = CodexCheckBox.IsChecked == true;
+            settings.CursorEnabled          = CursorCheckBox.IsChecked == true;
             settings.ResetDisplayMode       = ResetAbsolute.IsChecked == true ? "absolute" : "relative";
 
             // 外観（オーバーレイ表示形式・トレイ形式はセグメント選択から決定）

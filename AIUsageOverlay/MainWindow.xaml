@@ -30,6 +30,7 @@
             <MenuItem Header="ログイン - Claude(_L)" Click="Login_Click" Background="#2A2A2A" Foreground="White"/>
             <MenuItem Header="ログイン - GitHub(_G)" Click="GitHubLogin_Click" Background="#2A2A2A" Foreground="White"/>
             <MenuItem Header="ログイン - Codex(_O)" Click="CodexLogin_Click" Background="#2A2A2A" Foreground="White"/>
+            <MenuItem Header="ログイン - Cursor(_C)" Click="CursorLogin_Click" Background="#2A2A2A" Foreground="White"/>
             <MenuItem Header="セッションリセット(_R)" Click="ResetSession_Click" Background="#2A2A2A" Foreground="White"/>
             <Separator Background="#484848"/>
             <MenuItem Header="使用量レポートを生成(_U)" Click="GenerateUsageReport_Click" Background="#2A2A2A" Foreground="White"/>
@@ -198,6 +199,47 @@
                                Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
 
+                <!-- Cursor ブロック -->
+                <StackPanel Margin="0,13,0,0" Visibility="{Binding CursorSectionVisibility}"
+                            Opacity="{Binding CursorSectionOpacity}">
+                    <Grid Margin="0,0,0,3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Ellipse Grid.Column="0" Width="6" Height="6" Fill="{StaticResource Brush.Cursor}"
+                                 VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <TextBlock Grid.Column="1" Text="Cursor" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Brush.Text1}" VerticalAlignment="Center"/>
+                        <Border Grid.Column="2" Background="{StaticResource Brush.Chip}" CornerRadius="4"
+                                Padding="6,1" Margin="7,0,0,0" VerticalAlignment="Center"
+                                Visibility="{Binding CursorChipVisibility}">
+                            <TextBlock Text="{Binding CursorChipText}" FontSize="10"
+                                       Foreground="{StaticResource Brush.HeaderLabel}"/>
+                        </Border>
+                        <TextBlock Grid.Column="4" Text="{Binding CursorUsagePercentText}"
+                                   FontSize="16" FontWeight="Bold" Foreground="{StaticResource Brush.Cursor}"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding CursorBarVisibility}"/>
+                    </Grid>
+                    <Polyline x:Name="CursorSparkline" Stroke="{StaticResource Brush.Cursor}"
+                              StrokeThickness="1.6" StrokeLineJoin="Round" Height="20"
+                              HorizontalAlignment="Stretch" Margin="0,3,0,2"
+                              SizeChanged="Sparkline_SizeChanged"/>
+                    <Grid Visibility="{Binding CursorBarVisibility}">
+                        <ProgressBar Value="{Binding CursorUsagePercent}" Maximum="100"
+                                     Height="6" Foreground="{StaticResource Brush.Cursor}"
+                                     Style="{StaticResource RoundProgressBarStyle}"/>
+                        <ctrl:ThresholdMarkerOverlay x:Name="CursorMarkers" Height="6"
+                                     IsHitTestVisible="False"/>
+                    </Grid>
+                    <TextBlock x:Name="CursorMeta" FontSize="10" Foreground="{StaticResource Brush.Text2}"
+                               Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+
             </StackPanel>
         </Border>
 
@@ -243,6 +285,20 @@
                                  Style="{StaticResource RoundProgressBarStyle}" VerticalAlignment="Center"/>
                     <TextBlock Text="{Binding CodexUsagePercentText}" FontSize="11" FontWeight="Bold"
                                Foreground="{StaticResource Brush.Codex}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                </StackPanel>
+                <!-- 区切り -->
+                <Border Width="1" Height="14" Background="#333333" Margin="10,0"
+                        Visibility="{Binding CursorSectionVisibility}"/>
+                <!-- Cursor -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                            Visibility="{Binding CursorSectionVisibility}">
+                    <TextBlock Text="U" FontSize="10" FontWeight="Bold" Foreground="#8A8A92"
+                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ProgressBar Width="34" Height="5" Value="{Binding CursorUsagePercent}" Maximum="100"
+                                 Foreground="{StaticResource Brush.Cursor}"
+                                 Style="{StaticResource RoundProgressBarStyle}" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding CursorUsagePercentText}" FontSize="11" FontWeight="Bold"
+                               Foreground="{StaticResource Brush.Cursor}" VerticalAlignment="Center" Margin="6,0,0,0"/>
                 </StackPanel>
                 <!-- 展開ボタン -->
                 <Button VerticalAlignment="Center" Margin="10,0,0,0" Background="Transparent"
@@ -457,6 +513,36 @@
                                VerticalAlignment="Center" MinWidth="44" TextAlignment="Right"/>
                 </Grid>
 
+                <!-- Cursor -->
+                <Grid Margin="0,0,0,8" Visibility="{Binding CursorSectionVisibility}"
+                      Opacity="{Binding CursorSectionOpacity}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <Grid Margin="0,0,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Cursor" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="#9A9AA2"/>
+                            <TextBlock Grid.Column="1" Text="{Binding CursorMetaPrimary}" FontSize="10"
+                                       Foreground="{StaticResource Brush.HeaderLabel}"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                        <ProgressBar Value="{Binding CursorUsagePercent}" Maximum="100"
+                                     Height="9" Foreground="{StaticResource Brush.Cursor}"
+                                     Style="{StaticResource RoundProgressBarStyle}"
+                                     Visibility="{Binding CursorBarVisibility}"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding CursorUsagePercentText}"
+                               FontSize="17" FontWeight="Bold" Foreground="{StaticResource Brush.Cursor}"
+                               VerticalAlignment="Center" MinWidth="44" TextAlignment="Right"
+                               Visibility="{Binding CursorBarVisibility}"/>
+                </Grid>
+
                 <!-- ペースチップ行 -->
                 <WrapPanel Margin="0,2,0,0">
                     <Border Background="{StaticResource Brush.Chip}" CornerRadius="9" Padding="8,2"
@@ -467,6 +553,11 @@
                     <Border Background="{StaticResource Brush.Chip}" CornerRadius="9" Padding="8,2"
                             Visibility="{Binding CodexPaceVisibility}">
                         <TextBlock Text="{Binding CodexPaceText}" Foreground="{Binding CodexPaceBrush}"
+                                   FontSize="9.5"/>
+                    </Border>
+                    <Border Background="{StaticResource Brush.Chip}" CornerRadius="9" Padding="8,2"
+                            Margin="6,0,0,0" Visibility="{Binding CursorPaceVisibility}">
+                        <TextBlock Text="{Binding CursorPaceText}" Foreground="{Binding CursorPaceBrush}"
                                    FontSize="9.5"/>
                     </Border>
                 </WrapPanel>

@@ -119,5 +119,20 @@
 
 ### Policy（方針）
 - **配布用 exe を動作確認に使うときは、publish 先ではなく `bin\Release` の exe を起動する。** publish 先を起動すると次のリリースビルドが必ず失敗する。
+
+## 2026-09-04
+### Facts（事実）
+- Cursor の `agent-transcripts` JSONL ファイルにはトークン数・コスト情報が含まれない。セッション数・フェーズ分類のみ集計できる。
+- Cursor ダッシュボード API は `WorkosCursorSessionToken` Cookie と `Origin: https://cursor.com` ヘッダーが必要。エンドポイントは `/api/usage-summary`（GET）と `/api/dashboard/get-current-period-usage`（POST）。
+- 前回の会話で `[resource_exhausted] Error` が発生したのは Cursor IDE（モデルプロバイダー側）の一時障害で、Cursor の使用量 API への接続エラーではなかった。
+- ビルド成功（警告 0 / エラー 0）、テスト 47 件全通過を確認。
+### Policy（方針）
+- Cursor の日次棒グラフ・品質タブは「セッション数ベース」で表示し、トークン列は常に 0 と説明テキストを付ける。
+- HTML テンプレートの CSS 変数 `--cursor` は light `#7c5cdc` / dark `#a78bfa` に統一する。
+- Cursor のトークン情報はダッシュボード API（`get-filtered-usage-events`）傍受で取得する。個人プランでは `/api/dashboard/get-filtered-usage-events` をブラウザセッション Cookie 経由で呼べる。
+- 傍受データは `cursor-tokens.json` に月別集計で永続化する。重複除去は **イベント単位**（`timestamp|conversationId|model|各トークン数`）。conversationId 単位だと同一会話の複数リクエスト分が落ちる。
+- 起動セッション内の初回成功時に当月全件をページネーション完走する。2回目以降の定期更新はダッシュボード Navigate 時に傍受できたページだけを差分マージする（全件再取得ではない）。
+- `FetchUsageAsync` は `about:blank` 前に `__cursorTokenEventPages` を C# 側へ退避する。退避しないと ReleaseMemory 後にマージが常に 0 件になる。
+- `PeriodView` ではなく `UsageReport.CursorMonthly` に別フィールドとして注入し、品質タブ内の専用ブロックに表示する。
 - リリースは「csproj の版数更新 → master へ `--no-ff` マージ → 注釈付きタグ → 両リモートへ master とタグを push」の順で行う。マージコミットの件名は `merge: <内容>（vX.Y.Z）` に揃える。
 - **タグ push は GitHub Release の即時公開を伴う。** 公開を伴う push は、実行前に push 先（github / backlog / 両方）を確認してから行う。

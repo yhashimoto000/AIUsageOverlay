@@ -20,6 +20,7 @@
   --accent-soft: #dce7fd;
   --claude: #c96442;
   --codex: #10a37f;
+  --cursor: #7c5cdc;
   --phase-investigate: #3b82f6;
   --phase-implement: #16a34a;
   --phase-test: #d97706;
@@ -68,6 +69,7 @@
   --accent-soft: #24334f;
   --claude: #e08464;
   --codex: #35c79f;
+  --cursor: #a78bfa;
   --phase-investigate: #60a5fa;
   --phase-implement: #4ade80;
   --phase-test: #fbbf24;
@@ -172,6 +174,7 @@ tbody tr:hover { background: var(--surface-2); }
 }
 .badge.claude { color: var(--claude); border-color: var(--claude); background: transparent; }
 .badge.codex { color: var(--codex); border-color: var(--codex); background: transparent; }
+.badge.cursor { color: var(--cursor); border-color: var(--cursor); background: transparent; }
 .badge.warn { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 
 .toggle-child {
@@ -226,6 +229,7 @@ tr.detail > td {
 }
 .legend .lg-claude::before { background: var(--claude); }
 .legend .lg-codex::before { background: var(--codex); }
+.legend .lg-cursor::before { background: var(--cursor); }
 .legend .lg-investigate::before { background: var(--phase-investigate); }
 .legend .lg-implement::before { background: var(--phase-implement); }
 .legend .lg-test::before { background: var(--phase-test); }
@@ -292,7 +296,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
       </p>
       <div class="scroll-x"><div id="chart-daily"></div></div>
       <div class="legend" style="margin-top:8px">
-        <span class="lg-claude">Claude Code</span><span class="lg-codex">Codex</span>
+        <span class="lg-claude">Claude Code</span><span class="lg-codex">Codex</span><span class="lg-cursor">Cursor</span>
       </div>
     </div>
 
@@ -429,6 +433,16 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
       <dl class="kv" id="dedup-kv"></dl>
     </div>
 
+    <div class="block" id="cursor-token-block">
+      <h2>Cursor トークン累積（ダッシュボード API 傍受）</h2>
+      <p class="note">
+        Cursor のローカル履歴にはトークン数が含まれていないため、
+        ダッシュボードページをロードするたびに API レスポンスを傍受して蓄積しています。
+        アプリが起動していなかった期間のデータは取得できません。
+      </p>
+      <dl class="kv" id="cursor-token-kv"></dl>
+    </div>
+
     <div class="block">
       <h2>読めなかったファイル</h2>
       <div class="filters">
@@ -552,7 +566,7 @@ function renderDaily() {
   const plotH = 210;
   const w = padL + plotW + padR;
   const h = padT + plotH + padB;
-  const max = Math.max.apply(null, days.map(d => d.claudeBillable + d.codexBillable)) || 1;
+  const max = Math.max.apply(null, days.map(d => d.claudeBillable + d.codexBillable + (d.cursorBillable||0))) || 1;
 
   const svg = svgEl("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h });
 
@@ -568,9 +582,10 @@ function renderDaily() {
 
   days.forEach((d, i) => {
     const x = padL + i * (barW + gap);
-    const total = d.claudeBillable + d.codexBillable;
+    const total = d.claudeBillable + d.codexBillable + (d.cursorBillable||0);
     const hClaude = (d.claudeBillable / max) * plotH;
     const hCodex = (d.codexBillable / max) * plotH;
+    const hCursor = ((d.cursorBillable||0) / max) * plotH;
     let y = padT + plotH;
 
     if (hCodex > 0) {
@@ -578,6 +593,13 @@ function renderDaily() {
       const r = svgEl("rect", { x: x, y: y, width: barW, height: hCodex, fill: "var(--codex)" });
       r.appendChild(svgEl("title", {})).textContent =
         d.date + " Codex " + fmt(d.codexBillable);
+      svg.appendChild(r);
+    }
+    if (hCursor > 0) {
+      y -= hCursor;
+      const r = svgEl("rect", { x: x, y: y, width: barW, height: hCursor, fill: "var(--cursor)" });
+      r.appendChild(svgEl("title", {})).textContent =
+        d.date + " Cursor " + fmt(d.cursorBillable);
       svg.appendChild(r);
     }
     if (hClaude > 0) {
@@ -1030,8 +1052,8 @@ function renderSessions() {
 
     const toolCell = el("td", {}, [
       el("span", {
-        class: "badge " + (s.tool === "codex" ? "codex" : "claude"),
-        text: s.tool === "codex" ? "Codex" : "Claude Code",
+        class: "badge " + (s.tool === "codex" ? "codex" : s.tool === "cursor" ? "cursor" : "claude"),
+        text: s.tool === "codex" ? "Codex" : s.tool === "cursor" ? "Cursor" : "Claude Code",
       }),
     ]);
     if (!s.elapsedMeasurable) {
@@ -1186,6 +1208,7 @@ function renderQuality() {
   const rows = [
     ["Claude Code 履歴", statusLabel(q.claudeStatus) + " / " + q.claudeRoot],
     ["Codex 履歴", statusLabel(q.codexStatus) + " / " + q.codexRoot],
+    ["Cursor 履歴", statusLabel(q.cursorStatus) + " / " + q.cursorRoot],
     ["履歴の範囲", q.oldestRecord + " 〜 " + q.newestRecord],
     ["今回パースしたファイル", fmt(q.parsedFiles) + " 件（キャッシュ流用 " + fmt(q.reusedFiles) + " 件）"],
     ["ワークフローの journal", fmt(q.journalFiles) + " 件（トークンを持たないため集計対象外）"],
@@ -1219,11 +1242,37 @@ function renderQuality() {
     ["Codex: スレッド数", fmt(q.codexThreads) + " 件"],
     ["Codex: うちサブエージェント", fmt(q.codexSubagents) +
       " 件（重複ではなく、それぞれ別の使い手として数えています）"],
+    ["Cursor: セッション数", fmt(q.cursorSessions) + " 件"],
+    ["Cursor: うちサブエージェント", fmt(q.cursorSubagents) +
+      " 件（agent-transcripts/subagents/ 配下のファイル）"],
+    ["Cursor: トークン情報", "Cursor のローカル履歴にはトークン数が含まれていないため、トークン集計は 0 になります"],
   ];
   dedupRows.forEach(r => {
     dedup.appendChild(el("dt", { text: r[0] }));
     dedup.appendChild(el("dd", { text: r[1] }));
   });
+
+  // Cursor トークン累積（cursor-tokens.json 由来）
+  const cursorTokenKv = document.getElementById("cursor-token-kv");
+  cursorTokenKv.textContent = "";
+  const cm = DATA.cursorMonthly || {};
+  const cmKeys = Object.keys(cm).sort().reverse();
+  if (cmKeys.length === 0) {
+    cursorTokenKv.appendChild(el("dt", { text: "データなし" }));
+    cursorTokenKv.appendChild(el("dd", { text: "ダッシュボードにログインしてオーバーレイを起動すると蓄積されます。" }));
+  } else {
+    cmKeys.forEach(ym => {
+      const m = cm[ym];
+      cursorTokenKv.appendChild(el("dt", { text: ym }));
+      cursorTokenKv.appendChild(el("dd", {
+        text: "入力 " + fmt(m.inputTokens) +
+              " / 出力 " + fmt(m.outputTokens) +
+              " / キャッシュW " + fmt(m.cacheWriteTokens) +
+              " / キャッシュR " + fmt(m.cacheReadTokens) +
+              " （" + fmt(m.eventCount) + " リクエスト）"
+      }));
+    });
+  }
 
   const skipQ = document.getElementById("skip-search").value.trim().toLowerCase();
   const skips = q.skippedFiles.filter(f =>

@@ -128,8 +128,11 @@ namespace AIUsageOverlay.Models
         /// <summary>ツール識別子: Codex。</summary>
         public const string ToolCodex = "codex";
 
+        /// <summary>ツール識別子: Cursor。</summary>
+        public const string ToolCursor = "cursor";
+
         /// <summary>
-        /// 一意キー。「claude:セッションID」または「codex:スレッドID」。
+        /// 一意キー。「claude:セッションID」「codex:スレッドID」「cursor:セッションID」。
         /// Codex は session_id（会話ツリーのルート ID）ではなく session_meta.id
         /// （スレッド固有 ID）を使う。B0/Q2 の実測で、session_id を鍵にすると
         /// サブエージェント分（全体の 75%）が落ちることを確認した。
@@ -137,7 +140,7 @@ namespace AIUsageOverlay.Models
         [JsonPropertyName("key")]
         public string Key { get; set; } = string.Empty;
 
-        /// <summary>ToolClaudeCode または ToolCodex。</summary>
+        /// <summary>ToolClaudeCode / ToolCodex / ToolCursor。</summary>
         [JsonPropertyName("tool")]
         public string Tool { get; set; } = string.Empty;
 
