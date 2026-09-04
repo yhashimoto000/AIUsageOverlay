@@ -5,15 +5,16 @@ using AIUsageOverlay.Models;
 namespace AIUsageOverlay.Services
 {
     /// <summary>
-    /// Claude / GitHub Copilot / Codex の使用量追跡・管理を担当するサービスクラス。
+    /// Claude / GitHub Copilot / Codex / Cursor の使用量追跡・管理を担当するサービスクラス。
     /// </summary>
     public class UsageService
     {
         private static readonly string AppDataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "AIUsageOverlay");
-        private static readonly string SettingsFilePath = Path.Combine(AppDataFolder, "settings.json");
-        private static readonly string UsageFilePath    = Path.Combine(AppDataFolder, "usage.json");
+        private static readonly string SettingsFilePath      = Path.Combine(AppDataFolder, "settings.json");
+        private static readonly string UsageFilePath          = Path.Combine(AppDataFolder, "usage.json");
+        private static readonly string CursorTokensFilePath   = Path.Combine(AppDataFolder, "cursor-tokens.json");
         private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
         private AppSettings _settings;
@@ -21,9 +22,10 @@ namespace AIUsageOverlay.Services
         private DateTime    _lastUpdateTime;
 
         // ── 外部サービスクライアント ──────────────────────────────────
-        private readonly ClaudeApiClient  _apiClient     = new();
-        private readonly GitHubWebScraper _gitHubScraper = new();
-        private readonly CodexWebScraper  _codexScraper  = new();
+        private readonly ClaudeApiClient  _apiClient      = new();
+        private readonly GitHubWebScraper _gitHubScraper  = new();
+        private readonly CodexWebScraper  _codexScraper   = new();
+        private readonly CursorWebScraper _cursorScraper  = new();
 
         /// <summary>
         /// 使用率%の自己記録（スパークライン用）。統合窓口としてここに内包し、
@@ -167,6 +169,122 @@ namespace AIUsageOverlay.Services
 
         public async Task ShowCodexLoginWindowAsync()
             => await _codexScraper.ShowLoginWindowAsync();
+
+        // ── Cursor ───────────────────────────────────────────────────
+
+        public string? GetLastCursorError() => _cursorScraper.LastError;
+
+        public async Task<CursorUsageData?> FetchCursorAsync()
+        {
+            if (!_settings.CursorEnabled) return null;
+            return await _cursorScraper.FetchUsageAsync();
+        }
+
+        public async Task ShowCursorLoginWindowAsync()
+            => await _cursorScraper.ShowLoginWindowAsync();
+
+        /// <summary>
+        /// FetchCursorAsync の後に呼び出し、傍受済みトークンイベントを
+        /// cursor-tokens.json に差分マージして保存する。
+        /// 今月分が未蓄積なら全件取得にフォールバックする。
+        /// </summary>
+        /// <returns>新たに追加したイベント件数</returns>
+        public async Task<int> MergeCursorTokenEventsFromCacheAsync()
+        {
+            if (!_settings.CursorEnabled) return 0;
+
+            var yearMonth = DateTime.UtcNow.ToString("yyyy-MM");
+            var existing = LoadCursorTokenStore().GetMonth(yearMonth);
+            if (existing.EventCount == 0)
+                return await FetchAndSaveAllCurrentMonthCursorTokensAsync();
+
+            var events = await _cursorScraper.FetchTokenEventsFromCacheAsync();
+            if (events.Count == 0) return 0;
+            return SaveCursorTokenEvents(events);
+        }
+
+        /// <summary>
+        /// 起動時に当月トークンイベント全件を取得して cursor-tokens.json に保存する。
+        /// </summary>
+        /// <returns>新たに追加したイベント件数</returns>
+        public async Task<int> FetchAndSaveAllCurrentMonthCursorTokensAsync()
+        {
+            if (!_settings.CursorEnabled) return 0;
+            var events = await _cursorScraper.FetchAllCurrentMonthTokenEventsAsync();
+            // 0 件でも最終試行時刻を残し、次回フォールバック判定と診断に使う
+            if (events.Count == 0)
+            {
+                var empty = LoadCursorTokenStore();
+                empty.SavedAtUtc = DateTime.UtcNow;
+                File.WriteAllText(CursorTokensFilePath,
+                    JsonSerializer.Serialize(empty, JsonOptions));
+                return 0;
+            }
+            return SaveCursorTokenEvents(events);
+        }
+
+        /// <summary>
+        /// 指定年月のトークンイベントを取得して cursor-tokens.json にマージ保存する。
+        /// メンテナンス用（例: 過去月の一括取り込み）。CursorEnabled の可否は見ない。
+        /// </summary>
+        /// <param name="year">西暦年</param>
+        /// <param name="month">月（1〜12）</param>
+        /// <returns>新たに追加したイベント件数</returns>
+        public async Task<int> FetchAndSaveCursorMonthAsync(int year, int month)
+        {
+            var events = await _cursorScraper.FetchMonthTokenEventsAsync(year, month);
+            if (events.Count == 0) return 0;
+            return SaveCursorTokenEvents(events);
+        }
+
+        /// <summary>
+        /// cursor-tokens.json を読み込み、イベントをマージして上書き保存する。
+        /// </summary>
+        private int SaveCursorTokenEvents(List<Models.CursorTokenRecord> events)
+        {
+            var store = LoadCursorTokenStore();
+            var added = store.Merge(events);
+            if (added > 0)
+            {
+                store.SavedAtUtc = DateTime.UtcNow;
+                File.WriteAllText(CursorTokensFilePath,
+                    JsonSerializer.Serialize(store, JsonOptions));
+            }
+            return added;
+        }
+
+        /// <summary>cursor-tokens.json から CursorTokenStore を読み込む。</summary>
+        public static Models.CursorTokenStore LoadCursorTokenStoreStatic()
+            => LoadCursorTokenStoreFrom(CursorTokensFilePath);
+
+        /// <summary>cursor-tokens.json から CursorTokenStore を読み込む（インスタンスメソッド）。</summary>
+        public Models.CursorTokenStore LoadCursorTokenStore()
+            => LoadCursorTokenStoreFrom(CursorTokensFilePath);
+
+        private static Models.CursorTokenStore LoadCursorTokenStoreFrom(string path)
+        {
+            try
+            {
+                if (!File.Exists(path))
+                    return new Models.CursorTokenStore();
+                return JsonSerializer.Deserialize<Models.CursorTokenStore>(
+                    File.ReadAllText(path))
+                    ?? new Models.CursorTokenStore();
+            }
+            catch
+            {
+                return new Models.CursorTokenStore();
+            }
+        }
+
+        /// <summary>指定年月の Cursor 月別トークン集計を返す。</summary>
+        /// <param name="yearMonth">yyyy-MM 形式。省略時は今月。</param>
+        /// <returns>月別集計（データ無しの場合はゼロ値）</returns>
+        public Models.CursorMonthlyTokens GetCursorMonthlyTokens(string? yearMonth = null)
+        {
+            yearMonth ??= DateTime.UtcNow.ToString("yyyy-MM");
+            return LoadCursorTokenStore().GetMonth(yearMonth);
+        }
 
         // ── 内部ヘルパー ─────────────────────────────────────────────
 

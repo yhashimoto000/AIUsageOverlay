@@ -22,6 +22,13 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>期間ごとの集計。キーは "7" / "30" / "all"。</summary>
         public Dictionary<string, PeriodView> Periods { get; set; } = new();
+
+        /// <summary>
+        /// Cursor の月別トークン累積（cursor-tokens.json 由来）。
+        /// キーは "yyyy-MM"。ローカル履歴にはトークン情報が無いため
+        /// ダッシュボード API 傍受で取得した値を別途注入する。
+        /// </summary>
+        public Dictionary<string, Models.CursorMonthlyTokens> CursorMonthly { get; set; } = new();
     }
 
     /// <summary>セッション一覧の 1 行。</summary>
@@ -250,6 +257,9 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>Codex の課金相当トークン。</summary>
         public long CodexBillable { get; set; }
 
+        /// <summary>Cursor の課金相当トークン。ローカル履歴にトークンが無いため通常は 0。</summary>
+        public long CursorBillable { get; set; }
+
         /// <summary>その日のターン数。</summary>
         public int Turns { get; set; }
     }
@@ -386,11 +396,17 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>Codex 履歴の状態。</summary>
         public string CodexStatus { get; set; } = string.Empty;
 
+        /// <summary>Cursor 履歴の状態。</summary>
+        public string CursorStatus { get; set; } = string.Empty;
+
         /// <summary>Claude Code の履歴ルート。</summary>
         public string ClaudeRoot { get; set; } = string.Empty;
 
         /// <summary>Codex の履歴ルート。</summary>
         public string CodexRoot { get; set; } = string.Empty;
+
+        /// <summary>Cursor の履歴ルート。</summary>
+        public string CursorRoot { get; set; } = string.Empty;
 
         /// <summary>今回パースしたファイル数。</summary>
         public int ParsedFiles { get; set; }
@@ -421,6 +437,12 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>Codex のサブエージェント数。</summary>
         public int CodexSubagents { get; set; }
+
+        /// <summary>Cursor のセッション数。</summary>
+        public int CursorSessions { get; set; }
+
+        /// <summary>Cursor のサブエージェント数。</summary>
+        public int CursorSubagents { get; set; }
 
         /// <summary>JSON として壊れていた行の総数。</summary>
         public int ParseErrors { get; set; }
@@ -795,6 +817,10 @@ namespace AIUsageOverlay.Services.SessionStats
                     {
                         day.CodexBillable += billable;
                     }
+                    else if (s.Tool == SessionStatsRecord.ToolCursor)
+                    {
+                        day.CursorBillable += billable;
+                    }
                     else
                     {
                         day.ClaudeBillable += billable;
@@ -836,14 +862,17 @@ namespace AIUsageOverlay.Services.SessionStats
         {
             var claude = scan.Sessions.Where(s => s.Tool == SessionStatsRecord.ToolClaudeCode).ToList();
             var codex = scan.Sessions.Where(s => s.Tool == SessionStatsRecord.ToolCodex).ToList();
+            var cursor = scan.Sessions.Where(s => s.Tool == SessionStatsRecord.ToolCursor).ToList();
             var withTime = scan.Sessions.Where(s => s.StartUtc > DateTime.UnixEpoch).ToList();
 
             return new QualityInfo
             {
                 ClaudeStatus = StatusText(scan.ClaudeStatus),
                 CodexStatus = StatusText(scan.CodexStatus),
+                CursorStatus = StatusText(scan.CursorStatus),
                 ClaudeRoot = scan.ClaudeRootPath,
                 CodexRoot = scan.CodexRootPath,
+                CursorRoot = scan.CursorRootPath,
                 ParsedFiles = scan.ParsedFileCount,
                 ReusedFiles = scan.ReusedFileCount,
                 JournalFiles = scan.JournalFileCount,
@@ -857,6 +886,8 @@ namespace AIUsageOverlay.Services.SessionStats
                 ClaudeKeylessRecords = claude.Sum(s => s.Dedup.KeylessRecords),
                 CodexThreads = codex.Count,
                 CodexSubagents = codex.Count(s => s.IsSubagent),
+                CursorSessions = cursor.Count,
+                CursorSubagents = cursor.Count(s => s.IsSubagent),
                 ParseErrors = scan.Sessions.Sum(s => s.ParseErrors),
                 LastLineBrokenSessions = scan.Sessions.Count(s => s.LastLineBroken),
                 UnmeasurableSessions = scan.Sessions.Count(s => !s.ElapsedMeasurable),

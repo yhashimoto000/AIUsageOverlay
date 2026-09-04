@@ -13,7 +13,9 @@ namespace AIUsageOverlay.Services
         /// <summary>Codex 5時間枠。</summary>
         CodexSession,
         /// <summary>Codex 週間枠。</summary>
-        CodexWeekly
+        CodexWeekly,
+        /// <summary>Cursor 月次プラン枠。</summary>
+        CursorPlan
     }
 
     /// <summary>
@@ -162,6 +164,7 @@ namespace AIUsageOverlay.Services
             UsageWindowKey.ClaudeWeekly  => "Claude 週間",
             UsageWindowKey.CodexSession  => "Codex 5時間",
             UsageWindowKey.CodexWeekly   => "Codex 週間",
+            UsageWindowKey.CursorPlan    => "Cursor プラン",
             _                            => "使用量"
         };
     }

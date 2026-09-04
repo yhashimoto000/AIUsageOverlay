@@ -314,6 +314,20 @@
                                       Style="{StaticResource ToggleSwitch}"/>
                         </Grid>
 
+                        <Grid Margin="0,0,0,18">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="Cursor の使用状況を表示する" Style="{StaticResource BodyText}"/>
+                                <TextBlock Text="有効後、右クリック → ログイン - Cursor からログインしてください"
+                                           Style="{StaticResource HintLabel}"/>
+                            </StackPanel>
+                            <CheckBox x:Name="CursorCheckBox" Grid.Column="1"
+                                      Style="{StaticResource ToggleSwitch}"/>
+                        </Grid>
+
                         <StackPanel Margin="0,0,0,18">
                             <TextBlock Text="リセット時刻の表示形式" Style="{StaticResource SectionLabel}"/>
                             <Border Background="#232327" CornerRadius="8" Padding="3" HorizontalAlignment="Left">

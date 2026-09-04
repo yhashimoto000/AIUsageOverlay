@@ -136,6 +136,16 @@ namespace AIUsageOverlay
         /// </summary>
         private void App_Startup(object sender, StartupEventArgs e)
         {
+            // メンテナンス: --fetch-cursor-month=yyyy-MM で指定月のトークンだけ取得して終了する
+            var monthArg = e.Args.FirstOrDefault(a =>
+                a.StartsWith("--fetch-cursor-month=", StringComparison.OrdinalIgnoreCase));
+            if (monthArg != null)
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                _ = RunCursorMonthFetchAndExitAsync(monthArg);
+                return;
+            }
+
             // ウィンドウを全て閉じてもアプリを終了しない（トレイ常駐のため）
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
@@ -166,6 +176,48 @@ namespace AIUsageOverlay
 
             ApplyUpdateCheckSetting();
             ScheduleInitialUpdateCheck();
+        }
+
+        /// <summary>
+        /// 指定月の Cursor トークンを取得して cursor-tokens.json にマージし、アプリを終了する。
+        /// 起動引数 <c>--fetch-cursor-month=yyyy-MM</c> 専用。
+        /// </summary>
+        private async Task RunCursorMonthFetchAndExitAsync(string monthArg)
+        {
+            var resultPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "AIUsageOverlay", "cursor-month-fetch-result.txt");
+            try
+            {
+                var ym = monthArg.Split('=', 2)[1].Trim();
+                var parts = ym.Split('-');
+                if (parts.Length != 2 ||
+                    !int.TryParse(parts[0], out var year) ||
+                    !int.TryParse(parts[1], out var month) ||
+                    month is < 1 or > 12)
+                {
+                    await System.IO.File.WriteAllTextAsync(resultPath, $"invalid-arg: {monthArg}");
+                    return;
+                }
+
+                var service = new UsageService();
+                var added = await service.FetchAndSaveCursorMonthAsync(year, month);
+                var store = service.LoadCursorTokenStore();
+                var key = $"{year:D4}-{month:D2}";
+                store.Monthly.TryGetValue(key, out var m);
+                await System.IO.File.WriteAllTextAsync(resultPath,
+                    $"ok yearMonth={key} added={added} eventCount={m?.EventCount ?? 0} " +
+                    $"input={m?.InputTokens ?? 0} output={m?.OutputTokens ?? 0}");
+            }
+            catch (Exception ex)
+            {
+                try { await System.IO.File.WriteAllTextAsync(resultPath, $"error: {ex}"); }
+                catch { /* ignore */ }
+            }
+            finally
+            {
+                Shutdown();
+            }
         }
 
         /// <summary>
@@ -687,6 +739,12 @@ namespace AIUsageOverlay
                 var now = DateTime.Now;
                 var report = Services.SessionStats.SessionStatsAggregator.Build(
                     scan, includePrompt, version, cacheWasCorrupted, now);
+
+                // Cursor のローカル履歴にはトークン情報がないため、
+                // cursor-tokens.json（ダッシュボード API 傍受で蓄積）を別途注入する。
+                var cursorStore = Services.UsageService.LoadCursorTokenStoreStatic();
+                foreach (var kv in cursorStore.Monthly)
+                    report.CursorMonthly[kv.Key] = kv.Value;
 
                 var renderer = new Services.SessionStats.UsageReportRenderer();
                 return renderer.Render(report, outputFolder: null, now);

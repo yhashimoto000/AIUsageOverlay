@@ -28,6 +28,7 @@
         <SolidColorBrush x:Key="Brush.Claude"  Color="#EA9440" /><!--  oklch 0.75 0.14 60   -->
         <SolidColorBrush x:Key="Brush.Copilot" Color="#85AADC" /><!--  oklch 0.75 0.10 250  -->
         <SolidColorBrush x:Key="Brush.Codex"   Color="#4CBD97" /><!--  oklch 0.72 0.12 165  -->
+        <SolidColorBrush x:Key="Brush.Cursor"  Color="#A78BFA" /><!--  oklch 0.75 0.14 290  -->
         <!--  設定アクセント（トグル ON・選択セグメント・保存ボタン）  -->
         <SolidColorBrush x:Key="Brush.Accent"  Color="#FF8C00" />
 

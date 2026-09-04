@@ -19,6 +19,10 @@ namespace AIUsageOverlay.Models
         [JsonPropertyName("codexEnabled")]
         public bool CodexEnabled { get; set; } = false;
 
+        /// <summary>Cursor 使用制限セクションを表示するかどうか</summary>
+        [JsonPropertyName("cursorEnabled")]
+        public bool CursorEnabled { get; set; } = false;
+
         /// <summary>セッション制限時間（分）。デフォルト 300 分</summary>
         [JsonPropertyName("sessionLimitMinutes")]
         public int SessionLimitMinutes { get; set; } = 300;
