@@ -211,7 +211,7 @@ namespace AIUsageOverlay.Services
         {
             if (!_settings.CursorEnabled) return 0;
             var events = await _cursorScraper.FetchAllCurrentMonthTokenEventsAsync();
-            // 0 件でも最終試行時刻を残し、次回フォールバック判定と診断に使う
+            var yearMonth = DateTime.UtcNow.ToString("yyyy-MM");
             if (events.Count == 0)
             {
                 var empty = LoadCursorTokenStore();
@@ -220,7 +220,7 @@ namespace AIUsageOverlay.Services
                     JsonSerializer.Serialize(empty, JsonOptions));
                 return 0;
             }
-            return SaveCursorTokenEvents(events);
+            return SaveCursorTokenEvents(events, replaceYearMonths: [yearMonth]);
         }
 
         /// <summary>
@@ -234,17 +234,26 @@ namespace AIUsageOverlay.Services
         {
             var events = await _cursorScraper.FetchMonthTokenEventsAsync(year, month);
             if (events.Count == 0) return 0;
-            return SaveCursorTokenEvents(events);
+            return SaveCursorTokenEvents(events, replaceYearMonths: [$"{year:D4}-{month:D2}"]);
         }
 
         /// <summary>
         /// cursor-tokens.json を読み込み、イベントをマージして上書き保存する。
         /// </summary>
-        private int SaveCursorTokenEvents(List<Models.CursorTokenRecord> events)
+        /// <param name="events">取り込むイベント</param>
+        /// <param name="replaceYearMonths">指定時はその年月をクリアしてからマージ（日別の再構築用）</param>
+        private int SaveCursorTokenEvents(
+            List<Models.CursorTokenRecord> events,
+            IEnumerable<string>? replaceYearMonths = null)
         {
             var store = LoadCursorTokenStore();
+            if (replaceYearMonths != null)
+            {
+                foreach (var ym in replaceYearMonths)
+                    store.ClearYearMonth(ym);
+            }
             var added = store.Merge(events);
-            if (added > 0)
+            if (added > 0 || replaceYearMonths != null)
             {
                 store.SavedAtUtc = DateTime.UtcNow;
                 File.WriteAllText(CursorTokensFilePath,

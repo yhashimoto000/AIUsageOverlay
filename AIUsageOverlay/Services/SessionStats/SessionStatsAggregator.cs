@@ -257,7 +257,11 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>Codex の課金相当トークン。</summary>
         public long CodexBillable { get; set; }
 
-        /// <summary>Cursor の課金相当トークン。ローカル履歴にトークンが無いため通常は 0。</summary>
+        /// <summary>
+        /// Cursor の課金相当トークン。
+        /// ローカル履歴は常に 0。ダッシュボード API 蓄積（cursor-tokens.json の日別）を
+        /// <see cref="SessionStatsAggregator.ApplyCursorDailyTokens"/> で上書きする。
+        /// </summary>
         public long CursorBillable { get; set; }
 
         /// <summary>その日のターン数。</summary>
@@ -570,6 +574,60 @@ namespace AIUsageOverlay.Services.SessionStats
                 report.Periods[$"month:{month:yyyy-MM}"] =
                     BuildPeriod(label, sessions, month, month.AddMonths(1));
             }
+        }
+
+        /// <summary>
+        /// cursor-tokens.json の日別集計を各 PeriodView.ByDay の CursorBillable へ流し込む。
+        /// Cursor のみの日も棒グラフに出るよう、該当日が無ければ DayView を追加する。
+        /// </summary>
+        /// <param name="report">注入先レポート</param>
+        /// <param name="store">Cursor トークン蓄積</param>
+        /// <param name="nowLocal">現在時刻（ローカル）。固定期間の起点</param>
+        public static void ApplyCursorDailyTokens(
+            UsageReport report,
+            Models.CursorTokenStore store,
+            DateTime nowLocal)
+        {
+            if (store.Daily.Count == 0) return;
+
+            foreach (var (key, _, days) in Periods)
+            {
+                if (!report.Periods.TryGetValue(key, out var period)) continue;
+                var from = days == 0 ? DateTime.MinValue : nowLocal.Date.AddDays(-(days - 1));
+                ApplyCursorDailyToPeriod(period, store, from, DateTime.MaxValue);
+            }
+
+            foreach (var (key, period) in report.Periods)
+            {
+                if (!key.StartsWith("month:", StringComparison.Ordinal)) continue;
+                var ym = key["month:".Length..];
+                if (!DateTime.TryParse(ym + "-01", out var monthStart)) continue;
+                ApplyCursorDailyToPeriod(period, store, monthStart, monthStart.AddMonths(1));
+            }
+        }
+
+        /// <summary>1 期間の ByDay に Cursor 日別トークンを載せる。</summary>
+        private static void ApplyCursorDailyToPeriod(
+            PeriodView period,
+            Models.CursorTokenStore store,
+            DateTime fromLocal,
+            DateTime toLocalExclusive)
+        {
+            var map = period.ByDay.ToDictionary(d => d.Date, StringComparer.Ordinal);
+            foreach (var (date, tokens) in store.Daily)
+            {
+                if (!DateTime.TryParse(date, out var dt)) continue;
+                if (dt.Date < fromLocal.Date) continue;
+                if (toLocalExclusive != DateTime.MaxValue && dt.Date >= toLocalExclusive.Date) continue;
+
+                if (!map.TryGetValue(date, out var day))
+                {
+                    day = new DayView { Date = date };
+                    map[date] = day;
+                }
+                day.CursorBillable = tokens.ChartTokens;
+            }
+            period.ByDay = map.Values.OrderBy(d => d.Date, StringComparer.Ordinal).ToList();
         }
 
         /// <summary>

@@ -64,9 +64,15 @@ namespace AIUsageOverlay.Models
             ? dt.ToString("yyyy-MM-dd")
             : string.Empty;
 
-        /// <summary>イベント年月（yyyy-MM 形式）。月別ストアのキーに使用。</summary>
+        /// <summary>イベント年月（yyyy-MM 形式、UTC）。月別ストアのキーに使用。</summary>
         [JsonIgnore]
         public string YearMonth => DateUtc.Length >= 7 ? DateUtc[..7] : string.Empty;
+
+        /// <summary>イベントのローカル日付（yyyy-MM-dd）。日次グラフ用。</summary>
+        [JsonIgnore]
+        public string DateLocal => TryParseTimestamp(Timestamp, out var dt)
+            ? dt.ToLocalTime().ToString("yyyy-MM-dd")
+            : string.Empty;
 
         /// <summary>
         /// イベント単位の重複除去キー。
@@ -123,12 +129,33 @@ namespace AIUsageOverlay.Models
         [JsonPropertyName("monthly")]
         public Dictionary<string, CursorMonthlyTokens> Monthly { get; set; } = [];
 
+        /// <summary>
+        /// 日別トークン集計。キーはローカル日付 "yyyy-MM-dd"。
+        /// レポートの日次棒グラフ（Cursor 段）に使う。
+        /// </summary>
+        [JsonPropertyName("daily")]
+        public Dictionary<string, CursorDailyTokens> Daily { get; set; } = [];
+
         /// <summary>最終保存日時（UTC）。</summary>
         [JsonPropertyName("savedAtUtc")]
         public DateTime SavedAtUtc { get; set; }
 
+        /// <summary>指定年月の seen / monthly / 該当日の daily をクリアする。</summary>
+        /// <param name="yearMonth">yyyy-MM</param>
+        public void ClearYearMonth(string yearMonth)
+        {
+            SeenIds.Remove(yearMonth);
+            Monthly.Remove(yearMonth);
+            foreach (var key in Daily.Keys
+                         .Where(k => k.StartsWith(yearMonth, StringComparison.Ordinal))
+                         .ToList())
+            {
+                Daily.Remove(key);
+            }
+        }
+
         /// <summary>
-        /// イベント列を取り込んで重複除去しながら月別集計に加算する。
+        /// イベント列を取り込んで重複除去しながら月別・日別集計に加算する。
         /// </summary>
         /// <param name="events">パース済みイベント列</param>
         /// <returns>新たに追加されたイベント数</returns>
@@ -140,7 +167,6 @@ namespace AIUsageOverlay.Models
                 if (string.IsNullOrEmpty(ev.YearMonth)) continue;
 
                 // 重複除去：同じモデル呼び出しイベントは月内で 1 回だけ計上
-                // （同一 conversationId の複数リクエストは別キーになり、トークンを落とさない）
                 if (!SeenIds.TryGetValue(ev.YearMonth, out var seen))
                 {
                     seen = [];
@@ -158,6 +184,21 @@ namespace AIUsageOverlay.Models
                 month.CacheWriteTokens += ev.CacheWriteTokens;
                 month.CacheReadTokens  += ev.CacheReadTokens;
                 month.EventCount++;
+
+                if (!string.IsNullOrEmpty(ev.DateLocal))
+                {
+                    if (!Daily.TryGetValue(ev.DateLocal, out var day))
+                    {
+                        day = new CursorDailyTokens { Date = ev.DateLocal };
+                        Daily[ev.DateLocal] = day;
+                    }
+                    day.InputTokens      += ev.InputTokens;
+                    day.OutputTokens     += ev.OutputTokens;
+                    day.CacheWriteTokens += ev.CacheWriteTokens;
+                    day.CacheReadTokens  += ev.CacheReadTokens;
+                    day.EventCount++;
+                }
+
                 added++;
             }
             return added;
@@ -168,6 +209,53 @@ namespace AIUsageOverlay.Models
         /// <returns>月別集計</returns>
         public CursorMonthlyTokens GetMonth(string yearMonth)
             => Monthly.TryGetValue(yearMonth, out var m) ? m : new CursorMonthlyTokens { YearMonth = yearMonth };
+    }
+
+    /// <summary>
+    /// 1 日分の Cursor トークン集計値（ローカル日付）。
+    ///
+    /// <para>改訂履歴</para>
+    /// <list type="table"><listheader>
+    /// <term>Date</term><term>Author</term><term>Version</term><term>Comment</term>
+    /// </listheader>
+    /// <item>
+    /// <description>2026.09.04</description><description>Auto</description><description>-</description>
+    /// <description>新規作成</description>
+    /// </item>
+    /// </list>
+    /// </summary>
+    public class CursorDailyTokens
+    {
+        /// <summary>ローカル日付（yyyy-MM-dd）。</summary>
+        [JsonPropertyName("date")]
+        public string Date { get; set; } = string.Empty;
+
+        /// <summary>入力トークン合計。</summary>
+        [JsonPropertyName("inputTokens")]
+        public long InputTokens { get; set; }
+
+        /// <summary>出力トークン合計。</summary>
+        [JsonPropertyName("outputTokens")]
+        public long OutputTokens { get; set; }
+
+        /// <summary>キャッシュ書き込みトークン合計。</summary>
+        [JsonPropertyName("cacheWriteTokens")]
+        public long CacheWriteTokens { get; set; }
+
+        /// <summary>キャッシュ読み取りトークン合計。</summary>
+        [JsonPropertyName("cacheReadTokens")]
+        public long CacheReadTokens { get; set; }
+
+        /// <summary>イベント件数。</summary>
+        [JsonPropertyName("eventCount")]
+        public int EventCount { get; set; }
+
+        /// <summary>
+        /// 日次棒グラフ用の Cursor 段。
+        /// キャッシュ読込は桁が飛び抜けて他ツールと並ばないため含めない。
+        /// </summary>
+        [JsonIgnore]
+        public long ChartTokens => InputTokens + OutputTokens + CacheWriteTokens;
     }
 
     /// <summary>
