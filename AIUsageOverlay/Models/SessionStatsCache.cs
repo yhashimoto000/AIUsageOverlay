@@ -12,8 +12,12 @@ namespace AIUsageOverlay.Models
         /// <summary>
         /// 現在のスキーマ版数。分類ルールや指標定義を変えたら上げる。
         /// 版が違えば全件再パースする（設計書 6 章）。
+        ///
+        /// 2: キャッシュ書き込みを TTL 別（cacheCreate5m / cacheCreate1h）に持つようにした。
+        ///    版を据え置くと、既存のキャッシュを流用したセッションは内訳が 0 のままとなり、
+        ///    コスト換算で全量が「保持時間不明」に落ちる。
         /// </summary>
-        public const int CurrentSchemaVersion = 1;
+        public const int CurrentSchemaVersion = 2;
 
         /// <summary>キャッシュのスキーマ版数。</summary>
         [JsonPropertyName("schemaVersion")]
