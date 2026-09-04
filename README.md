@@ -8,7 +8,7 @@ Claude.ai、GitHub Copilot、Codex の使用量を Windows 画面上に常時表
 ## 機能
 
 - Claude.ai の**セッション・週間使用率**、GitHub Copilot の**AI credits**、
-  Codex の**週間使用率**を表示
+  Codex の**週間使用率**、Cursor の**プラン枠・Auto/指名モデル枠**を表示
 - **残り時間・リセット時刻・予定比・枯渇予測**を表示
 - 縦積み、コンパクト、詳細のオーバーレイ表示を切り替え可能
 - 使用率推移のスパークライン、stale（取得失敗中）の減光表示
@@ -21,8 +21,10 @@ Claude.ai、GitHub Copilot、Codex の使用量を Windows 画面上に常時表
 - **トレイアイコンを4形式から選択**（リング / 2段バー / ドーナツ / 数字）
 - **トレイアイコンにカーソルを合わせると使用率を表示**（例: "セッション: 75%  週間: 10%"）
 - GitHub Releases を利用した**新バージョン確認**（通知とReleaseページへの案内）
-- **使用量レポート**（Claude Code / Codex のローカル履歴から、
+- **Cursor のトークン累積**（ダッシュボードの API レスポンスを傍受して月別に蓄積）
+- **使用量レポート**（Claude Code / Codex / Cursor のローカル履歴から、
   プロジェクト別・日別・作業内容別の使用量を 1 枚の HTML にまとめる）
+- レポートの**コスト換算**（種別ごとの単価で重み付けした構成比。金額は出さない）
 
 ---
 
@@ -72,8 +74,12 @@ Release の `checksums.txt` には zip の SHA256 が記載されています。
 | ログイン - Claude | claude.ai |
 | ログイン - GitHub | GitHub Copilot |
 | ログイン - Codex | ChatGPT Codex |
+| ログイン - Cursor | cursor.com |
 
 ログイン完了後、ウィンドウを閉じて ↺ ボタンを押すと使用量が反映されます。
+
+> Cursor は既定で非表示です。**設定 → 「Cursor の使用状況を表示する」を ON にしてから**
+> ログインしてください。
 
 > ログイン情報は `%TEMP%\AIUsageOverlay_WebView2` に保存され、  
 > **次回以降は自動ログイン**されます（Cookie の手動入力は不要です）。
@@ -90,7 +96,7 @@ Release の `checksums.txt` には zip の SHA256 が記載されています。
 | 適応更新間隔 | 操作状況・表示状態・電源状態に応じて取得間隔を延長 |
 | Windows 起動時に自動起動 | チェックで HKCU\...\Run に登録 |
 | 自動で更新を確認する | GitHub Releases を24時間ごとに確認 |
-| 表示項目 | Copilot / Codex、リセット時刻、ペース、スパークラインの表示設定 |
+| 表示項目 | Copilot / Codex / Cursor、リセット時刻、ペース、スパークラインの表示設定 |
 | 外観 | レイアウト、トレイアイコン、色の閾値、マーカー、不透明度 |
 | 通知 | 使用率閾値、リセット完了、100%到達の通知設定 |
 
@@ -114,7 +120,7 @@ Releaseページからzipを取得し、終了した旧版のフォルダを新�
 | ドラッグ | オーバーレイを好きな場所へ移動（位置は自動保存） |
 | ↺ ボタン | 今すぐ更新 |
 | 右クリック → 設定 | 設定画面を開く |
-| 右クリック → ログイン - Claude / GitHub / Codex | WebView2ブラウザで各サービスへログイン |
+| 右クリック → ログイン - Claude / GitHub / Codex / Cursor | WebView2ブラウザで各サービスへログイン |
 | 右クリック → セッションリセット | セッションタイマーをリセット |
 | 右クリック → 使用量レポートを生成 | ローカル履歴を集計して HTML を作り、既定ブラウザで開く |
 | 右クリック → レポートのフォルダを開く | 生成済みレポートの保存先をエクスプローラで開く |
@@ -257,7 +263,7 @@ Releaseページからzipを取得し、終了した旧版のフォルダを新�
 
 #### 履歴が消える前に
 
-Claude Code / Codex の履歴ファイルは、各ツールの保持期間を過ぎると削除されます。
+Claude Code / Codex / Cursor の履歴ファイルは、各ツールの保持期間を過ぎると削除されます。
 本機能は一度取り込んだ集計を `%AppData%\AIUsageOverlay\session-stats-cache.json` に
 残し続けるので、**レポートを作った時点までの記録は保持されます。**
 履歴ファイルが消えても、このキャッシュにあるセッションは以降のレポートにも出続けます。
@@ -269,6 +275,24 @@ Claude Code / Codex の履歴ファイルは、各ツールの保持期間を過
 
 そのため、**7 日以上レポートを作っていないとトレイ通知でお知らせします**
 （設定 → 「レポート未作成を通知する」で OFF にできます）。
+
+#### Cursor のトークンは別扱い
+
+**Cursor のローカル履歴にはトークン数が入っていません。** そのため Cursor のセッションは
+件数や作業内容としては集計されますが、トークンは 0 として扱われます
+（コスト換算の対象にもなりません）。
+
+代わりに、Cursor のダッシュボードを読みに行くたびに API のレスポンスを傍受して
+`%AppData%\AIUsageOverlay\cursor-tokens.json` へ月別に蓄積し、
+レポートの「Cursor トークン累積」ブロックに出しています。
+**アプリが起動していなかった期間の分は取れません。**
+
+過去の月をまとめて取り込みたいときは、次のようにアプリを起動します。
+取得だけ行って自動的に終了します。
+
+```bash
+AIUsageOverlay.exe --fetch-cursor-month=2026-08
+```
 
 ### トレイアイコンの色の意味
 
@@ -441,14 +465,16 @@ AIUsageOverlay/
 │   └── Report/              # 使用量レポートの HTML テンプレート（埋め込みリソース）
 ├── Models/
 │   ├── AppSettings.cs       # 表示・通知・更新確認・レポートなどの設定
-│   ├── *UsageData.cs        # Claude / Copilot / Codex の使用量モデル
+│   ├── *UsageData.cs        # Claude / Copilot / Codex / Cursor の使用量モデル
 │   ├── UsagePace.cs         # 予定比・枯渇予測
 │   ├── UpdateInfo.cs        # GitHub Release の更新情報
+│   ├── CursorTokenRecord.cs # Cursor のトークン累積（cursor-tokens.json）
 │   └── SessionStats*.cs     # 使用量レポートの集計レコードとキャッシュ
 ├── Services/
 │   ├── ClaudeApiClient.cs   # WebView2 で claude.ai API を呼び出す
 │   ├── GitHubWebScraper.cs  # GitHub Copilot 使用量取得
 │   ├── CodexWebScraper.cs   # Codex 使用量取得
+│   ├── CursorWebScraper.cs  # Cursor 使用量取得とトークンイベントの傍受
 │   ├── Parsing/             # 各サービスJSON・Release・SemVer・履歴JSONLの純粋パーサ
 │   ├── SessionStats/        # 履歴の走査・重複排除・分類・集計・HTML生成
 │   ├── UpdateCheckService.cs # GitHub Release取得とバージョン比較
@@ -475,13 +501,15 @@ AIUsageOverlay/
 
 **使用量レポート生成フロー:**
 1. トレイメニューから起動。名前付き Mutex で多重起動時の同時集計を防ぐ
-2. `SessionStatsScanner` が `.claude\projects` と `.codex\sessions` を走査。
+2. `SessionStatsScanner` が `.claude\projects` / `.codex\sessions` /
+   `.cursor\projects`（`agent-transcripts` 配下）を走査。
    前回から変わっていないファイルはキャッシュのレコードを流用する
 3. `Services/Parsing/` のパーサが JSONL を 1 行ずつ構造体へ変換する
 4. 重複を除いて正規化する。Claude Code は同じ応答が複数行に書かれるため
    `(requestId, message.id)` で一意化し、Codex は `session_meta.id`（スレッド固有 ID）で数える
 5. `PhaseClassifier` がツール実行を 調査 / 実装 / テスト / 対話 / 未分類 へ分類する
-6. `SessionStatsAggregator` が期間・プロジェクト・日・モデル別に畳む
+6. `SessionStatsAggregator` が期間・プロジェクト・日・モデル別に畳み、
+   `ModelPricing` の単価表でコスト換算の構成比を求める（単価不明のモデルは除外）
 7. `UsageReportRenderer` が埋め込みテンプレートへ JSON を差し込み、HTML を書き出す
 8. 既定ブラウザで開く
 
@@ -499,7 +527,8 @@ AIUsageOverlay/
 - **更新確認は公開情報のGETのみ** — GitHub Releasesへ利用データ・認証情報・テレメトリを送信しない
 - **認証情報の保存場所** — `%TEMP%\AIUsageOverlay_WebView2`（WebView2 の標準プロファイル）
 - **設定・計測ファイル** — `%AppData%\AIUsageOverlay\`
-  （`settings.json` / `usage.json` / `history.json` / `session-stats-cache.json`）
+  （`settings.json` / `usage.json` / `history.json` / `session-stats-cache.json` /
+  `cursor-tokens.json`）
 - **使用量レポートはローカル完結** — 履歴ファイルは読み取り専用で開き、書き込まない。
   生成した HTML は外部参照を一切持たず、スクリプトからの通信も行わない
 - **レポートに載る情報** — 各セッションの最初の指示文の先頭 64 文字（設定で OFF 可）と、
