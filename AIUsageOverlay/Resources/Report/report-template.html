@@ -209,7 +209,8 @@ tr.detail > td {
 }
 .mini tr:last-child td { border-bottom: none; }
 .mini td.num { text-align: right; font-variant-numeric: tabular-nums; }
-.mini td.grow { width: 100%; }
+.mini th.num { text-align: right; }
+.mini td.grow, .mini th.grow { width: 100%; text-align: left; }
 .detail-prompt {
   font-size: 12px; color: var(--text); background: var(--surface-2);
   border-left: 3px solid var(--border); padding: 6px 10px; margin: 0 0 10px;
@@ -296,6 +297,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
       <div class="legend" id="cost-legend" style="margin-top:8px"></div>
       <p class="note" id="cost-diagnosis"></p>
       <p class="note" id="cost-excluded"></p>
+      <div id="cost-prices"></div>
     </div>
 
     <div class="block" id="block-daily">
@@ -718,30 +720,21 @@ function renderCost() {
   const legend = document.getElementById("cost-legend");
   const diag = document.getElementById("cost-diagnosis");
   const excl = document.getElementById("cost-excluded");
+  const prices = document.getElementById("cost-prices");
   chart.textContent = "";
   legend.textContent = "";
   excl.textContent = "";
+  prices.textContent = "";
+  renderCostPrices(prices, c.prices || []);
 
   if (!c.available) {
     diag.textContent = "単価が分かっているモデルの実績がないため、この期間は換算できません。";
     return;
   }
 
-  // 書き込みは TTL で単価が違うが、帯は 1 本にまとめて内訳は文章で添える
-  const write = (c.cacheWrite5mPercent || 0) + (c.cacheWrite1hPercent || 0) +
-                (c.cacheWriteUnknownPercent || 0);
-  const parts = [
-    { key: "in",  label: "新規入力",        value: c.inputPercent || 0,     varName: "--phase-investigate" },
-    { key: "cc",  label: "キャッシュ書き込み", value: write,                  varName: "--phase-dialogue" },
-    { key: "cr",  label: "キャッシュ読み込み", value: c.cacheReadPercent || 0, varName: "--phase-unknown" },
-    { key: "out", label: "出力",            value: c.outputPercent || 0,    varName: "--phase-implement" },
-  ];
+  const parts = costParts(c);
   chart.appendChild(stackedBar(parts, 800, 22));
-  parts.forEach(p => {
-    legend.appendChild(el("span", {
-      class: "lg-" + p.key, text: p.label + " " + p.value.toFixed(1) + " %",
-    }));
-  });
+  fillCostLegend(legend, parts);
 
   const read = c.cacheReadPercent || 0;
   let text = "キャッシュ読み込みはコスト換算で " + read.toFixed(1) + " % です。" +
@@ -761,6 +754,45 @@ function renderCost() {
       " トークンは換算から除いています（" + (c.excludedModels || []).join(" / ") +
       "）。Codex はキャッシュ書き込み量が記録されず保持時間の区分も無いため、常に除外します。";
   }
+}
+
+/* 換算に使った単価の一覧（参考値）。
+   単価は改定され得るため、どの前提で計算したレポートかを残す。 */
+function renderCostPrices(host, rows) {
+  if (!rows.length) { return; }
+
+  const head = el("thead", {}, [el("tr", {}, [
+    el("th", { class: "grow", text: "モデル" }),
+    el("th", { class: "num", text: "入力" }),
+    el("th", { class: "num", text: "出力" }),
+    el("th", { class: "num", text: "キャッシュ読み込み" }),
+    el("th", { class: "num", text: "書き込み（5 分）" }),
+    el("th", { class: "num", text: "書き込み（1 時間）" }),
+  ])]);
+  const body = el("tbody", {});
+  rows.forEach(r => {
+    body.appendChild(el("tr", {}, [
+      el("td", { class: "grow", text: r.model }),
+      el("td", { class: "num", text: usd(r.input) }),
+      el("td", { class: "num", text: usd(r.output) }),
+      el("td", { class: "num", text: usd(r.cacheRead) }),
+      el("td", { class: "num", text: usd(r.cacheWrite5m) }),
+      el("td", { class: "num", text: usd(r.cacheWrite1h) }),
+    ]));
+  });
+
+  host.appendChild(el("p", { class: "note", text:
+    "換算に使った単価（100 万トークンあたりの USD、参考値）。請求額ではありません。" }));
+  const table = el("table", { class: "mini" });
+  table.appendChild(head);
+  table.appendChild(body);
+  host.appendChild(el("div", { class: "scroll-x" }, [table]));
+}
+
+/* 単価の表示。$0.5 と $0.025 が並ぶので、小さい値は桁を増やす */
+function usd(v) {
+  v = v || 0;
+  return "$" + (v >= 1 ? v.toFixed(2) : v.toFixed(3));
 }
 
 /* ── プロジェクト表 ───────────────────────────────────────── */
@@ -815,6 +847,25 @@ function tokenParts(s) {
     { key: "cr",  label: "キャッシュ読込", value: cacheRead,          varName: "--phase-unknown" },
     { key: "out", label: "出力",         value: t.output || 0,      varName: "--phase-implement" },
   ];
+}
+
+/* コスト換算の内訳。書き込みは TTL で単価が違うが、帯は 1 本にまとめて内訳は文章で添える */
+function costParts(c) {
+  const write = (c.cacheWrite5mPercent || 0) + (c.cacheWrite1hPercent || 0) +
+                (c.cacheWriteUnknownPercent || 0);
+  return [
+    { key: "in",  label: "新規入力",         value: c.inputPercent || 0,     varName: "--phase-investigate" },
+    { key: "cc",  label: "キャッシュ書き込み", value: write,                   varName: "--phase-dialogue" },
+    { key: "cr",  label: "キャッシュ読み込み", value: c.cacheReadPercent || 0, varName: "--phase-unknown" },
+    { key: "out", label: "出力",             value: c.outputPercent || 0,    varName: "--phase-implement" },
+  ];
+}
+
+/* コスト換算の凡例を host へ流し込む。値は構成比なので % を添える */
+function fillCostLegend(host, parts) {
+  parts.forEach(p => host.appendChild(el("span", {
+    class: "lg-" + p.key, text: p.label + " " + p.value.toFixed(1) + " %",
+  })));
 }
 
 /* 内訳を横帯にする。合計 0 のときは空の帯を返す */
@@ -937,7 +988,30 @@ function detailContent(s, children) {
       ? "Codex はキャッシュ読込が入力の内数のため、新規入力は差し引いた値です。"
       : null));
 
-  // 3. 何をしていたか
+  // 3. コスト換算。単価が分からないモデル（Codex を含む）は換算できないので理由を出す
+  const cost = s.cost || {};
+  if (cost.available) {
+    const costBars = costParts(cost);
+    const cLegend = el("div", { class: "legend", style: "margin-top:8px" });
+    fillCostLegend(cLegend, costBars);
+    const costRows = [
+      ["キャッシュ書き込み（5 分）", (cost.cacheWrite5mPercent || 0).toFixed(1) + " %"],
+      ["キャッシュ書き込み（1 時間）", (cost.cacheWrite1hPercent || 0).toFixed(1) + " %"],
+    ];
+    if ((cost.cacheWriteUnknownPercent || 0) > 0) {
+      costRows.push(["書き込み（保持時間不明）", cost.cacheWriteUnknownPercent.toFixed(1) + " %"]);
+    }
+    grid.appendChild(detailCard("コスト換算",
+      [stackedBar(costBars), cLegend, miniKeyValue(costRows)],
+      "単価で重み付けした構成比です。上のトークン数の割合とは別物で、金額ではありません。"));
+  } else if ((cost.excludedTokens || 0) > 0) {
+    grid.appendChild(detailCard("コスト換算",
+      [el("p", { class: "hint", text:
+        "単価が分かっているモデルを使っていないため、換算できません（" +
+        (cost.excludedModels || []).join(" / ") + "）。" })]));
+  }
+
+  // 4. 何をしていたか
   const phaseRows = PHASES
     .map(p => ({ name: p.label, value: (s.phases || {})[p.key] || 0 }))
     .filter(r => r.value > 0);
@@ -946,7 +1020,7 @@ function detailContent(s, children) {
      phaseRows.length ? miniBarTable(phaseRows, " 回") : el("p", { class: "hint", text: "ツール実行の記録がありません。" })],
     "ツールを実行した回数です。かけた時間ではありません。"));
 
-  // 4. モデル別（1 件しか無くても内訳として出す）
+  // 5. モデル別（1 件しか無くても内訳として出す）
   if ((s.byModel || []).length) {
     const table = el("table", { class: "mini" });
     const head = el("thead", {}, [el("tr", {}, [
@@ -970,28 +1044,28 @@ function detailContent(s, children) {
         : null));
   }
 
-  // 5. ツール別
+  // 6. ツール別
   if ((s.tools || []).length) {
     grid.appendChild(detailCard("使ったツール",
       [miniBarTable(s.tools.map(t => ({ name: t.name, value: t.count })), " 回")],
       "上位のみ表示しています。"));
   }
 
-  // 6. 判別できなかったコマンド
+  // 7. 判別できなかったコマンド
   if ((s.unknownCommands || []).length) {
     grid.appendChild(detailCard("判別できなかったコマンド",
       [miniBarTable(s.unknownCommands.map(u => ({ name: u.name, value: u.count })), " 回")],
       "何の作業か決められなかったコマンドです。"));
   }
 
-  // 7. 日別（またいだ場合だけ）
+  // 8. 日別（またいだ場合だけ）
   if ((s.byDay || []).length > 1) {
     grid.appendChild(detailCard("日別",
       [miniBarTable(s.byDay.map(d => ({ name: d.date, value: d.billable })))],
       "日をまたいだセッションです。ターンが始まった時刻の日に数えています。"));
   }
 
-  // 8. サブエージェント
+  // 9. サブエージェント
   if ((children || []).length) {
     const rows = children
       .slice()
@@ -1001,7 +1075,7 @@ function detailContent(s, children) {
       "消費トークンの多い順。値は各サブエージェント単独の分です。"));
   }
 
-  // 9. データ品質
+  // 10. データ品質
   const quality = [];
   if (s.rawRecords > 0) {
     quality.push(["読み取った応答の記録", fmt(s.rawRecords)]);

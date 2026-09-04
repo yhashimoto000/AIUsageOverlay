@@ -98,6 +98,12 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>トークンの内訳。どこに量が寄っているかを見るために持つ。</summary>
         public TokenDetailView Tokens { get; set; } = new();
 
+        /// <summary>
+        /// このセッションのコスト換算（単価表に無いモデルと Codex は除外）。
+        /// 単価の一覧は含めない（期間側に 1 つだけ出す）。
+        /// </summary>
+        public CostView Cost { get; set; } = new();
+
         /// <summary>モデル別の内訳。セッション内でモデルが変わる場合に効く。</summary>
         public List<SessionModelView> ByModel { get; set; } = new();
 
@@ -327,6 +333,38 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>除外したモデル名。除外を隠さないため必ず出す。</summary>
         public List<string> ExcludedModels { get; set; } = new();
+
+        /// <summary>
+        /// 換算に使った単価の一覧（参考値）。単価は改定され得るため、
+        /// どの前提で計算したレポートかが後から分かるように残す。
+        /// セッションごとの明細では空にする（同じ表が何百回も JSON に載るため）。
+        /// </summary>
+        public List<ModelPriceView> Prices { get; set; } = new();
+    }
+
+    /// <summary>
+    /// 換算に使った単価 1 行。すべて 100 万トークンあたりの USD。
+    /// 請求額ではなく、種別ごとの重みを示すための参考値として出す。
+    /// </summary>
+    public class ModelPriceView
+    {
+        /// <summary>モデル名。</summary>
+        public string Model { get; set; } = string.Empty;
+
+        /// <summary>入力の単価。</summary>
+        public double Input { get; set; }
+
+        /// <summary>出力の単価。</summary>
+        public double Output { get; set; }
+
+        /// <summary>キャッシュ読み込みの単価。</summary>
+        public double CacheRead { get; set; }
+
+        /// <summary>キャッシュ書き込み（5 分 TTL）の単価。</summary>
+        public double CacheWrite5m { get; set; }
+
+        /// <summary>キャッシュ書き込み（1 時間 TTL）の単価。</summary>
+        public double CacheWrite1h { get; set; }
     }
 
     /// <summary>名前と件数だけの汎用行。</summary>
@@ -612,6 +650,7 @@ namespace AIUsageOverlay.Services.SessionStats
                     CacheRead = s.Tokens.CacheRead,
                     Reasoning = s.Tokens.Reasoning,
                 },
+                Cost = BuildSessionCost(s),
                 ByModel = s.ByModel
                     .Select(m => new SessionModelView
                     {
@@ -767,7 +806,7 @@ namespace AIUsageOverlay.Services.SessionStats
             view.ProjectCount = projects.Count;
             view.ByProject = projects.Values.OrderByDescending(p => p.Billable).ToList();
             view.ByModel = models.Values.OrderByDescending(m => m.Billable).ToList();
-            view.Cost = cost.Build();
+            view.Cost = cost.Build(withPrices: true);
             view.ByPhase = phases;
             view.ByTool = tools
                 .OrderByDescending(kv => kv.Value)
@@ -839,6 +878,23 @@ namespace AIUsageOverlay.Services.SessionStats
             ToolScanStatus.Unreadable => "unreadable",
             _ => "notUsed",
         };
+
+        /// <summary>
+        /// セッション 1 件分のコスト換算を作る。
+        /// 単価はモデルごとに違うため、セッション合計ではなくモデル別内訳から積む。
+        /// 単価の一覧は含めない（同じ表がセッションの数だけ JSON に載るのを避ける）。
+        /// </summary>
+        /// <param name="record">対象のセッション</param>
+        /// <returns>コスト換算の内訳</returns>
+        private static CostView BuildSessionCost(SessionStatsRecord record)
+        {
+            var acc = new CostAccumulator();
+            foreach (var m in record.ByModel)
+            {
+                acc.Add(record.Tool, m.Model, m.Tokens);
+            }
+            return acc.Build();
+        }
 
         /// <summary>件数辞書を加算合成する。</summary>
         /// <param name="target">加算先</param>

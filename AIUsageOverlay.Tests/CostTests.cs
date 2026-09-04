@@ -197,6 +197,33 @@ public class CostTests
     }
 
     /// <summary>
+    /// 単価の一覧は求めたときだけ入れる。
+    /// セッションごとの明細に同じ表を載せると、JSON がセッションの数だけ膨らむ。
+    /// </summary>
+    [Fact]
+    public void C11_単価一覧は求めたときだけ含める()
+    {
+        var acc = new CostAccumulator();
+        acc.Add(SessionStatsRecord.ToolClaudeCode, "claude-opus-5",
+            new TokenTotals { Input = 100, Output = 100 });
+        acc.Add(SessionStatsRecord.ToolClaudeCode, "claude-unlisted-9",
+            new TokenTotals { Input = 100, Output = 100 });
+
+        Assert.Empty(acc.Build().Prices);
+
+        var withPrices = acc.Build(withPrices: true).Prices;
+
+        // 換算に使ったモデルだけが載る（除外したモデルの単価は無い）
+        var price = Assert.Single(withPrices);
+        Assert.Equal("claude-opus-5", price.Model);
+        Assert.Equal(5.0, price.Input);
+        Assert.Equal(25.0, price.Output);
+        Assert.Equal(0.5, price.CacheRead);      // 5 × 0.1
+        Assert.Equal(6.25, price.CacheWrite5m);  // 5 × 1.25
+        Assert.Equal(10.0, price.CacheWrite1h);  // 5 × 2.0
+    }
+
+    /// <summary>
     /// Codex は換算対象にしない。キャッシュ書き込み量が記録されず、
     /// TTL の区分も無く、モデル名が公開単価表と対応しないため。
     /// </summary>
