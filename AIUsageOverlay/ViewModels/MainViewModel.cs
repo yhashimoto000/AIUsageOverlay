@@ -907,8 +907,7 @@ namespace AIUsageOverlay.ViewModels
                 // デザイン刷新 2b: メタ行の主テキスト（相対は "残り X"、絶対はリセット時刻をそのまま）
                 CodexMetaPrimary = BuildMetaPrimary(absolute ? "absolute" : "relative", CodexDetailText);
 
-                // CodexStatusText/CodexSubText は現行 XAML では未バインド（1a 刷新で右側ステータス撤去済み）。
-                // 後方互換のため主軸の値で更新のみ行う（表示には影響しない）。
+                // 取得失敗時の表示にも再利用するため、正常時は主軸の値で更新しておく。
                 CodexStatusText = $"{mainPercent}%";
                 CodexSubText    = CodexDetailText;
             }
