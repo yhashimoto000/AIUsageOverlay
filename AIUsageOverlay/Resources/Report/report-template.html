@@ -21,6 +21,7 @@
   --claude: #c96442;
   --codex: #10a37f;
   --cursor: #7c5cdc;
+  --cowork: #14b8a6;
   --phase-investigate: #3b82f6;
   --phase-implement: #16a34a;
   --phase-test: #d97706;
@@ -45,6 +46,7 @@
     --accent-soft: #24334f;
     --claude: #e08464;
     --codex: #35c79f;
+    --cowork: #5eead4;
     --phase-investigate: #60a5fa;
     --phase-implement: #4ade80;
     --phase-test: #fbbf24;
@@ -70,6 +72,7 @@
   --claude: #e08464;
   --codex: #35c79f;
   --cursor: #a78bfa;
+  --cowork: #5eead4;
   --phase-investigate: #60a5fa;
   --phase-implement: #4ade80;
   --phase-test: #fbbf24;
@@ -175,6 +178,7 @@ tbody tr:hover { background: var(--surface-2); }
 .badge.claude { color: var(--claude); border-color: var(--claude); background: transparent; }
 .badge.codex { color: var(--codex); border-color: var(--codex); background: transparent; }
 .badge.cursor { color: var(--cursor); border-color: var(--cursor); background: transparent; }
+.badge.cowork { color: var(--cowork); border-color: var(--cowork); background: transparent; }
 .badge.warn { color: var(--warn-text); background: var(--warn-bg); border-color: var(--warn-border); }
 
 .toggle-child {
@@ -231,6 +235,7 @@ tr.detail > td {
 .legend .lg-claude::before { background: var(--claude); }
 .legend .lg-codex::before { background: var(--codex); }
 .legend .lg-cursor::before { background: var(--cursor); }
+.legend .lg-cowork::before { background: var(--cowork); }
 .legend .lg-investigate::before { background: var(--phase-investigate); }
 .legend .lg-implement::before { background: var(--phase-implement); }
 .legend .lg-test::before { background: var(--phase-test); }
@@ -290,12 +295,12 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
     <div class="cards" id="kpi-cards"></div>
 
     <div class="block" id="block-cost">
-      <h2>コスト換算の内訳</h2>
+      <h2>API利用相当（参考）</h2>
       <p class="note">
-        トークンは種別ごとに単価が違います。キャッシュ読み込みは入力の 0.1 倍、
+        公開されたAPI換算係数の数値部分で重み付けした、無通貨の参考ポイントです。
+        キャッシュ読み込みは入力の 0.1 倍、
         キャッシュ書き込みは 1.25 倍（5 分保持）または 2.0 倍（1 時間保持）、出力は 5 倍です。
-        その重みを掛けた構成比を出しています。<strong>トークン数の割合とは別物</strong>です。
-        金額は出していません（定額プランでは支払額と結び付かないためです）。
+        <strong>トークン数の割合とは別物</strong>で、実際の利用量や契約上の計算結果を示すものではありません。
       </p>
       <div class="scroll-x"><div id="chart-cost"></div></div>
       <div class="legend" id="cost-legend" style="margin-top:8px"></div>
@@ -312,7 +317,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
       </p>
       <div class="scroll-x"><div id="chart-daily"></div></div>
       <div class="legend" style="margin-top:8px">
-        <span class="lg-claude">Claude Code</span><span class="lg-codex">Codex</span><span class="lg-cursor">Cursor</span>
+        <span class="lg-claude">Claude Code</span><span class="lg-cowork">Cowork</span><span class="lg-codex">Codex</span><span class="lg-cursor">Cursor</span>
       </div>
     </div>
 
@@ -360,7 +365,8 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
       </p>
       <div class="filters">
         <label>ツール <select id="session-tool"><option value="">すべて</option>
-          <option value="claude-code">Claude Code</option><option value="codex">Codex</option><option value="cursor">Cursor</option></select></label>
+          <option value="claude-code">Claude Code</option><option value="cowork">Cowork</option>
+          <option value="codex">Codex</option><option value="cursor">Cursor</option></select></label>
         <label>プロジェクト <select id="session-project"><option value="">すべて</option></select></label>
         <label><input type="checkbox" id="session-expand"> サブエージェントを開く</label>
         <input type="search" id="session-search" placeholder="指示文・プロジェクト・モデルで検索" size="34">
@@ -434,6 +440,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
       <p class="note">
         重複排除と分類は、どちらも「除外した」「決められなかった」という負の情報を持ちます。
         それを隠すと数字が実態より確からしく見えるため、実績をここに出しています。
+        Cowork はローカルCoworkのみ。クラウドは含まれないため、Cowork全体の実績とは一致しない場合があります。
       </p>
       <dl class="kv" id="quality-kv"></dl>
     </div>
@@ -497,6 +504,34 @@ let sessionSort = { key: "start", desc: true };
 /* ── 共通ユーティリティ ───────────────────────────────────── */
 
 function fmt(n) { return (n || 0).toLocaleString("ja-JP"); }
+
+/* DTO側の整形済み文字列を正とし、旧DTOを開いた場合だけ同じSI接頭辞で補完する。 */
+function fmtApiPoints(value, formatted) {
+  if (formatted) { return formatted; }
+  const n = Number(value || 0);
+  const abs = Math.abs(n);
+  if (abs >= 1e9) { return (n / 1e9).toLocaleString("ja-JP", { maximumFractionDigits: 2 }) + " GAP"; }
+  if (abs >= 1e6) { return (n / 1e6).toLocaleString("ja-JP", { maximumFractionDigits: 2 }) + " MAP"; }
+  if (abs >= 1e3) { return (n / 1e3).toLocaleString("ja-JP", { maximumFractionDigits: 2 }) + " kAP"; }
+  return n.toLocaleString("ja-JP", { maximumFractionDigits: 2 }) + " AP";
+}
+
+function fmtBytes(bytes) {
+  let value = Math.max(0, Number(bytes || 0));
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
+  return value.toLocaleString("ja-JP", { maximumFractionDigits: unit === 0 ? 0 : 1 }) + " " + units[unit];
+}
+
+/* 未知の識別子をClaude Codeへ誤分類しない。 */
+function toolMeta(tool) {
+  if (tool === "claude-code") { return { label: "Claude Code", css: "claude" }; }
+  if (tool === "cowork") { return { label: "Cowork", css: "cowork" }; }
+  if (tool === "codex") { return { label: "Codex", css: "codex" }; }
+  if (tool === "cursor") { return { label: "Cursor", css: "cursor" }; }
+  return { label: "不明（" + (tool || "識別子なし") + "）", css: "" };
+}
 
 function fmtCompact(n) {
   n = n || 0;
@@ -583,7 +618,8 @@ function renderDaily() {
   const w = padL + plotW + padR;
   const h = padT + plotH + padB;
   // Cursor 棒は API 蓄積の入力+出力+キャッシュW（キャッシュR は桁が飛びすぎるため除外）
-  const max = Math.max.apply(null, days.map(d => d.claudeBillable + d.codexBillable + (d.cursorBillable||0))) || 1;
+  const max = Math.max.apply(null, days.map(d =>
+    d.claudeBillable + (d.coworkBillable || 0) + d.codexBillable + (d.cursorBillable || 0))) || 1;
 
   const svg = svgEl("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h });
 
@@ -599,8 +635,9 @@ function renderDaily() {
 
   days.forEach((d, i) => {
     const x = padL + i * (barW + gap);
-    const total = d.claudeBillable + d.codexBillable + (d.cursorBillable||0);
+    const total = d.claudeBillable + (d.coworkBillable || 0) + d.codexBillable + (d.cursorBillable || 0);
     const hClaude = (d.claudeBillable / max) * plotH;
+    const hCowork = ((d.coworkBillable || 0) / max) * plotH;
     const hCodex = (d.codexBillable / max) * plotH;
     const hCursor = ((d.cursorBillable||0) / max) * plotH;
     let y = padT + plotH;
@@ -617,6 +654,13 @@ function renderDaily() {
       const r = svgEl("rect", { x: x, y: y, width: barW, height: hCursor, fill: "var(--cursor)" });
       r.appendChild(svgEl("title", {})).textContent =
         d.date + " Cursor " + fmt(d.cursorBillable);
+      svg.appendChild(r);
+    }
+    if (hCowork > 0) {
+      y -= hCowork;
+      const r = svgEl("rect", { x: x, y: y, width: barW, height: hCowork, fill: "var(--cowork)" });
+      r.appendChild(svgEl("title", {})).textContent =
+        d.date + " Cowork " + fmt(d.coworkBillable);
       svg.appendChild(r);
     }
     if (hClaude > 0) {
@@ -732,7 +776,7 @@ function renderKpi() {
   }
 }
 
-/* ── コスト換算 ───────────────────────────────────────────── */
+/* ── API利用相当（参考）───────────────────────────────────── */
 
 /* 単価で重み付けした構成比を出す。
    トークン数の比ではキャッシュ読み込みが実態より大きく、出力が小さく見えるため、
@@ -750,8 +794,14 @@ function renderCost() {
   prices.textContent = "";
   renderCostPrices(prices, c.prices || []);
 
+  if ((c.excludedTokens || 0) > 0) {
+    excl.textContent = "換算係数が分からないモデルの " + fmt(c.excludedTokens) +
+      " トークンは換算から除いています（" + (c.excludedModels || []).join(" / ") +
+      "）。Codex / Cursor は指標の対象外で、対象率の分母には含めません。";
+  }
+
   if (!c.available) {
-    diag.textContent = "単価が分かっているモデルの実績がないため、この期間は換算できません。";
+    diag.textContent = "換算係数が分かっているモデルの実績がないため、この期間は換算できません。";
     return;
   }
 
@@ -760,7 +810,24 @@ function renderCost() {
   fillCostLegend(legend, parts);
 
   const read = c.cacheReadPercent || 0;
-  let text = "キャッシュ読み込みはコスト換算で " + read.toFixed(1) + " % です。" +
+  const pointRows = [
+    ["合計", fmtApiPoints(c.apiEquivalentPoints, c.apiEquivalentPointsText)],
+  ];
+  (c.apiEquivalentPointsByTool || []).forEach(t => {
+    pointRows.push([toolMeta(t.tool).label, fmtApiPoints(t.points, t.pointsText)]);
+  });
+  if (c.coveragePercent !== null && c.coveragePercent !== undefined) {
+    pointRows.push(["対象率", Number(c.coveragePercent).toFixed(1) + " %"]);
+  }
+  if (c.coefficientReferenceDate) {
+    pointRows.push(["換算係数の確認日", c.coefficientReferenceDate]);
+  }
+  if (c.coefficientSourceUrl) {
+    pointRows.push(["換算係数の参照元", c.coefficientSourceUrl]);
+  }
+  chart.appendChild(miniKeyValue(pointRows));
+
+  let text = "キャッシュ読み込みはAPI利用相当の構成比で " + read.toFixed(1) + " % です。" +
     (read > 50
       ? "半分を超えています。同じ内容を読み直している場面がないか見てください。"
       : "半分を超えていないため、キャッシュは意図どおり働いています。");
@@ -768,19 +835,14 @@ function renderCost() {
     " % / 1 時間保持 " + (c.cacheWrite1hPercent || 0).toFixed(1) + " % です。";
   if ((c.cacheWriteUnknownPercent || 0) > 0) {
     text += " うち " + c.cacheWriteUnknownPercent.toFixed(1) +
-      " % は保持時間の記録が無く、5 分保持の単価で見積もっています。";
+      " % は保持時間の記録が無く、5 分保持の換算係数で見積もっています。";
   }
   diag.textContent = text;
 
-  if ((c.excludedTokens || 0) > 0) {
-    excl.textContent = "単価が分からないモデルの " + fmt(c.excludedTokens) +
-      " トークンは換算から除いています（" + (c.excludedModels || []).join(" / ") +
-      "）。Codex はキャッシュ書き込み量が記録されず保持時間の区分も無いため、常に除外します。";
-  }
 }
 
-/* 換算に使った単価の一覧（参考値）。
-   単価は改定され得るため、どの前提で計算したレポートかを残す。 */
+/* 換算に使った無通貨の係数一覧。
+   係数は改定され得るため、どの前提で計算したレポートかを残す。 */
 function renderCostPrices(host, rows) {
   if (!rows.length) { return; }
 
@@ -796,26 +858,26 @@ function renderCostPrices(host, rows) {
   rows.forEach(r => {
     body.appendChild(el("tr", {}, [
       el("td", { class: "grow", text: r.model }),
-      el("td", { class: "num", text: usd(r.input) }),
-      el("td", { class: "num", text: usd(r.output) }),
-      el("td", { class: "num", text: usd(r.cacheRead) }),
-      el("td", { class: "num", text: usd(r.cacheWrite5m) }),
-      el("td", { class: "num", text: usd(r.cacheWrite1h) }),
+      el("td", { class: "num", text: fmtCoefficient(r.input) }),
+      el("td", { class: "num", text: fmtCoefficient(r.output) }),
+      el("td", { class: "num", text: fmtCoefficient(r.cacheRead) }),
+      el("td", { class: "num", text: fmtCoefficient(r.cacheWrite5m) }),
+      el("td", { class: "num", text: fmtCoefficient(r.cacheWrite1h) }),
     ]));
   });
 
   host.appendChild(el("p", { class: "note", text:
-    "換算に使った単価（100 万トークンあたりの USD、参考値）。請求額ではありません。" }));
+    "換算に使った無通貨の係数（100 万トークンあたり、参考値）。" }));
   const table = el("table", { class: "mini" });
   table.appendChild(head);
   table.appendChild(body);
   host.appendChild(el("div", { class: "scroll-x" }, [table]));
 }
 
-/* 単価の表示。$0.5 と $0.025 が並ぶので、小さい値は桁を増やす */
-function usd(v) {
+/* 換算係数は小さい値だけ桁を増やし、通貨記号を付けない。 */
+function fmtCoefficient(v) {
   v = v || 0;
-  return "$" + (v >= 1 ? v.toFixed(2) : v.toFixed(3));
+  return v >= 1 ? v.toFixed(2) : v.toFixed(3);
 }
 
 /* ── プロジェクト表 ───────────────────────────────────────── */
@@ -972,8 +1034,9 @@ function detailContent(s, children) {
   const grid = el("div", { class: "detail-grid" });
 
   // 1. 基本情報
+  const tool = toolMeta(s.tool);
   const basic = [
-    ["ツール", s.tool === "codex" ? "Codex" : s.tool === "cursor" ? "Cursor" : "Claude Code"],
+    ["ツール", tool.label],
     ["開始", s.start],
     ["終了", s.end],
     ["経過時間", s.elapsedMeasurable ? fmtDuration(s.elapsedSec) : "測定不可"],
@@ -1013,26 +1076,27 @@ function detailContent(s, children) {
       ? "Cursor のローカル履歴にはトークン数が含まれません。日次グラフの Cursor 段はダッシュボード API 蓄積分です。"
       : null));
 
-  // 3. コスト換算。単価が分からないモデル（Codex を含む）は換算できないので理由を出す
+  // 3. API利用相当。換算係数が分からないモデル（Codex を含む）は理由を出す
   const cost = s.cost || {};
   if (cost.available) {
     const costBars = costParts(cost);
     const cLegend = el("div", { class: "legend", style: "margin-top:8px" });
     fillCostLegend(cLegend, costBars);
     const costRows = [
+      ["API換算ポイント", fmtApiPoints(cost.apiEquivalentPoints, cost.apiEquivalentPointsText)],
       ["キャッシュ書き込み（5 分）", (cost.cacheWrite5mPercent || 0).toFixed(1) + " %"],
       ["キャッシュ書き込み（1 時間）", (cost.cacheWrite1hPercent || 0).toFixed(1) + " %"],
     ];
     if ((cost.cacheWriteUnknownPercent || 0) > 0) {
       costRows.push(["書き込み（保持時間不明）", cost.cacheWriteUnknownPercent.toFixed(1) + " %"]);
     }
-    grid.appendChild(detailCard("コスト換算",
+    grid.appendChild(detailCard("API利用相当（参考）",
       [stackedBar(costBars), cLegend, miniKeyValue(costRows)],
-      "単価で重み付けした構成比です。上のトークン数の割合とは別物で、金額ではありません。"));
+      "公開されたAPI換算係数で重み付けした参考値です。上のトークン数の割合とは別物です。"));
   } else if ((cost.excludedTokens || 0) > 0) {
-    grid.appendChild(detailCard("コスト換算",
+    grid.appendChild(detailCard("API利用相当（参考）",
       [el("p", { class: "hint", text:
-        "単価が分かっているモデルを使っていないため、換算できません（" +
+        "換算係数が分かっているモデルを使っていないため、換算できません（" +
         (cost.excludedModels || []).join(" / ") + "）。" })]));
   }
 
@@ -1197,10 +1261,11 @@ function renderSessions() {
     }
     tr.appendChild(first);
 
+    const tool = toolMeta(s.tool);
     const toolCell = el("td", {}, [
       el("span", {
-        class: "badge " + (s.tool === "codex" ? "codex" : s.tool === "cursor" ? "cursor" : "claude"),
-        text: s.tool === "codex" ? "Codex" : s.tool === "cursor" ? "Cursor" : "Claude Code",
+        class: "badge " + tool.css,
+        text: tool.label,
       }),
     ]);
     if (!s.elapsedMeasurable) {
@@ -1342,6 +1407,8 @@ function renderTools() {
 
 function statusLabel(s) {
   if (s === "ok") { return "読み取り済み"; }
+  if (s === "partial") { return "一部読み取り（未対応または不完全な記録あり）"; }
+  if (s === "unsupported") { return "未対応の保存形式"; }
   if (s === "unreadable") { return "読み取り不可（権限等）"; }
   return "未使用（履歴ディレクトリなし）";
 }
@@ -1354,6 +1421,7 @@ function renderQuality() {
   kv.textContent = "";
   const rows = [
     ["Claude Code 履歴", statusLabel(q.claudeStatus) + " / " + q.claudeRoot],
+    ["Cowork 履歴（ローカルのみ）", statusLabel(q.coworkStatus) + " / " + q.coworkRoot],
     ["Codex 履歴", statusLabel(q.codexStatus) + " / " + q.codexRoot],
     ["Cursor 履歴", statusLabel(q.cursorStatus) + " / " + q.cursorRoot],
     ["履歴の範囲", q.oldestRecord + " 〜 " + q.newestRecord],
@@ -1386,6 +1454,15 @@ function renderQuality() {
       : "-"],
     ["Claude Code: 識別子が無くそのまま数えた行", fmt(q.claudeKeylessRecords) +
       " 件（応答の識別子が無い行。捨てずに必ず数えています）"],
+    ["Cowork: 対象ファイル", fmt(q.coworkFiles) + " 件 / " + fmtBytes(q.coworkBytes)],
+    ["Cowork: 読み取った応答の記録", fmt(q.coworkRawRecords) + " 件"],
+    ["Cowork: 重複を除いた後", fmt(q.coworkAcceptedRecords) + " 件"],
+    ["Cowork: 識別子が無くそのまま数えた行", fmt(q.coworkKeylessRecords) +
+      " 件（応答の識別子が無い行。捨てずに必ず数えています）"],
+    ["Cowork: 識別子なし", fmt(q.coworkIdentityMissingSessions) +
+      " 件（専用ルートを根拠にCoworkとして採用）"],
+    ["Cowork: キー衝突", fmt(q.coworkKeyCollisions) +
+      " 件（衝突した記録を別セッションとして保持）"],
     ["Codex: スレッド数", fmt(q.codexThreads) + " 件"],
     ["Codex: うちサブエージェント", fmt(q.codexSubagents) +
       " 件（重複ではなく、それぞれ別の使い手として数えています）"],

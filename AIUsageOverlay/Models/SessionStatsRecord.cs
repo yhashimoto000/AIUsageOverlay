@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace AIUsageOverlay.Models
 {
     /// <summary>
-    /// トークン指標の内訳。Claude Code / Codex の差異を吸収した共通の器。
+    /// トークン指標の内訳。Claude Code / Cowork / Codex の差異を吸収した共通の器。
     /// 設計書 7.1 の「課金相当トークン」「総処理トークン」はここから算出する。
     /// </summary>
     public class TokenTotals
@@ -45,24 +45,30 @@ namespace AIUsageOverlay.Models
 
         /// <summary>
         /// 課金相当トークン（設計書 7.1）。
-        /// Claude Code は input + cacheCreate + output。
+        /// Claude Code / Cowork は input + cacheCreate + output。
         /// Codex は cacheRead が input の内数のため (input - cacheRead) + output。
         /// </summary>
-        /// <param name="tool">SessionStatsRecord.ToolClaudeCode または ToolCodex</param>
-        public long Billable(string tool)
-            => tool == SessionStatsRecord.ToolCodex
-                ? Math.Max(0, Input - CacheRead) + Output
-                : Input + CacheCreate + Output;
+        /// <param name="tool">SessionStatsRecord のツール識別子</param>
+        public long Billable(string tool) => tool switch
+        {
+            SessionStatsRecord.ToolCodex => Math.Max(0, Input - CacheRead) + Output,
+            SessionStatsRecord.ToolClaudeCode or SessionStatsRecord.ToolCowork or
+                SessionStatsRecord.ToolCursor => Input + CacheCreate + Output,
+            _ => 0,
+        };
 
         /// <summary>
         /// 総処理トークン（設計書 7.1）。実際にモデルが処理した量。
-        /// Claude Code は課金相当 + cacheRead、Codex は input + output（= total_tokens）。
+        /// Claude Code / Cowork は課金相当 + cacheRead、Codex は input + output（= total_tokens）。
         /// </summary>
-        /// <param name="tool">SessionStatsRecord.ToolClaudeCode または ToolCodex</param>
-        public long Processed(string tool)
-            => tool == SessionStatsRecord.ToolCodex
-                ? Input + Output
-                : Input + CacheCreate + Output + CacheRead;
+        /// <param name="tool">SessionStatsRecord のツール識別子</param>
+        public long Processed(string tool) => tool switch
+        {
+            SessionStatsRecord.ToolCodex => Input + Output,
+            SessionStatsRecord.ToolClaudeCode or SessionStatsRecord.ToolCowork or
+                SessionStatsRecord.ToolCursor => Input + CacheCreate + Output + CacheRead,
+            _ => 0,
+        };
 
         /// <summary>他方の内訳を自身へ加算する（集計用）。</summary>
         /// <param name="other">加算元</param>
@@ -142,6 +148,9 @@ namespace AIUsageOverlay.Models
         /// <summary>ツール識別子: Claude Code。</summary>
         public const string ToolClaudeCode = "claude-code";
 
+        /// <summary>ツール識別子: Claude Desktop Cowork。</summary>
+        public const string ToolCowork = "cowork";
+
         /// <summary>ツール識別子: Codex。</summary>
         public const string ToolCodex = "codex";
 
@@ -149,7 +158,8 @@ namespace AIUsageOverlay.Models
         public const string ToolCursor = "cursor";
 
         /// <summary>
-        /// 一意キー。「claude:セッションID」「codex:スレッドID」「cursor:セッションID」。
+        /// 一意キー。「claude:セッションID」「cowork:セッションID」
+        /// 「codex:スレッドID」「cursor:セッションID」。
         /// Codex は session_id（会話ツリーのルート ID）ではなく session_meta.id
         /// （スレッド固有 ID）を使う。B0/Q2 の実測で、session_id を鍵にすると
         /// サブエージェント分（全体の 75%）が落ちることを確認した。
@@ -157,7 +167,7 @@ namespace AIUsageOverlay.Models
         [JsonPropertyName("key")]
         public string Key { get; set; } = string.Empty;
 
-        /// <summary>ToolClaudeCode / ToolCodex / ToolCursor。</summary>
+        /// <summary>ToolClaudeCode / ToolCowork / ToolCodex / ToolCursor。</summary>
         [JsonPropertyName("tool")]
         public string Tool { get; set; } = string.Empty;
 
@@ -251,5 +261,13 @@ namespace AIUsageOverlay.Models
         /// </summary>
         [JsonPropertyName("lastLineBroken")]
         public bool LastLineBroken { get; set; }
+
+        /// <summary>Cowork で entrypoint 識別子が無く、専用ルートを根拠に採用したか。</summary>
+        [JsonPropertyName("sourceIdentityMissing")]
+        public bool SourceIdentityMissing { get; set; }
+
+        /// <summary>別ファイルと同一キーが衝突し、ファイル名を付けて保持したか。</summary>
+        [JsonPropertyName("keyCollision")]
+        public bool KeyCollision { get; set; }
     }
 }

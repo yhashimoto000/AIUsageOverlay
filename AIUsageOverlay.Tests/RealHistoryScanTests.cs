@@ -29,15 +29,17 @@ public class RealHistoryScanTests
         }
 
         var scanner = new SessionStatsScanner();
-        var scan = scanner.Scan(cache: null, includePrompt: true);
+        var scan = scanner.Scan(cache: null, includePrompt: false);
 
         var report = SessionStatsAggregator.Build(
-            scan, includePrompt: true, appVersion: "measure", cacheWasCorrupted: false,
+            scan, includePrompt: false, appVersion: "measure", cacheWasCorrupted: false,
             nowLocal: DateTime.Now);
         var all = report.Periods["all"];
 
         var claude = scan.Sessions.Where(s => s.Tool == SessionStatsRecord.ToolClaudeCode).ToList();
+        var cowork = scan.Sessions.Where(s => s.Tool == SessionStatsRecord.ToolCowork).ToList();
         var codex = scan.Sessions.Where(s => s.Tool == SessionStatsRecord.ToolCodex).ToList();
+        var cursor = scan.Sessions.Where(s => s.Tool == SessionStatsRecord.ToolCursor).ToList();
 
         var lines = new List<string>
         {
@@ -47,7 +49,11 @@ public class RealHistoryScanTests
             $"journal.jsonl         : {scan.JournalFileCount}",
             $"読めなかったファイル  : {scan.Files.Count(f => f.SkipReason is not null)}",
             $"セッション            : {scan.Sessions.Count}"
-                + $"（Claude {claude.Count} / Codex {codex.Count}）",
+                + $"（Claude {claude.Count} / Cowork {cowork.Count} / Codex {codex.Count} / Cursor {cursor.Count}）",
+            $"Cowork状態            : {report.Quality.CoworkStatus}",
+            $"Cowork対象ファイル    : {report.Quality.CoworkFiles}",
+            $"Cowork識別子欠落      : {report.Quality.CoworkIdentityMissingSessions}",
+            $"Coworkキー衝突        : {report.Quality.CoworkKeyCollisions}",
             $"サブエージェント      : {scan.Sessions.Count(s => s.IsSubagent)}",
             $"壊れた行              : {scan.Sessions.Sum(s => s.ParseErrors)}",
             $"末尾破損セッション    : {scan.Sessions.Count(s => s.LastLineBroken)}",
@@ -70,7 +76,11 @@ public class RealHistoryScanTests
 
         lines.Add("");
         lines.Add("----- ツール別の分類率 -----");
-        foreach (var (label, group) in new[] { ("Claude Code", claude), ("Codex", codex) })
+        foreach (var (label, group) in new[]
+                 {
+                     ("Claude Code", claude), ("Cowork", cowork),
+                     ("Codex", codex), ("Cursor", cursor),
+                 })
         {
             var counts = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (var s in group)
@@ -86,24 +96,11 @@ public class RealHistoryScanTests
             lines.Add($"  {label,-12}: {rate:F1} %（実行 {total:N0} 回 / 未分類 {unknown:N0} 回）");
         }
 
-        lines.Add("");
-        lines.Add("----- 未分類コマンド 上位 20 -----");
-        foreach (var u in all.UnknownCommands)
-        {
-            lines.Add($"  {u.Name,-28}: {u.Count:N0}");
-        }
-
-        // 目視確認用に実データのレポートを書き出す（実ブラウザでの確認は自動化できない範囲）
-        var htmlPath = new UsageReportRenderer().Render(
-            report, Path.Combine(Path.GetTempPath(), "aiusage-report"), DateTime.Now);
-        lines.Add("");
-        lines.Add($"レポート: {htmlPath}");
-
         var text = string.Join(Environment.NewLine, lines);
         var outputPath = Path.Combine(Path.GetTempPath(), "aiusage-real-scan.txt");
         File.WriteAllText(outputPath, text);
 
         Assert.True(scan.Sessions.Count > 0, "実機履歴が 1 件も読めなかった");
-        throw new Xunit.Sdk.XunitException(text + Environment.NewLine + $"(出力: {outputPath})");
+        Assert.All(scan.Sessions, s => Assert.Null(s.FirstPrompt));
     }
 }

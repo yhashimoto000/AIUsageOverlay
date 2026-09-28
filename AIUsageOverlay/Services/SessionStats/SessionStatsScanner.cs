@@ -15,6 +15,12 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>ディレクトリはあるが読めない（権限・EFS 等）。未使用と区別する。</summary>
         Unreadable,
+
+        /// <summary>一部の履歴だけを採用した。品質画面で理由を併記する。</summary>
+        Partial,
+
+        /// <summary>保存ルートはあるが、対応している履歴形式を確認できない。</summary>
+        Unsupported,
     }
 
     /// <summary>走査の結果。集計とデータ品質タブの両方がここを入力にする。</summary>
@@ -32,8 +38,14 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>Codex 履歴の読み取り状態。</summary>
         public ToolScanStatus CodexStatus { get; set; } = ToolScanStatus.NotUsed;
 
+        /// <summary>Cowork 履歴の読み取り状態。</summary>
+        public ToolScanStatus CoworkStatus { get; set; } = ToolScanStatus.NotUsed;
+
         /// <summary>Cursor 履歴の読み取り状態。</summary>
         public ToolScanStatus CursorStatus { get; set; } = ToolScanStatus.NotUsed;
+
+        /// <summary>Cowork の履歴ルート。</summary>
+        public string CoworkRootPath { get; set; } = string.Empty;
 
         /// <summary>今回パースしたファイル数（キャッシュ流用を除く）。</summary>
         public int ParsedFileCount { get; set; }
@@ -75,8 +87,11 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>このインスタンスが走査する Cursor の履歴ルート。</summary>
         private readonly string _cursorRoot;
 
+        /// <summary>このインスタンスが走査する Cowork の履歴ルート。</summary>
+        private readonly string _coworkRoot;
+
         /// <summary>実機の履歴ルートで初期化する。</summary>
-        public SessionStatsScanner() : this(ClaudeRoot, CodexRoot, CursorRoot)
+        public SessionStatsScanner() : this(ClaudeRoot, CodexRoot, CursorRoot, CoworkRoot)
         {
         }
 
@@ -87,7 +102,7 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <param name="claudeRoot">Claude Code の履歴ルート</param>
         /// <param name="codexRoot">Codex の履歴ルート</param>
         public SessionStatsScanner(string claudeRoot, string codexRoot)
-            : this(claudeRoot, codexRoot, cursorRoot: string.Empty)
+            : this(claudeRoot, codexRoot, cursorRoot: string.Empty, coworkRoot: string.Empty)
         {
         }
 
@@ -96,10 +111,22 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <param name="codexRoot">Codex の履歴ルート</param>
         /// <param name="cursorRoot">Cursor の履歴ルート</param>
         public SessionStatsScanner(string claudeRoot, string codexRoot, string cursorRoot)
+            : this(claudeRoot, codexRoot, cursorRoot, coworkRoot: string.Empty)
+        {
+        }
+
+        /// <summary>走査するルートを指定して初期化する（テスト用）。</summary>
+        /// <param name="claudeRoot">Claude Code の履歴ルート</param>
+        /// <param name="codexRoot">Codex の履歴ルート</param>
+        /// <param name="cursorRoot">Cursor の履歴ルート</param>
+        /// <param name="coworkRoot">Cowork の履歴ルート</param>
+        public SessionStatsScanner(
+            string claudeRoot, string codexRoot, string cursorRoot, string coworkRoot)
         {
             _claudeRoot = claudeRoot;
             _codexRoot = codexRoot;
             _cursorRoot = cursorRoot;
+            _coworkRoot = coworkRoot;
         }
 
         /// <summary>走査対象の Claude Code 履歴ルート。</summary>
@@ -110,6 +137,9 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>走査対象の Cursor 履歴ルート。</summary>
         public string CursorRootPath => _cursorRoot;
+
+        /// <summary>走査対象の Cowork 履歴ルート。</summary>
+        public string CoworkRootPath => _coworkRoot;
 
         /// <summary>指示文として切り出す最大文字数（設計書 3.5 R1）。</summary>
         private const int PromptMaxLength = 64;
@@ -146,6 +176,14 @@ namespace AIUsageOverlay.Services.SessionStats
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "projects");
 
         /// <summary>
+        /// Claude Desktop Cowork のローカル履歴ルート。
+        /// 走査対象は配下の .claude/projects/**/*.jsonl に限定する。
+        /// </summary>
+        public static string CoworkRoot => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Claude", "local-agent-mode-sessions");
+
+        /// <summary>
         /// 両ツールの履歴を走査し、セッションレコードを作る。
         /// 変化のないファイルは既存キャッシュのレコードを流用する（設計書 3.4 の [2]）。
         /// </summary>
@@ -166,6 +204,7 @@ namespace AIUsageOverlay.Services.SessionStats
                 ClaudeRootPath = _claudeRoot,
                 CodexRootPath = _codexRoot,
                 CursorRootPath = _cursorRoot,
+                CoworkRootPath = _coworkRoot,
             };
 
             // スキーマ版が違えば流用しない（設計書 6 章）
@@ -175,13 +214,15 @@ namespace AIUsageOverlay.Services.SessionStats
                     StringComparer.OrdinalIgnoreCase);
 
             var claudeFiles = EnumerateFiles(_claudeRoot, "*.jsonl", out var claudeStatus);
+            var coworkFiles = EnumerateCoworkTranscripts(_coworkRoot, out var coworkStatus);
             var codexFiles = EnumerateFiles(_codexRoot, "rollout-*.jsonl", out var codexStatus);
             var cursorFiles = EnumerateCursorTranscripts(_cursorRoot, out var cursorStatus);
             result.ClaudeStatus = claudeStatus;
+            result.CoworkStatus = coworkStatus;
             result.CodexStatus = codexStatus;
             result.CursorStatus = cursorStatus;
 
-            var total = claudeFiles.Count + codexFiles.Count + cursorFiles.Count;
+            var total = claudeFiles.Count + coworkFiles.Count + codexFiles.Count + cursorFiles.Count;
             var done = 0;
             // 同じキーのセッションを取り違えないための索引。
             // 実運用では衝突しないが、衝突しても後勝ちで消さないために持つ
@@ -208,6 +249,19 @@ namespace AIUsageOverlay.Services.SessionStats
                 progress?.Report((++done, total));
             }
 
+            foreach (var path in coworkFiles)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                ProcessFile(path, SessionStatsRecord.ToolCowork, includePrompt, reusable, result, seenKeys);
+                progress?.Report((++done, total));
+            }
+
+            if (coworkFiles.Count > 0 &&
+                !result.Sessions.Any(s => s.Tool == SessionStatsRecord.ToolCowork))
+            {
+                result.CoworkStatus = ToolScanStatus.Unsupported;
+            }
+
             foreach (var path in cursorFiles)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -221,6 +275,11 @@ namespace AIUsageOverlay.Services.SessionStats
                 var known = new HashSet<string>(result.Sessions.Select(s => s.Key), StringComparer.Ordinal);
                 foreach (var old in cache.Sessions)
                 {
+                    if (result.CoworkStatus == ToolScanStatus.Unsupported &&
+                        old.Tool == SessionStatsRecord.ToolCowork)
+                    {
+                        continue;
+                    }
                     if (known.Add(old.Key))
                     {
                         result.Sessions.Add(old);
@@ -309,6 +368,58 @@ namespace AIUsageOverlay.Services.SessionStats
         }
 
         /// <summary>
+        /// Cowork 保存領域から、埋め込み Claude Code 履歴だけを列挙する。
+        /// audit.jsonl・資格情報・成果物・接続フォルダは対象にしない。
+        /// </summary>
+        /// <param name="root">%AppData%\Claude\local-agent-mode-sessions</param>
+        /// <param name="status">読み取り状態の出力</param>
+        private static List<string> EnumerateCoworkTranscripts(string root, out ToolScanStatus status)
+        {
+            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+            {
+                status = ToolScanStatus.NotUsed;
+                return new List<string>();
+            }
+
+            try
+            {
+                var transcripts = new List<string>();
+                var sessionDirectoryFound = false;
+                var knownHierarchyFound = false;
+
+                // 実測した <内部ID>/<アカウントID>/<セッション> の3階層だけを辿る。
+                // ルート全体を *.jsonl で再帰列挙すると audit.jsonl まで対象になるため禁止する。
+                foreach (var internalRoot in Directory.EnumerateDirectories(root))
+                foreach (var accountRoot in Directory.EnumerateDirectories(internalRoot))
+                foreach (var sessionRoot in Directory.EnumerateDirectories(accountRoot))
+                {
+                    sessionDirectoryFound = true;
+                    var projectsRoot = Path.Combine(sessionRoot, ".claude", "projects");
+                    if (!Directory.Exists(projectsRoot))
+                    {
+                        continue;
+                    }
+
+                    knownHierarchyFound = true;
+                    transcripts.AddRange(Directory.EnumerateFiles(
+                        projectsRoot, "*.jsonl", SearchOption.AllDirectories));
+                }
+
+                status = transcripts.Count > 0
+                    ? ToolScanStatus.Ok
+                    : sessionDirectoryFound && !knownHierarchyFound
+                        ? ToolScanStatus.Unsupported
+                        : ToolScanStatus.NotUsed;
+                return transcripts;
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                status = ToolScanStatus.Unreadable;
+                return new List<string>();
+            }
+        }
+
+        /// <summary>
         /// 履歴ファイル 1 件を処理する。差分が無ければキャッシュを流用し、
         /// あればパースする。読み取り後に更新されていたらキャッシュへ登録しない（設計書 3.4）。
         /// </summary>
@@ -342,6 +453,7 @@ namespace AIUsageOverlay.Services.SessionStats
                     Path = path,
                     SkipReason = $"ファイル情報を取得できません: {ex.Message}",
                 });
+                MarkCoworkPartial(tool, result);
                 return;
             }
 
@@ -349,13 +461,24 @@ namespace AIUsageOverlay.Services.SessionStats
             var mtimeBefore = info.LastWriteTimeUtc;
 
             // 差分判定: サイズと最終更新時刻が一致していれば前回のレコードを流用する
-            if (reusable.TryGetValue(path, out var cached) &&
+            var hasCached = reusable.TryGetValue(path, out var cached);
+            if (hasCached &&
                 cached.File.SizeBytes == sizeBefore &&
                 cached.File.MtimeUtc == mtimeBefore)
             {
                 if (seenKeys.Add(cached.Session.Key))
                 {
                     result.Sessions.Add(cached.Session);
+                }
+                else
+                {
+                    MarkCoworkPartial(tool, result);
+                }
+                if (tool == SessionStatsRecord.ToolCowork &&
+                    (cached.Session.ParseErrors > 0 || cached.Session.LastLineBroken ||
+                     cached.Session.SourceIdentityMissing || cached.Session.KeyCollision))
+                {
+                    MarkCoworkPartial(tool, result);
                 }
                 result.Files.Add(cached.File);
                 result.ReusedFileCount++;
@@ -368,8 +491,10 @@ namespace AIUsageOverlay.Services.SessionStats
                 record = tool switch
                 {
                     SessionStatsRecord.ToolClaudeCode => ParseClaudeFile(path, includePrompt),
+                    SessionStatsRecord.ToolCowork => ParseCoworkFile(path, includePrompt),
+                    SessionStatsRecord.ToolCodex => ParseCodexFile(path, includePrompt),
                     SessionStatsRecord.ToolCursor => ParseCursorFile(path, includePrompt),
-                    _ => ParseCodexFile(path, includePrompt),
+                    _ => null,
                 };
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -381,6 +506,7 @@ namespace AIUsageOverlay.Services.SessionStats
                     MtimeUtc = mtimeBefore,
                     SkipReason = $"読み取りに失敗しました: {ex.Message}",
                 });
+                MarkCoworkPartial(tool, result);
                 return;
             }
 
@@ -395,32 +521,67 @@ namespace AIUsageOverlay.Services.SessionStats
                     MtimeUtc = mtimeBefore,
                     SkipReason = "集計対象の記録がありません",
                 });
+                MarkCoworkPartial(tool, result);
                 return;
             }
 
-            if (!seenKeys.Add(record.Key))
+            if (tool == SessionStatsRecord.ToolCowork &&
+                (record.ParseErrors > 0 || record.LastLineBroken || record.SourceIdentityMissing))
             {
-                // 別ファイルが同じキーを主張した場合。実運用では起きないが、
-                // 後勝ちで消すと消費が落ちるため、ファイル名を足して別セッションとして残す
-                record.Key = $"{record.Key}@{Path.GetFileNameWithoutExtension(path)}";
-                seenKeys.Add(record.Key);
+                MarkCoworkPartial(tool, result);
             }
-            result.Sessions.Add(record);
 
-            // 読み取り中に追記されていないかを確認する。変わっていたらキャッシュに登録せず、
-            // 次回スキャンで読み直す（登録すると追記分が恒久的に欠落する）
+            // 読み取り中に追記されていないかを採用前に確認する。
+            // 変化していた場合は今回値を捨て、利用できる前回値だけを維持する。
             try
             {
                 info.Refresh();
                 if (info.Length != sizeBefore || info.LastWriteTimeUtc != mtimeBefore)
                 {
+                    result.Files.Add(new ScannedHistoryFile
+                    {
+                        Path = path,
+                        SizeBytes = sizeBefore,
+                        MtimeUtc = mtimeBefore,
+                        SkipReason = "読み取り中にファイルが更新されました",
+                    });
+                    if (hasCached && seenKeys.Add(cached.Session.Key))
+                    {
+                        result.Sessions.Add(cached.Session);
+                        result.ReusedFileCount++;
+                    }
+                    MarkCoworkPartial(tool, result);
                     return;
                 }
             }
-            catch (IOException)
+            catch (IOException ex)
             {
+                result.Files.Add(new ScannedHistoryFile
+                {
+                    Path = path,
+                    SizeBytes = sizeBefore,
+                    MtimeUtc = mtimeBefore,
+                    SkipReason = $"読み取り後の確認に失敗しました: {ex.Message}",
+                });
+                if (hasCached && seenKeys.Add(cached.Session.Key))
+                {
+                    result.Sessions.Add(cached.Session);
+                    result.ReusedFileCount++;
+                }
+                MarkCoworkPartial(tool, result);
                 return;
             }
+
+            if (!seenKeys.Add(record.Key))
+            {
+                // 別ファイルが同じキーを主張した場合。後勝ちで消費を落とさず、
+                // ファイル名を足して別セッションとして残し、品質警告を出す。
+                record.Key = $"{record.Key}@{Path.GetFileNameWithoutExtension(path)}";
+                record.KeyCollision = true;
+                seenKeys.Add(record.Key);
+                MarkCoworkPartial(tool, result);
+            }
+            result.Sessions.Add(record);
 
             result.Files.Add(new ScannedHistoryFile
             {
@@ -429,6 +590,18 @@ namespace AIUsageOverlay.Services.SessionStats
                 MtimeUtc = mtimeBefore,
                 SessionKey = record.Key,
             });
+        }
+
+        /// <summary>Cowork の一部失敗を品質状態へ反映する。</summary>
+        /// <param name="tool">処理中のツール</param>
+        /// <param name="result">走査結果</param>
+        private static void MarkCoworkPartial(string tool, ScanResult result)
+        {
+            if (tool == SessionStatsRecord.ToolCowork &&
+                result.CoworkStatus != ToolScanStatus.Unsupported)
+            {
+                result.CoworkStatus = ToolScanStatus.Partial;
+            }
         }
 
         /// <summary>履歴ファイルを共有読みで開く。各ツールの動作を壊さないため読み取り専用（R3）。</summary>
@@ -449,13 +622,34 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <param name="includePrompt">指示文を保持するか</param>
         /// <returns>セッションレコード。集計対象が無ければ null</returns>
         internal static SessionStatsRecord? ParseClaudeFile(string path, bool includePrompt)
+            => ParseClaudeCompatibleFile(
+                path, includePrompt, SessionStatsRecord.ToolClaudeCode, "claude", requireLocalAgent: false);
+
+        /// <summary>Cowork の Claude Code 互換履歴をセッションレコードへ変換する。</summary>
+        /// <param name="path">Cowork の JSONL ファイル</param>
+        /// <param name="includePrompt">指示文を保持するか</param>
+        /// <returns>対応形式のセッション。local-agent でなければ null</returns>
+        internal static SessionStatsRecord? ParseCoworkFile(string path, bool includePrompt)
+            => ParseClaudeCompatibleFile(
+                path, includePrompt, SessionStatsRecord.ToolCowork, "cowork", requireLocalAgent: true);
+
+        /// <summary>Claude Code と Cowork に共通する JSONL を正規化する。</summary>
+        /// <param name="path">JSONL ファイル</param>
+        /// <param name="includePrompt">指示文を保持するか</param>
+        /// <param name="tool">出力するツール識別子</param>
+        /// <param name="keyPrefix">セッションキーの接頭辞</param>
+        /// <param name="requireLocalAgent">local-agent の確認を必須にするか</param>
+        private static SessionStatsRecord? ParseClaudeCompatibleFile(
+            string path, bool includePrompt, string tool, string keyPrefix, bool requireLocalAgent)
         {
-            var builder = new SessionBuilder(SessionStatsRecord.ToolClaudeCode);
+            var builder = new SessionBuilder(tool);
             var seen = new HashSet<(string, string)>();
             string? sessionId = null;
             string? cwd = null;
             var isSidechain = false;
             var hasAnyLine = false;
+            var hasAnyEntryPoint = false;
+            var hasLocalAgentEntryPoint = false;
             string? lastLine = null;
 
             using (var reader = OpenRead(path))
@@ -479,6 +673,9 @@ namespace AIUsageOverlay.Services.SessionStats
                     sessionId ??= parsed.SessionId;
                     cwd ??= parsed.Cwd;
                     isSidechain |= parsed.IsSidechain;
+                    hasAnyEntryPoint |= !string.IsNullOrWhiteSpace(parsed.EntryPoint);
+                    hasLocalAgentEntryPoint |= string.Equals(
+                        parsed.EntryPoint, "local-agent", StringComparison.OrdinalIgnoreCase);
                     builder.ObserveTimestamp(parsed.TimestampUtc);
 
                     switch (parsed.Type)
@@ -535,7 +732,8 @@ namespace AIUsageOverlay.Services.SessionStats
                 }
             }
 
-            if (!hasAnyLine)
+            if (!hasAnyLine ||
+                (requireLocalAgent && hasAnyEntryPoint && !hasLocalAgentEntryPoint))
             {
                 return null;
             }
@@ -546,12 +744,13 @@ namespace AIUsageOverlay.Services.SessionStats
                 builder.LastLineBroken = true;
             }
 
-            var (key, parentKey, agentLabel) = BuildClaudeKeys(path, sessionId);
+            var (key, parentKey, agentLabel) = BuildClaudeKeys(path, sessionId, keyPrefix);
             var record = builder.Build(key, sessionId ?? Path.GetFileNameWithoutExtension(path), cwd);
             record.ParentKey = parentKey;
             record.IsSubagent = parentKey is not null || isSidechain;
             record.AgentLabel = agentLabel;
             record.RootId = sessionId;
+            record.SourceIdentityMissing = requireLocalAgent && !hasAnyEntryPoint;
             return record;
         }
 
@@ -566,14 +765,14 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <param name="path">履歴ファイルのパス</param>
         /// <param name="sessionId">行から読んだ sessionId</param>
         private static (string Key, string? ParentKey, string? AgentLabel) BuildClaudeKeys(
-            string path, string? sessionId)
+            string path, string? sessionId, string keyPrefix)
         {
             var id = sessionId ?? Path.GetFileNameWithoutExtension(path);
             var normalized = path.Replace('\\', '/');
             var marker = normalized.IndexOf("/subagents/", StringComparison.OrdinalIgnoreCase);
             if (marker < 0)
             {
-                return ($"claude:{id}", null, null);
+                return ($"{keyPrefix}:{id}", null, null);
             }
 
             var relative = normalized[(marker + "/subagents/".Length)..];
@@ -581,7 +780,7 @@ namespace AIUsageOverlay.Services.SessionStats
             {
                 relative = relative[..^6];
             }
-            return ($"claude:{id}#{relative}", $"claude:{id}", relative);
+            return ($"{keyPrefix}:{id}#{relative}", $"{keyPrefix}:{id}", relative);
         }
 
         // ────────────────────────────────────────────────────────────────

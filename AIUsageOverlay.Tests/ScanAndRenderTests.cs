@@ -20,6 +20,12 @@ public class ScanAndRenderTests : IDisposable
     /// <summary>Codex の履歴ルートに見立てるディレクトリ。</summary>
     private readonly string _codexRoot;
 
+    /// <summary>Cowork の履歴ルートに見立てるディレクトリ。</summary>
+    private readonly string _coworkRoot;
+
+    /// <summary>Cowork の走査対象となる .claude/projects。</summary>
+    private readonly string _coworkProjects;
+
     /// <summary>キャッシュの保存先。</summary>
     private readonly string _cacheFolder;
 
@@ -29,9 +35,13 @@ public class ScanAndRenderTests : IDisposable
         _root = Path.Combine(Path.GetTempPath(), "AIUsageOverlayTests", Guid.NewGuid().ToString("N"));
         _claudeRoot = Path.Combine(_root, "claude", "projects");
         _codexRoot = Path.Combine(_root, "codex", "sessions", "2026", "08", "10");
+        _coworkRoot = Path.Combine(_root, "cowork");
+        _coworkProjects = Path.Combine(
+            _coworkRoot, "internal-id", "account-id", "local_session", ".claude", "projects");
         _cacheFolder = Path.Combine(_root, "appdata");
         Directory.CreateDirectory(_claudeRoot);
         Directory.CreateDirectory(_codexRoot);
+        Directory.CreateDirectory(_coworkProjects);
         Directory.CreateDirectory(_cacheFolder);
 
         var source = Path.Combine(AppContext.BaseDirectory, "TestData");
@@ -46,6 +56,13 @@ public class ScanAndRenderTests : IDisposable
             // Codex 側は rollout- 始まりのファイル名だけを走査する
             File.Copy(file, Path.Combine(_codexRoot, "rollout-" + Path.GetFileName(file)));
         }
+        File.Copy(
+            Path.Combine(source, "cowork_normal.jsonl"),
+            Path.Combine(_coworkProjects, "cowork_normal.jsonl"));
+        // 監査JSONLは既知階層の外に置き、列挙されないことを検証する。
+        File.WriteAllText(
+            Path.Combine(_coworkRoot, "internal-id", "account-id", "local_session", "audit.jsonl"),
+            "{ broken audit json");
     }
 
     /// <summary>一時ディレクトリを片付ける。</summary>
@@ -64,7 +81,11 @@ public class ScanAndRenderTests : IDisposable
 
     /// <summary>テスト対象の走査器を作る。</summary>
     private SessionStatsScanner CreateScanner()
-        => new(_claudeRoot, Path.Combine(_root, "codex", "sessions"));
+        => new(
+            _claudeRoot,
+            Path.Combine(_root, "codex", "sessions"),
+            cursorRoot: string.Empty,
+            coworkRoot: _coworkRoot);
 
     /// <summary>
     /// 走査すると両ツールのセッションが読み取られ、履歴ルートの状態が記録される。
@@ -75,9 +96,12 @@ public class ScanAndRenderTests : IDisposable
         var scan = CreateScanner().Scan(cache: null, includePrompt: true);
 
         Assert.Equal(ToolScanStatus.Ok, scan.ClaudeStatus);
+        Assert.Equal(ToolScanStatus.Ok, scan.CoworkStatus);
         Assert.Equal(ToolScanStatus.Ok, scan.CodexStatus);
         Assert.Contains(scan.Sessions, s => s.Tool == SessionStatsRecord.ToolClaudeCode);
+        Assert.Contains(scan.Sessions, s => s.Tool == SessionStatsRecord.ToolCowork);
         Assert.Contains(scan.Sessions, s => s.Tool == SessionStatsRecord.ToolCodex);
+        Assert.DoesNotContain(scan.Files, f => Path.GetFileName(f.Path) == "audit.jsonl");
         Assert.Equal(scan.Sessions.Count, scan.Sessions.Select(s => s.Key).Distinct().Count());
     }
 
@@ -94,6 +118,24 @@ public class ScanAndRenderTests : IDisposable
         Assert.Equal(ToolScanStatus.Ok, scan.ClaudeStatus);
         Assert.Equal(ToolScanStatus.NotUsed, scan.CodexStatus);
         Assert.DoesNotContain(scan.Sessions, s => s.Tool == SessionStatsRecord.ToolCodex);
+    }
+
+    /// <summary>ルート配下にセッション階層があるが既知のCowork階層が無い場合は未対応とする。</summary>
+    [Fact]
+    public void Coworkの既知階層が無い場合はunsupportedになる()
+    {
+        var unsupportedRoot = Path.Combine(_root, "unsupported-cowork");
+        Directory.CreateDirectory(Path.Combine(unsupportedRoot, "internal", "account", "session", "outputs"));
+        var scanner = new SessionStatsScanner(
+            _claudeRoot,
+            Path.Combine(_root, "no-codex"),
+            cursorRoot: string.Empty,
+            coworkRoot: unsupportedRoot);
+
+        var scan = scanner.Scan(cache: null, includePrompt: false);
+
+        Assert.Equal(ToolScanStatus.Unsupported, scan.CoworkStatus);
+        Assert.DoesNotContain(scan.Sessions, s => s.Tool == SessionStatsRecord.ToolCowork);
     }
 
     /// <summary>
@@ -230,6 +272,41 @@ public class ScanAndRenderTests : IDisposable
             .FirstOrDefault(v => v is not null && v.Contains("</script>", StringComparison.Ordinal));
         Assert.NotNull(raw);
         Assert.Contains("<!--", raw!, StringComparison.Ordinal);
+    }
+
+    /// <summary>4ツール表示とAPI換算ポイントを含み、通貨・金額表記を出さない。</summary>
+    [Fact]
+    public void CoworkとAPI換算ポイントを金額非表示で描画する()
+    {
+        var html = BuildHtml();
+
+        Assert.Contains("Cowork", html, StringComparison.Ordinal);
+        Assert.Contains("coworkBillable", html, StringComparison.Ordinal);
+        Assert.Contains("API利用相当（参考）", html, StringComparison.Ordinal);
+        Assert.Contains("API換算ポイント", html, StringComparison.Ordinal);
+        Assert.Contains("value=\"cursor\"", html, StringComparison.Ordinal);
+        Assert.Contains("value=\"cowork\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("USD", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("$", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("円換算", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("請求額", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>entrypoint欠落Coworkは採用し、品質状態をpartialにする。</summary>
+    [Fact]
+    public void Coworkの識別子欠落はpartialとして品質へ出す()
+    {
+        var source = Path.Combine(AppContext.BaseDirectory, "TestData", "claude_normal.jsonl");
+        File.Copy(source, Path.Combine(_coworkProjects, "missing-entrypoint.jsonl"));
+
+        var scan = CreateScanner().Scan(cache: null, includePrompt: false);
+        var report = SessionStatsAggregator.Build(
+            scan, includePrompt: false, appVersion: "test", cacheWasCorrupted: false,
+            nowLocal: new DateTime(2026, 9, 1, 12, 0, 0, DateTimeKind.Local));
+
+        Assert.Equal(ToolScanStatus.Partial, scan.CoworkStatus);
+        Assert.Equal("partial", report.Quality.CoworkStatus);
+        Assert.Equal(1, report.Quality.CoworkIdentityMissingSessions);
     }
 
     /// <summary>

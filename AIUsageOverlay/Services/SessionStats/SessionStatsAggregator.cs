@@ -1,4 +1,5 @@
 using AIUsageOverlay.Models;
+using System.IO;
 
 namespace AIUsageOverlay.Services.SessionStats
 {
@@ -254,6 +255,9 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>ツール別の課金相当トークン。積み上げ棒の各段になる。</summary>
         public long ClaudeBillable { get; set; }
 
+        /// <summary>Cowork の課金相当トークン。</summary>
+        public long CoworkBillable { get; set; }
+
         /// <summary>Codex の課金相当トークン。</summary>
         public long CodexBillable { get; set; }
 
@@ -318,6 +322,24 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>換算できる実績があったか。false のとき画面は理由だけ出す。</summary>
         public bool Available { get; set; }
 
+        /// <summary>API公開単価の数値部分を係数にした無通貨の換算ポイント。</summary>
+        public decimal ApiEquivalentPoints { get; set; }
+
+        /// <summary>API換算ポイントの表示文字列。大値をJavaScript整数精度へ依存させない。</summary>
+        public string ApiEquivalentPointsText { get; set; } = string.Empty;
+
+        /// <summary>ツール別のAPI換算ポイント。</summary>
+        public List<ToolPointView> ApiEquivalentPointsByTool { get; set; } = new();
+
+        /// <summary>Claude系トークンのうち換算できた割合。対象が無ければ null。</summary>
+        public double? CoveragePercent { get; set; }
+
+        /// <summary>換算係数を確認した日。</summary>
+        public string CoefficientReferenceDate { get; set; } = string.Empty;
+
+        /// <summary>換算係数の参照元。</summary>
+        public string CoefficientSourceUrl { get; set; } = string.Empty;
+
         /// <summary>新規入力（キャッシュに当たらなかった分）の構成比。</summary>
         public double InputPercent { get; set; }
 
@@ -356,9 +378,22 @@ namespace AIUsageOverlay.Services.SessionStats
         public List<ModelPriceView> Prices { get; set; } = new();
     }
 
+    /// <summary>ツール別API換算ポイント。</summary>
+    public class ToolPointView
+    {
+        /// <summary>ツール識別子。</summary>
+        public string Tool { get; set; } = string.Empty;
+
+        /// <summary>API換算ポイント。</summary>
+        public decimal Points { get; set; }
+
+        /// <summary>API換算ポイントの表示文字列。</summary>
+        public string PointsText { get; set; } = string.Empty;
+    }
+
     /// <summary>
-    /// 換算に使った単価 1 行。すべて 100 万トークンあたりの USD。
-    /// 請求額ではなく、種別ごとの重みを示すための参考値として出す。
+    /// 換算に使った係数 1 行。API公開単価の数値部分だけを保持し、通貨単位は表示しない。
+    /// 種別ごとの重みと生成時点の前提を示すための参考値として出す。
     /// </summary>
     public class ModelPriceView
     {
@@ -400,6 +435,9 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>Codex 履歴の状態。</summary>
         public string CodexStatus { get; set; } = string.Empty;
 
+        /// <summary>Cowork 履歴の状態。</summary>
+        public string CoworkStatus { get; set; } = string.Empty;
+
         /// <summary>Cursor 履歴の状態。</summary>
         public string CursorStatus { get; set; } = string.Empty;
 
@@ -408,6 +446,9 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>Codex の履歴ルート。</summary>
         public string CodexRoot { get; set; } = string.Empty;
+
+        /// <summary>Cowork の履歴ルート。</summary>
+        public string CoworkRoot { get; set; } = string.Empty;
 
         /// <summary>Cursor の履歴ルート。</summary>
         public string CursorRoot { get; set; } = string.Empty;
@@ -435,6 +476,27 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>Claude Code で鍵が無く無条件加算した行数。</summary>
         public int ClaudeKeylessRecords { get; set; }
+
+        /// <summary>Cowork で重複排除前に読んだ課金レコード数。</summary>
+        public int CoworkRawRecords { get; set; }
+
+        /// <summary>Cowork で採用した課金レコード数。</summary>
+        public int CoworkAcceptedRecords { get; set; }
+
+        /// <summary>Cowork で鍵が無く無条件加算した行数。</summary>
+        public int CoworkKeylessRecords { get; set; }
+
+        /// <summary>Cowork の対象ファイル数。</summary>
+        public int CoworkFiles { get; set; }
+
+        /// <summary>Cowork の対象ファイル容量。</summary>
+        public long CoworkBytes { get; set; }
+
+        /// <summary>entrypoint が無く、専用ルートを根拠に採用したCoworkセッション数。</summary>
+        public int CoworkIdentityMissingSessions { get; set; }
+
+        /// <summary>同一キー衝突を別セッションとして保持したCowork件数。</summary>
+        public int CoworkKeyCollisions { get; set; }
 
         /// <summary>Codex のスレッド数（= 一意化後のセッション数）。</summary>
         public int CodexThreads { get; set; }
@@ -871,17 +933,20 @@ namespace AIUsageOverlay.Services.SessionStats
                         days[d.DateLocal] = day;
                     }
                     var billable = d.Tokens.Billable(s.Tool);
-                    if (s.Tool == SessionStatsRecord.ToolCodex)
+                    switch (s.Tool)
                     {
-                        day.CodexBillable += billable;
-                    }
-                    else if (s.Tool == SessionStatsRecord.ToolCursor)
-                    {
-                        day.CursorBillable += billable;
-                    }
-                    else
-                    {
-                        day.ClaudeBillable += billable;
+                        case SessionStatsRecord.ToolClaudeCode:
+                            day.ClaudeBillable += billable;
+                            break;
+                        case SessionStatsRecord.ToolCowork:
+                            day.CoworkBillable += billable;
+                            break;
+                        case SessionStatsRecord.ToolCodex:
+                            day.CodexBillable += billable;
+                            break;
+                        case SessionStatsRecord.ToolCursor:
+                            day.CursorBillable += billable;
+                            break;
                     }
                     day.Turns += d.Turns;
                 }
@@ -919,16 +984,22 @@ namespace AIUsageOverlay.Services.SessionStats
         private static QualityInfo BuildQuality(ScanResult scan, bool cacheWasCorrupted)
         {
             var claude = scan.Sessions.Where(s => s.Tool == SessionStatsRecord.ToolClaudeCode).ToList();
+            var cowork = scan.Sessions.Where(s => s.Tool == SessionStatsRecord.ToolCowork).ToList();
             var codex = scan.Sessions.Where(s => s.Tool == SessionStatsRecord.ToolCodex).ToList();
             var cursor = scan.Sessions.Where(s => s.Tool == SessionStatsRecord.ToolCursor).ToList();
+            var coworkFiles = scan.Files
+                .Where(f => IsUnderRoot(f.Path, scan.CoworkRootPath))
+                .ToList();
             var withTime = scan.Sessions.Where(s => s.StartUtc > DateTime.UnixEpoch).ToList();
 
             return new QualityInfo
             {
                 ClaudeStatus = StatusText(scan.ClaudeStatus),
+                CoworkStatus = StatusText(scan.CoworkStatus),
                 CodexStatus = StatusText(scan.CodexStatus),
                 CursorStatus = StatusText(scan.CursorStatus),
                 ClaudeRoot = scan.ClaudeRootPath,
+                CoworkRoot = scan.CoworkRootPath,
                 CodexRoot = scan.CodexRootPath,
                 CursorRoot = scan.CursorRootPath,
                 ParsedFiles = scan.ParsedFileCount,
@@ -942,6 +1013,13 @@ namespace AIUsageOverlay.Services.SessionStats
                 ClaudeRawRecords = claude.Sum(s => s.Dedup.RawRecords),
                 ClaudeAcceptedRecords = claude.Sum(s => s.Dedup.AcceptedRecords),
                 ClaudeKeylessRecords = claude.Sum(s => s.Dedup.KeylessRecords),
+                CoworkRawRecords = cowork.Sum(s => s.Dedup.RawRecords),
+                CoworkAcceptedRecords = cowork.Sum(s => s.Dedup.AcceptedRecords),
+                CoworkKeylessRecords = cowork.Sum(s => s.Dedup.KeylessRecords),
+                CoworkFiles = coworkFiles.Count,
+                CoworkBytes = coworkFiles.Sum(f => f.SizeBytes),
+                CoworkIdentityMissingSessions = cowork.Count(s => s.SourceIdentityMissing),
+                CoworkKeyCollisions = cowork.Count(s => s.KeyCollision),
                 CodexThreads = codex.Count,
                 CodexSubagents = codex.Count(s => s.IsSubagent),
                 CursorSessions = cursor.Count,
@@ -965,8 +1043,22 @@ namespace AIUsageOverlay.Services.SessionStats
         {
             ToolScanStatus.Ok => "ok",
             ToolScanStatus.Unreadable => "unreadable",
+            ToolScanStatus.Partial => "partial",
+            ToolScanStatus.Unsupported => "unsupported",
             _ => "notUsed",
         };
+
+        /// <summary>ファイルが指定ルート配下かを判定する。</summary>
+        private static bool IsUnderRoot(string path, string root)
+        {
+            if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(root))
+            {
+                return false;
+            }
+            var prefix = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+                Path.DirectorySeparatorChar;
+            return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        }
 
         /// <summary>
         /// セッション 1 件分のコスト換算を作る。

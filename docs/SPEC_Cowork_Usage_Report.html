@@ -1,0 +1,2860 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cowork 使用量レポート対応 詳細設計書</title>
+<style>
+/* ============================================================================
+   設計書 HTML デザイン v2（references/html_design.md が正）
+
+   色の使い分けは 1 意味 1 色に固定する。装飾目的で色を足さない。
+     青   = 現在位置と章番号
+     黄   = 未確定（要確認）
+     赤   = 実装を止める / 警告
+     緑   = 完了
+     紫   = 設計上の判断
+   新しい状態を足したくなったら、色を増やす前に意味の統廃合を検討する。
+   印刷時のみ @media print でライトテーマへ切り替える。
+   ========================================================================= */
+:root{
+  color-scheme:dark;
+  --bg:#0f1216; --panel:#161b21; --panel2:#1b222a; --panel3:#1c232b;
+  --line:#2e3742; --line2:#232b34;
+  --fg:#e4e9ef; --fg2:#8f9aa8; --fg3:#6d7885;
+  --accent:#7cb3f5; --accent-bg:#182634;
+  --warn:#e8b45e; --ng:#ff9c9c; --ng-bg:#2c1717; --ok:#58c99a;
+  --note:#a98bea; --note-bg:#1c1830;
+  --hover:#192028; --code-bg:#1e252d; --mark:#7a5c00;
+  --mono:ui-monospace,Consolas,"SFMono-Regular","Courier New",monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-size:13px;line-height:1.75;
+  font-family:"Segoe UI","Yu Gothic UI","Hiragino Kaku Gothic ProN","Meiryo",sans-serif;
+  height:100vh;display:flex;flex-direction:column}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#2b343f;border-radius:6px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ---- ヘッダ ----
+   「この HTML は生成物である」「再生成コマンド」は必ず出す。
+   これが無いと誰かが HTML を直接編集し、次の再生成で消える。 */
+header{flex:none;padding:9px 20px;background:var(--panel);border-bottom:1px solid #262e37}
+header .hrow{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+header h1{margin:0;font-size:15px;font-weight:600;letter-spacing:.01em}
+header .rev{font-family:var(--mono);font-size:11px;padding:1px 7px;border:1px solid #3a4552;
+  border-radius:10px;color:#9aa5b3;flex:none}
+header .stat{margin-left:auto;flex:none;font-size:11.5px;color:#68727e;white-space:nowrap}
+header .hsub{margin-top:3px;font-size:11px;color:#7f8b99;line-height:1.7}
+header .hsub code{font-family:var(--mono);background:var(--code-bg);padding:1px 5px;
+  border-radius:3px;color:#b9c4d0}
+
+/* ---- ツールバー ---- */
+.toolbar{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 20px;
+  background:#131820;border-bottom:1px solid #262e37}
+.toolbar input[type=search]{font:inherit;font-size:12px;padding:5px 9px;width:280px;
+  background:var(--panel2);border:1px solid var(--line);border-radius:5px;color:var(--fg)}
+.btn{font:inherit;font-size:12px;padding:5px 11px;background:var(--panel2);
+  border:1px solid var(--line);border-radius:5px;color:#c7d0da;cursor:pointer}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.toolbar .hits{font-size:11.5px;color:var(--fg2);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.toolbar .tally{margin-left:auto;display:flex;align-items:center;gap:14px;
+  font-size:11.5px;color:#7f8b99;white-space:nowrap;font-variant-numeric:tabular-nums}
+.toolbar .tally .q{color:var(--warn)}
+.toolbar .tally .blk{color:var(--ng)}
+.toolbar .tally .dc{color:var(--ok)}
+
+/* ---- 2 ペイン ----
+   **min-height:0 を落とさない。** グリッド／フレックス項目の既定は min-height:auto で
+   内容より縮まないため、これが無いと overflow:auto が働かず
+   nav と article の独立スクロールにならず、ページ全体がスクロールする。 */
+main{flex:1;display:grid;grid-template-columns:296px 1fr;min-height:0}
+nav{min-height:0;overflow:auto;background:#141920;border-right:1px solid #262e37;
+  padding:10px 0 40px}
+.col{min-width:0;min-height:0;display:flex;flex-direction:column}
+article{flex:1;min-height:0;overflow:auto;padding:22px 28px 120px}
+/* 表・図・コードは画面幅を使い切る。超ワイド画面での間延びだけ抑える */
+.wrap{max-width:none}
+/* 地の文だけ折り返す。表・pre・図・注記帯は対象外 */
+.wrap>p,.wrap>ul,.wrap>ol{max-width:none}
+
+/* ---- 目次 ----
+   番号の桁揃えは等幅フォント + 固定幅 + 右揃えで行う。
+   プロポーショナルフォントで番号を出すと桁が揃わず階層が読めない。 */
+nav .navtools{padding:0 12px 8px}
+nav .navtools input[type=search]{font:inherit;font-size:11.5px;padding:4px 8px;width:100%;
+  background:var(--panel2);border:1px solid var(--line);border-radius:5px;color:var(--fg)}
+nav .navbtns{display:flex;gap:6px;padding:0 12px 10px}
+nav .navbtns button{font:inherit;font-size:11px;padding:3px 8px;background:transparent;
+  border:1px solid var(--line);border-radius:4px;color:var(--fg2);cursor:pointer}
+nav .navbtns button:hover{color:var(--fg);border-color:#3d4855}
+nav .chgrp{margin-bottom:1px}
+nav .ch{display:flex;gap:6px;align-items:center;padding:4px 12px 4px 8px;font-size:12px;
+  font-weight:600;color:#c7d0da;cursor:pointer;border-left:3px solid transparent;
+  text-decoration:none}
+nav .ch:hover{background:var(--hover);color:var(--fg)}
+nav .ch .ca{width:11px;flex:none;color:#5f6b78;font-size:9px;text-align:center;cursor:pointer}
+nav .ch .n{width:22px;flex:none;font-family:var(--mono);font-size:11px;color:var(--fg2);
+  text-align:right}
+nav .sec{display:flex;gap:8px;align-items:center;padding:2.5px 12px 2.5px 8px;font-size:11.5px;
+  color:var(--fg2);cursor:pointer;border-left:3px solid transparent;text-decoration:none}
+nav .sec:hover{background:var(--hover);color:var(--fg)}
+nav .sec .n{width:36px;flex:none;font-family:var(--mono);font-size:10.5px;color:var(--fg3);
+  text-align:right}
+nav .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+nav .secs{padding:2px 0 4px}
+nav .cur{border-left-color:var(--accent);background:var(--accent-bg);color:var(--fg)}
+nav .ch.cur{background:#19222c}
+nav .badge{margin-left:auto;flex:none;font-size:9.5px;padding:0 6px;border-radius:8px;
+  background:#242d38;color:#95a0ad}
+nav .hidden{display:none}
+
+/* ---- パンくず（本文上部の固定バー）----
+   目次の現在位置と同じ IntersectionObserver の結果を使う（別実装にしない）。 */
+.crumb{flex:none;display:flex;align-items:center;gap:10px;padding:6px 28px;min-height:30px;
+  background:#131820;border-bottom:1px solid #222a33;font-size:11.5px;color:var(--fg2)}
+.crumb .n{font-family:var(--mono);color:var(--accent);flex:none}
+.crumb .sep{color:#4b5561;flex:none}
+.crumb .t{color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crumb .ct{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crumb .blk{margin-left:auto;flex:none;padding:1px 8px;border-radius:10px;background:#3a1f1f;
+  border:1px solid #6b3535;color:var(--ng);font-size:10.5px}
+
+/* ---- 見出し ----
+   番号を本文と別レイヤーに置く。h2 = 番号チップ + グラデーション罫、h3 = 番号 + 余罫線。 */
+article h2{display:flex;align-items:baseline;gap:12px;margin:40px 0 4px;font-size:20px;
+  font-weight:600;letter-spacing:.01em;scroll-margin-top:12px}
+article h2:first-of-type{margin-top:0}
+article h2 .num{font-family:var(--mono);font-size:14px;color:var(--accent);
+  background:var(--accent-bg);border:1px solid #294055;border-radius:5px;padding:2px 9px;flex:none}
+article h2+.rule{height:2px;margin:0 0 16px;
+  background:linear-gradient(90deg,#2f3b48,#1a2027 60%,transparent)}
+article h3{display:flex;align-items:baseline;gap:9px;margin:26px 0 8px;font-size:14.5px;
+  font-weight:600;scroll-margin-top:12px}
+article h3 .num{font-family:var(--mono);font-size:12px;color:var(--accent);flex:none}
+article h3::after{content:"";flex:1;height:1px;background:var(--line2)}
+article h4{margin:18px 0 6px;font-size:13.5px;font-weight:700}
+
+/* ---- 本文の体裁 ---- */
+article p{margin:8px 0}
+article ul,article ol{margin:8px 0 8px 1.4em;padding:0}
+article li{margin:3px 0}
+article hr{border:0;border-top:1px solid var(--line);margin:30px 0}
+article a{color:var(--accent);text-decoration:none}
+article a:hover{color:#a8cdfa;text-decoration:underline}
+article strong{color:#fff}
+article code{font-family:var(--mono);font-size:11.5px;background:var(--code-bg);
+  padding:1px 5px;border-radius:3px;color:var(--fg);word-break:break-all}
+article pre{margin:12px 0;padding:11px 13px;background:#151a20;border:1px solid var(--line);
+  border-left:3px solid var(--accent);border-radius:4px;overflow-x:auto;line-height:1.5}
+article pre code{background:none;padding:0;font-size:11.5px;white-space:pre;word-break:normal}
+
+/* ---- 注記帯（Markdown の > 引用）----
+   種別は先頭語から機械的に決める。書き手に新しい記法を覚えさせない。 */
+.note{margin:16px 0;padding:10px 14px;border-radius:0 6px 6px 0;max-width:none;
+  background:var(--note-bg);border:1px solid #35295a;border-left:3px solid var(--note)}
+.note .lab{font-size:10.5px;letter-spacing:.08em;color:#c1a9f5;margin-bottom:3px}
+.note>p{margin:4px 0;max-width:none}
+.note>:last-child{margin-bottom:0}
+.note.warn{background:#1f1a12;border-color:#4a3c1c;border-left-color:var(--warn)}
+.note.warn .lab{color:var(--warn)}
+.note.ng{background:var(--ng-bg);border-color:#6b3535;border-left-color:var(--ng)}
+.note.ng .lab{color:var(--ng)}
+.note.cst{background:#161d25;border-color:#2a333d;border-left-color:var(--fg3)}
+.note.cst .lab{color:#9aa5b3}
+/* 入れ子の引用。帯にするのは最外側だけなので、内側は素の引用として出す */
+article blockquote{margin:8px 0;padding:2px 0 2px 12px;border-left:2px solid var(--line);
+  color:var(--fg2)}
+article blockquote p{margin:4px 0;max-width:none}
+
+/* ---- 要確認事項（Q）カード ----
+   4 項目が揃った節だけカードにする。揃わない節は通常の節として出す（黙って壊さない）。 */
+.qcard{border:1px solid #2b3541;border-radius:8px;overflow:hidden;margin:14px 0;
+  background:#141a21;max-width:none;scroll-margin-top:12px}
+.qcard>.hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;
+  background:#1a222b;border-bottom:1px solid #2b3541}
+.qcard .qid{font-family:var(--mono);font-size:12.5px;font-weight:700;padding:1px 8px;
+  border-radius:4px;border:1px solid #4a3c1c;color:var(--warn);flex:none}
+/* 実装を止める Q は地を塗って最も目立たせる */
+.qcard.blocking .qid{background:var(--warn);color:#0f1216;border-color:var(--warn)}
+.qcard .qt{font-size:13.5px;font-weight:600}
+.qcard .meta{font-size:10.5px;padding:1px 8px;border-radius:10px;border:1px solid #3d4855;
+  color:#9aa5b3;white-space:nowrap;flex:none}
+.qcard .meta.blocking{border-color:#6b3535;background:var(--ng-bg);color:var(--ng)}
+/* 節番号は参照時に読む値なので消さない */
+.qcard .secno{margin-left:auto;flex:none;font-size:11px;color:var(--fg3);font-family:var(--mono)}
+.qcard .body{display:grid;grid-template-columns:112px 1fr}
+.qcard .lab{padding:8px 12px;border-bottom:1px solid #212932;background:#171e26;
+  font-size:10.5px;letter-spacing:.06em;color:#95a0ad;line-height:1.6}
+.qcard .val{padding:8px 14px;border-bottom:1px solid #212932}
+.qcard .val>p{margin:0;max-width:none}
+.qcard .body>:nth-last-child(-n+2){border-bottom:none}
+
+/* ---- 表 ----
+   縦罫は引かない（列数が多いと格子が主張しすぎる）。縞も廃止し、行 hover だけで追う。 */
+article table{border-collapse:collapse;width:100%;font-size:12px;margin:12px 0}
+article th{position:sticky;top:0;z-index:1;background:var(--panel3);
+  border-bottom:1px solid var(--line);text-align:left;padding:6px 9px;font-size:10.5px;
+  font-weight:600;letter-spacing:.04em;color:#95a0ad}
+article td{border-top:1px solid var(--line2);padding:6px 9px;vertical-align:top}
+/* 1 列目は識別子であることが多いので折り返さない */
+article td:first-child{white-space:nowrap;font-family:var(--mono)}
+article td:first-child code{white-space:nowrap}
+article tbody tr:hover td{background:var(--hover)}
+.chip{display:inline-block;font-size:10.5px;padding:1px 8px;border-radius:10px;
+  white-space:nowrap;border:1px solid currentColor;opacity:.95}
+.chip.ng{color:var(--ng);background:var(--ng-bg)}
+
+/* ---- 図（取り込んだ SVG）。明色テーマで描画された図を暗色本文に載せるため白パネルにする ---- */
+article .figure{background:#fff;border:1px solid var(--line);border-radius:4px;
+  padding:8px;margin:12px 0;overflow-x:auto}
+article .figure svg{max-width:none;height:auto;display:block}
+
+/* ---- 検索ハイライト ---- */
+mark{background:var(--mark);color:#fff;border-radius:2px;padding:0 1px}
+mark.cur{background:var(--accent);color:#04121f}
+
+/* ---- トリアージ UI ----
+   絞り込みバーは表の直上に 1 枚のパネルとして置き、表の border-top を消して視覚的に繋げる。 */
+.triage-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;
+  background:#161d25;border:1px solid #2a333d;border-radius:7px 7px 0 0;margin:12px 0 0}
+.triage-bar+table{border:1px solid #2a333d;border-top:none;margin-top:0}
+.triage-bar input[type=search]{font:inherit;font-size:11.5px;padding:4px 8px;width:220px;
+  background:var(--panel2);border:1px solid var(--line);border-radius:5px;color:var(--fg)}
+.triage-bar select{font:inherit;font-size:11.5px;padding:4px 7px;background:var(--panel2);
+  border:1px solid var(--line);border-radius:5px;color:#c7d0da}
+/* 状態での絞り込みはドロップダウンよりチップの方が速い */
+.triage-bar .fchip{font:inherit;font-size:11px;padding:3px 9px;border-radius:12px;cursor:pointer;
+  border:1px solid var(--line);background:transparent;color:var(--fg2)}
+.triage-bar .fchip.on{border-color:#3c5c80;background:var(--accent-bg);color:var(--accent)}
+.triage-bar .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.triage-bar .act{font:inherit;font-size:11px;padding:4px 9px;background:var(--panel2);
+  border:1px solid var(--line);border-radius:5px;color:#c7d0da;cursor:pointer}
+.triage-bar .act:hover{border-color:var(--accent);color:var(--accent)}
+.triage-bar .warnmsg{color:var(--warn);font-size:11.5px}
+/* 数字の羅列より、状態別の件数を幅で表す帯 + ツールチップの方が速く読める */
+.tri-progress{display:flex;height:7px;width:180px;border-radius:4px;overflow:hidden;
+  background:#232b34;flex:none}
+.tri-count{font-size:11.5px;color:var(--fg2);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.tri-count b{color:var(--fg)}
+td.tri-status{white-space:nowrap;width:1%}
+td.tri-status select{font:inherit;font-size:11.5px;padding:3px 7px;border-radius:5px;
+  background:var(--panel2);border:1px solid var(--line);color:var(--fg2)}
+/* 状態の色は 7.1 の対応表に固定する */
+select.st-do{color:var(--accent);border-color:#3c5c80}
+select.st-wip{color:var(--note);border-color:#4a3d70}
+select.st-hold{color:var(--warn);border-color:#6b5327}
+select.st-skip{color:var(--fg2);border-color:var(--line)}
+select.st-done{color:var(--ok);border-color:#2c5f49}
+/* メモは 1 行。長文はカード側に書く運用にして表の行高を揃える */
+td.tri-memo{width:210px}
+td.tri-memo input{font:inherit;font-size:11.5px;padding:3px 6px;width:100%;
+  background:var(--panel2);border:1px solid var(--line);border-radius:4px;color:var(--fg)}
+td.tri-memo input:focus,td.tri-status select:focus{outline:2px solid var(--accent);
+  outline-offset:-1px}
+tr.tri-do>td:first-child{color:var(--accent)}
+tr.tri-wip>td:first-child{color:var(--note)}
+tr.tri-hold>td:first-child{color:var(--warn)}
+tr.tri-skip>td:first-child{color:var(--fg2)}
+tr.tri-done>td:first-child{color:var(--ok)}
+tr.tri-done,tr.tri-skip{opacity:.62}
+tr.hidden-by-filter{display:none}
+.triage-empty{padding:14px;color:var(--fg2);font-size:12.5px}
+
+/* ---- 印刷 ----
+   画面で足した装飾（進捗バー・チップ地・カード地）はインクを食うので落とす。 */
+@media print{
+  :root{
+    color-scheme:light;
+    --bg:#fff; --panel:#fff; --panel2:#fff; --panel3:#f0f2f6;
+    --line:#c9ced6; --line2:#e4e7ec;
+    --fg:#000; --fg2:#444; --fg3:#666;
+    --accent:#0a4fa0; --accent-bg:#fff;
+    --warn:#8a6100; --ng:#a01b1b; --ng-bg:#fff; --ok:#0a6b45;
+    --note:#5b2a96; --note-bg:#fff; --hover:#fff; --code-bg:#f4f6f9;
+  }
+  @page{size:A4;margin:14mm 12mm}
+  body{height:auto;display:block;background:#fff;color:#000;font-size:10px;line-height:1.6}
+  .toolbar,nav,.crumb{display:none!important}
+  main{display:block;min-height:0}
+  .col{display:block}
+  article{overflow:visible;padding:0;flex:none}
+  .wrap{max-width:none}
+  .wrap>p,.wrap>ul,.wrap>ol{max-width:none}
+  article strong{color:#000}
+  article h2{page-break-after:avoid;font-size:14px;margin:22px 0 4px}
+  /* 見出しの番号チップは枠線のみ（地を塗らない） */
+  article h2 .num{background:none;border-color:#999;color:#000;font-size:12px}
+  article h2+.rule{height:1px;background:#999;margin-bottom:10px}
+  article h3{page-break-after:avoid;font-size:12px}
+  article h3 .num{color:#000}
+  article th{position:static;color:#000}
+  article table,article pre,.note,.qcard{page-break-inside:avoid}
+  /* 注記帯: 地を白にし、左罫のみ 2px の黒で残す。ラベル文字は黒・太字 */
+  .note{background:#fff!important;border:none;border-left:2px solid #000;border-radius:0;
+    max-width:none;padding-left:10px}
+  .note .lab{color:#000!important;font-weight:700}
+  /* Q カード: ラベル列の地は #f0f2f6、罫は #c9ced6 */
+  .qcard{background:#fff;border-color:#c9ced6;max-width:none}
+  .qcard>.hd{background:#fff;border-bottom-color:#c9ced6}
+  .qcard .qid{background:none!important;color:#000!important;border-color:#999}
+  .qcard .meta{background:none!important;color:#333!important;border-color:#999}
+  .qcard .lab{background:#f0f2f6;border-bottom-color:#c9ced6;color:#000}
+  .qcard .val{border-bottom-color:#c9ced6}
+  .chip{border-color:#999!important;color:#000!important;background:none!important}
+  /* 絞り込みバーは畳み、「判定済 n / 総数」の文字だけ残す。進捗バーは非表示 */
+  .triage-bar{background:none;border:none;border-radius:0;padding:0 0 3px;margin:10px 0 0}
+  .triage-bar>*{display:none!important}
+  .triage-bar>.right{display:block!important;margin:0}
+  .triage-bar .right>*{display:none!important}
+  .triage-bar .tri-count{display:inline!important;color:#000;font-size:10px}
+  .triage-bar+table{border:none;margin-top:0}
+  td.tri-memo input{border:none;background:none;padding:0;color:#000}
+  td.tri-status select{border:none;background:none;color:#000!important;
+    -webkit-appearance:none;appearance:none}
+  tr.tri-done,tr.tri-skip{opacity:1}
+  article .figure{overflow:visible;page-break-inside:avoid;border-color:#c9ced6}
+  article .figure svg{max-width:100%!important;height:auto}
+  mark{background:none;color:#000;font-weight:700;text-decoration:underline}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hrow">
+    <h1>Cowork 使用量レポート対応 詳細設計書</h1><span class="rev">Rev.1.0</span>
+    <span class="stat">見出し 52 / 表 28 / 外部参照なし</span>
+  </div>
+  <div class="hsub">
+    正は <code>SPEC_Cowork_Usage_Report.md</code>。<b>この HTML は生成物です。修正は Markdown 側で行い、再生成してください。</b>
+    再生成: <code>python gen_design_html.py SPEC_Cowork_Usage_Report.md SPEC_Cowork_Usage_Report.html</code>　生成: 2026-09-24 15:52 JST
+  </div>
+</header>
+
+<div class="toolbar">
+  <input type="search" id="q" placeholder="本文を検索（Enter で次へ / Shift+Enter で前へ）">
+  <button class="btn" id="prev" title="前の一致へ">&#9650;</button>
+  <button class="btn" id="next" title="次の一致へ">&#9660;</button>
+  <button class="btn" id="clear">クリア</button>
+  <button class="btn" id="print">印刷 / PDF</button>
+  <span class="hits" id="hits"></span>
+  <div class="tally"><span id="tri-tally"></span></div>
+</div>
+
+<main>
+  <nav id="nav">
+    <div class="navtools">
+      <input type="search" id="navq" placeholder="目次を絞り込み">
+    </div>
+    <div class="navbtns">
+      <button type="button" id="expand-all">すべて展開</button>
+      <button type="button" id="collapse-all">たたむ</button>
+    </div>
+<div class="chgrp" data-ch="1. 目的とスコープ">
+<a class="ch" href="#sec-1" data-target="sec-1" data-num="" data-title="1. 目的とスコープ"><span class="ca"></span><span class="n"></span><span class="t">1. 目的とスコープ</span></a>
+<div class="secs">
+<a class="sec" href="#sec-1-1" data-target="sec-1-1" data-num="1.1" data-title="目的"><span class="n">1.1</span><span class="t">目的</span></a>
+<a class="sec" href="#sec-1-2" data-target="sec-1-2" data-num="1.2" data-title="スコープ（S）"><span class="n">1.2</span><span class="t">スコープ（S）</span></a>
+<a class="sec" href="#sec-1-3" data-target="sec-1-3" data-num="1.3" data-title="非スコープ（N）"><span class="n">1.3</span><span class="t">非スコープ（N）</span></a>
+</div></div>
+<div class="chgrp" data-ch="2. 用語">
+<a class="ch" href="#sec-2" data-target="sec-2" data-num="" data-title="2. 用語"><span class="ca"></span><span class="n"></span><span class="t">2. 用語</span></a>
+<div class="secs">
+</div></div>
+<div class="chgrp" data-ch="3. 調査結果と方式選択">
+<a class="ch" href="#sec-3" data-target="sec-3" data-num="" data-title="3. 調査結果と方式選択"><span class="ca"></span><span class="n"></span><span class="t">3. 調査結果と方式選択</span></a>
+<div class="secs">
+<a class="sec" href="#sec-3-1" data-target="sec-3-1" data-num="3.1" data-title="公式仕様で確認したこと"><span class="n">3.1</span><span class="t">公式仕様で確認したこと</span></a>
+<a class="sec" href="#sec-3-2" data-target="sec-3-2" data-num="3.2" data-title="Windows 実機で確認した保存形式"><span class="n">3.2</span><span class="t">Windows 実機で確認した保存形式</span></a>
+<a class="sec" href="#sec-3-3" data-target="sec-3-3" data-num="3.3" data-title="方式比較"><span class="n">3.3</span><span class="t">方式比較</span></a>
+</div></div>
+<div class="chgrp" data-ch="4. 全体構成">
+<a class="ch" href="#sec-4" data-target="sec-4" data-num="" data-title="4. 全体構成"><span class="ca"></span><span class="n"></span><span class="t">4. 全体構成</span></a>
+<div class="secs">
+<a class="sec" href="#sec-4-1" data-target="sec-4-1" data-num="4.1" data-title="データフロー"><span class="n">4.1</span><span class="t">データフロー</span></a>
+<a class="sec" href="#sec-4-2" data-target="sec-4-2" data-num="4.2" data-title="責務の分界"><span class="n">4.2</span><span class="t">責務の分界</span></a>
+<a class="sec" href="#sec-4-3" data-target="sec-4-3" data-num="4.3" data-title="キャッシュ互換"><span class="n">4.3</span><span class="t">キャッシュ互換</span></a>
+<a class="sec" href="#sec-4-4" data-target="sec-4-4" data-num="4.4" data-title="状態"><span class="n">4.4</span><span class="t">状態</span></a>
+</div></div>
+<div class="chgrp" data-ch="5. 入力・正規化仕様">
+<a class="ch" href="#sec-5" data-target="sec-5" data-num="" data-title="5. 入力・正規化仕様"><span class="ca"></span><span class="n"></span><span class="t">5. 入力・正規化仕様</span></a>
+<div class="secs">
+<a class="sec" href="#sec-5-1" data-target="sec-5-1" data-num="5.1" data-title="ルート探索"><span class="n">5.1</span><span class="t">ルート探索</span></a>
+<a class="sec" href="#sec-5-2" data-target="sec-5-2" data-num="5.2" data-title="ファイル識別"><span class="n">5.2</span><span class="t">ファイル識別</span></a>
+<a class="sec" href="#sec-5-3" data-target="sec-5-3" data-num="5.3" data-title="重複排除とトークン式"><span class="n">5.3</span><span class="t">重複排除とトークン式</span></a>
+<a class="sec" href="#sec-5-4" data-target="sec-5-4" data-num="5.4" data-title="プロジェクトと時刻"><span class="n">5.4</span><span class="t">プロジェクトと時刻</span></a>
+<a class="sec" href="#sec-5-5" data-target="sec-5-5" data-num="5.5" data-title="読み取り中の変更"><span class="n">5.5</span><span class="t">読み取り中の変更</span></a>
+</div></div>
+<div class="chgrp" data-ch="6. API 換算ポイント仕様">
+<a class="ch" href="#sec-6" data-target="sec-6" data-num="" data-title="6. API 換算ポイント仕様"><span class="ca"></span><span class="n"></span><span class="t">6. API 換算ポイント仕様</span></a>
+<div class="secs">
+<a class="sec" href="#sec-6-1" data-target="sec-6-1" data-num="6.1" data-title="指標の定義"><span class="n">6.1</span><span class="t">指標の定義</span></a>
+<a class="sec" href="#sec-6-2" data-target="sec-6-2" data-num="6.2" data-title="表示単位"><span class="n">6.2</span><span class="t">表示単位</span></a>
+<a class="sec" href="#sec-6-3" data-target="sec-6-3" data-num="6.3" data-title="対象ツールとモデル"><span class="n">6.3</span><span class="t">対象ツールとモデル</span></a>
+<a class="sec" href="#sec-6-4" data-target="sec-6-4" data-num="6.4" data-title="対象率"><span class="n">6.4</span><span class="t">対象率</span></a>
+<a class="sec" href="#sec-6-5" data-target="sec-6-5" data-num="6.5" data-title="金額を出さないための境界"><span class="n">6.5</span><span class="t">金額を出さないための境界</span></a>
+</div></div>
+<div class="chgrp" data-ch="7. 画面仕様">
+<a class="ch" href="#sec-7" data-target="sec-7" data-num="" data-title="7. 画面仕様"><span class="ca"></span><span class="n"></span><span class="t">7. 画面仕様</span></a>
+<div class="secs">
+<a class="sec" href="#sec-7-1" data-target="sec-7-1" data-num="7.1" data-title="概要"><span class="n">7.1</span><span class="t">概要</span></a>
+<a class="sec" href="#sec-7-2" data-target="sec-7-2" data-num="7.2" data-title="日別グラフ"><span class="n">7.2</span><span class="t">日別グラフ</span></a>
+<a class="sec" href="#sec-7-3" data-target="sec-7-3" data-num="7.3" data-title="セッション"><span class="n">7.3</span><span class="t">セッション</span></a>
+<a class="sec" href="#sec-7-4" data-target="sec-7-4" data-num="7.4" data-title="データ品質"><span class="n">7.4</span><span class="t">データ品質</span></a>
+<a class="sec" href="#sec-7-5" data-target="sec-7-5" data-num="7.5" data-title="未定義ケースの扱い"><span class="n">7.5</span><span class="t">未定義ケースの扱い</span></a>
+</div></div>
+<div class="chgrp" data-ch="8. セキュリティと制約">
+<a class="ch" href="#sec-8" data-target="sec-8" data-num="" data-title="8. セキュリティと制約"><span class="ca"></span><span class="n"></span><span class="t">8. セキュリティと制約</span></a>
+<div class="secs">
+<a class="sec" href="#sec-8-1" data-target="sec-8-1" data-num="8.1" data-title="リスク"><span class="n">8.1</span><span class="t">リスク</span></a>
+<a class="sec" href="#sec-8-2" data-target="sec-8-2" data-num="8.2" data-title="既知の制約（C）"><span class="n">8.2</span><span class="t">既知の制約（C）</span></a>
+</div></div>
+<div class="chgrp" data-ch="9. ファイル構成と変更範囲">
+<a class="ch" href="#sec-9" data-target="sec-9" data-num="" data-title="9. ファイル構成と変更範囲"><span class="ca"></span><span class="n"></span><span class="t">9. ファイル構成と変更範囲</span></a>
+<div class="secs">
+</div></div>
+<div class="chgrp" data-ch="10. テスト方針と実装ステップ">
+<a class="ch" href="#sec-10" data-target="sec-10" data-num="" data-title="10. テスト方針と実装ステップ"><span class="ca"></span><span class="n"></span><span class="t">10. テスト方針と実装ステップ</span><span class="badge">6</span></a>
+<div class="secs">
+<a class="sec" href="#sec-10-1" data-target="sec-10-1" data-num="10.1" data-title="テストケース"><span class="n">10.1</span><span class="t">テストケース</span></a>
+<a class="sec" href="#sec-10-2" data-target="sec-10-2" data-num="10.2" data-title="自動化できない範囲"><span class="n">10.2</span><span class="t">自動化できない範囲</span></a>
+<a class="sec" href="#sec-10-3" data-target="sec-10-3" data-num="10.3" data-title="実装状況"><span class="n">10.3</span><span class="t">実装状況</span></a>
+</div></div>
+<div class="chgrp" data-ch="11. 決定事項・対応方針一覧">
+<a class="ch" href="#sec-11" data-target="sec-11" data-num="" data-title="11. 決定事項・対応方針一覧"><span class="ca"></span><span class="n"></span><span class="t">11. 決定事項・対応方針一覧</span><span class="badge">30</span></a>
+<div class="secs">
+<a class="sec" href="#sec-11-1" data-target="sec-11-1" data-num="11.1" data-title="実装時に確定した判断"><span class="n">11.1</span><span class="t">実装時に確定した判断</span></a>
+<a class="sec" href="#sec-11-2" data-target="sec-11-2" data-num="11.2" data-title="対応方針一覧（操作できます）"><span class="n">11.2</span><span class="t">対応方針一覧（操作できます）</span></a>
+<a class="sec" href="#sec-11-3" data-target="sec-11-3" data-num="11.3" data-title="判断が他へ波及する項目"><span class="n">11.3</span><span class="t">判断が他へ波及する項目</span></a>
+</div></div>
+<div class="chgrp" data-ch="付録 A. 参照した原典">
+<a class="ch" href="#sec-a" data-target="sec-a" data-num="" data-title="付録 A. 参照した原典"><span class="ca"></span><span class="n"></span><span class="t">付録 A. 参照した原典</span></a>
+<div class="secs">
+</div></div>
+<div class="chgrp" data-ch="付録 B. 現行仕様書との関係">
+<a class="ch" href="#sec-b" data-target="sec-b" data-num="" data-title="付録 B. 現行仕様書との関係"><span class="ca"></span><span class="n"></span><span class="t">付録 B. 現行仕様書との関係</span><span class="badge">Q2</span></a>
+<div class="secs">
+</div></div>
+<div class="chgrp" data-ch="付録 C. レビュー結果">
+<a class="ch" href="#sec-c" data-target="sec-c" data-num="" data-title="付録 C. レビュー結果"><span class="ca"></span><span class="n"></span><span class="t">付録 C. レビュー結果</span></a>
+<div class="secs">
+<a class="sec" href="#sec-c-1" data-target="sec-c-1" data-num="C.1" data-title="事実誤認の修正"><span class="n">C.1</span><span class="t">事実誤認の修正</span></a>
+<a class="sec" href="#sec-c-2" data-target="sec-c-2" data-num="C.2" data-title="未定義ケースの定義"><span class="n">C.2</span><span class="t">未定義ケースの定義</span></a>
+<a class="sec" href="#sec-c-3" data-target="sec-c-3" data-num="C.3" data-title="過剰設計の削除"><span class="n">C.3</span><span class="t">過剰設計の削除</span></a>
+<a class="sec" href="#sec-c-4" data-target="sec-c-4" data-num="C.4" data-title="突合して問題なしと確認できた項目"><span class="n">C.4</span><span class="t">突合して問題なしと確認できた項目</span></a>
+<a class="sec" href="#sec-c-5" data-target="sec-c-5" data-num="C.5" data-title="実装レビューで修正した項目"><span class="n">C.5</span><span class="t">実装レビューで修正した項目</span></a>
+</div></div>
+  </nav>
+  <div class="col">
+    <div class="crumb" id="crumb"></div>
+    <article id="doc">
+      <div class="wrap">
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>版数</td>
+<td>Rev 1.0（実装反映）</td>
+</tr>
+<tr>
+<td>作成日</td>
+<td>2026-09-24</td>
+</tr>
+<tr>
+<td>対象</td>
+<td>AIUsageOverlay v2.3.0 以降の使用量レポート</td>
+</tr>
+<tr>
+<td>位置付け</td>
+<td>Cowork ローカル履歴の取り込みと、金額を表示しない API 換算指標の実装仕様</td>
+</tr>
+<tr>
+<td>閲覧用 HTML</td>
+<td><code>SPEC_Cowork_Usage_Report.html</code>。11 章のトリアージ表で対応可否を記録できる</td>
+</tr>
+</tbody>
+</table>
+<p>本 Markdown が正であり、HTML は生成物なので直接編集しない。</p>
+<p>再生成:</p>
+<pre><code class="language-powershell">python %USERPROFILE%\.codex\skills\design-doc-authoring\scripts\gen_design_html.py docs\SPEC_Cowork_Usage_Report.md docs\SPEC_Cowork_Usage_Report.html
+python docs\fix_layout_width.py docs\SPEC_Cowork_Usage_Report.html
+python %USERPROFILE%\.codex\skills\design-doc-authoring\scripts\verify_design_html.py docs\SPEC_Cowork_Usage_Report.html --md=docs\SPEC_Cowork_Usage_Report.md
+</code></pre>
+<p>改訂履歴:</p>
+<table>
+<thead>
+<tr>
+<th>Rev</th>
+<th>日付</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.1</td>
+<td>2026-09-17</td>
+<td>実機保存形式・現行コード・Anthropic 公式仕様を調査し、初版を作成</td>
+</tr>
+<tr>
+<td>1.0</td>
+<td>2026-09-24</td>
+<td>実装・自動テスト・文書同期を反映。Q1〜Q4 を設計既定案で確定し、限定走査・品質状態・キャッシュ規則を実装結果へ合わせた</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="sec-1"><span class="t">1. 目的とスコープ</span></h2><div class="rule"></div>
+<h3 id="sec-1-1"><span class="num">1.1</span><span class="t">目的</span></h3>
+<p>現行の使用量レポートは Claude Code / Codex / Cursor を集計するが、Claude Desktop の Cowork で消費した
+トークンは含まれない。このため、同じ利用者が AI を使った実績のうち Cowork 分が欠け、日別・プロジェクト別・
+モデル別の合計を過小に表示する。</p>
+<p>また、現行レポートの「コスト換算」は API 公開単価で重み付けした<strong>構成比</strong>だけを表示する。
+利用量全体を期間間で比較できる指標が無いため、「この Cowork 利用を API で行った場合にどの程度の重さか」を
+金額を出さずに把握できない。</p>
+<p>本改修は、Windows 上に残る Cowork のローカルセッションを第 4 のツールとして取り込み、
+API 公開単価を係数にした無通貨の「API 換算ポイント」を追加する。</p>
+<h3 id="sec-1-2"><span class="num">1.2</span><span class="t">スコープ（S）</span></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>項目</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>S1</td>
+<td>Cowork ローカル履歴の取り込み</td>
+<td><code>%AppData%\Claude\local-agent-mode-sessions</code> 配下の Cowork ローカルセッションだけを読み取る</td>
+</tr>
+<tr>
+<td>S2</td>
+<td>Cowork の独立表示</td>
+<td>Claude Code と混ぜず、日別・セッション・ツール内訳・データ品質で <code>Cowork</code> として表示する</td>
+</tr>
+<tr>
+<td>S3</td>
+<td>既存集計への統合</td>
+<td>消費トークン、処理トークン、モデル、ツール実行、作業分類、プロジェクト、経過時間へ Cowork を加える</td>
+</tr>
+<tr>
+<td>S4</td>
+<td>API 換算ポイント</td>
+<td>API 公開単価を係数にした加算可能な無通貨指標を、期間・ツール・セッション単位で表示する</td>
+</tr>
+<tr>
+<td>S5</td>
+<td>換算対象率</td>
+<td>単価不明モデルを除外し、ポイントの対象になった消費トークン割合と除外モデルを表示する</td>
+</tr>
+<tr>
+<td>S6</td>
+<td>増分キャッシュ</td>
+<td>既存の <code>(path, length, lastWriteTimeUtc)</code> 差分判定と履歴削除後の保持を Cowork にも適用する</td>
+</tr>
+<tr>
+<td>S7</td>
+<td>既存レポートとの互換</td>
+<td>既存 3 ツールの数値・表示・キャッシュを変えず、Cowork が無い PC では現行と同じ結果にする</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sec-1-3"><span class="num">1.3</span><span class="t">非スコープ（N）</span></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>項目</th>
+<th>理由・代替</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>N1</td>
+<td>Cowork クラウドセッション</td>
+<td>公式仕様ではクラウドセッションは Anthropic 側に保存され、ローカルに同じ JSONL が残る保証がない。レポートには「ローカル Cowork のみ」と明示する</td>
+</tr>
+<tr>
+<td>N2</td>
+<td>実請求額・通貨表示</td>
+<td>Pro / Max / Team / Enterprise の定額利用料や契約割引と一致しない。<code>$</code>、<code>USD</code>、円換算、請求額という語は合計表示に使わない</td>
+</tr>
+<tr>
+<td>N3</td>
+<td>Compliance API / OpenTelemetry 連携</td>
+<td>プラン・管理者設定・外部送信先が必要になり、ローカル完結という現行方針を変えるため別機能とする</td>
+</tr>
+<tr>
+<td>N4</td>
+<td>claude.ai 使用率取得の変更</td>
+<td>既存の 5 時間枠・週間枠のオーバーレイ表示とは責務が違う。今回は事後レポートだけを変更する</td>
+</tr>
+<tr>
+<td>N5</td>
+<td>Cowork の会話本文・成果物・監査ログ</td>
+<td>使用量の集計に不要で、機密情報の露出面を増やす。<code>.claude\projects\**\*.jsonl</code> 以外は読まない</td>
+</tr>
+<tr>
+<td>N6</td>
+<td>過去単価の自動復元</td>
+<td>履歴には単価適用日が無い。生成時に同梱された単価表を使い、レポート内へ前提を残す</td>
+</tr>
+<tr>
+<td>N7</td>
+<td>ターン単位の明細</td>
+<td>既存レポートと同じく、キャッシュへ保存したセッション集計値だけを表示する</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="sec-2"><span class="t">2. 用語</span></h2><div class="rule"></div>
+<table>
+<thead>
+<tr>
+<th>用語</th>
+<th>定義</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cowork</td>
+<td>Claude Desktop のエージェント型タスク実行機能。2026-09-17 時点で新しい個人向け画面では Chat と統合が進行中だが、本書ではローカル保存形式の <code>entrypoint=local-agent</code> を Cowork と呼ぶ</td>
+</tr>
+<tr>
+<td>ローカル Cowork</td>
+<td>エージェントループとコード実行の履歴が利用者 PC の <code>local-agent-mode-sessions</code> に残るセッション</td>
+</tr>
+<tr>
+<td>クラウド Cowork</td>
+<td>Anthropic のサーバー上で動き、会話とファイルがアカウント側に保存されるセッション。N1 の対象</td>
+</tr>
+<tr>
+<td>消費トークン</td>
+<td>既存レポートの主指標。Claude 系は <code>input + cache_creation + output</code></td>
+</tr>
+<tr>
+<td>処理トークン</td>
+<td>モデルが処理した量。Claude 系は消費トークンに <code>cache_read</code> を加えた値</td>
+</tr>
+<tr>
+<td>API 換算ポイント</td>
+<td>API 公開単価の数値を係数としてトークンへ掛けた無通貨の相対量。略称 <code>AP</code></td>
+</tr>
+<tr>
+<td>換算対象率</td>
+<td>単価表で換算できた消費トークン ÷ 全消費トークン</td>
+</tr>
+<tr>
+<td>換算係数スナップショット</td>
+<td>レポート生成時にアプリへ組み込まれていたモデル別 API 単価の数値部分。画面では通貨単位を付けない</td>
+</tr>
+</tbody>
+</table>
+<div class="note ng"><div class="lab">注意</div>
+<p>注意: API 換算ポイントは請求額ではない。定額プランの支払額、使用率枠の減り方、Anthropic 内部の
+原価を表さない。</p>
+</div>
+<hr>
+<h2 id="sec-3"><span class="t">3. 調査結果と方式選択</span></h2><div class="rule"></div>
+<h3 id="sec-3-1"><span class="num">3.1</span><span class="t">公式仕様で確認したこと</span></h3>
+<table>
+<thead>
+<tr>
+<th>事項</th>
+<th>確認結果</th>
+<th>設計への反映</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cowork の保存場所</td>
+<td>ローカルセッションの会話履歴は利用者 PC に保存される。クラウドセッションはアカウント側へ保存される</td>
+<td>ローカルとクラウドを分け、S1 / N1 とする</td>
+</tr>
+<tr>
+<td>利用枠</td>
+<td>Cowork を含む Claude の利用はプランの使用枠を消費し、長いエージェントタスクほど多く消費する</td>
+<td>API 換算値を実際のプラン使用率と呼ばない</td>
+</tr>
+<tr>
+<td>監視経路</td>
+<td>Team / Enterprise の OpenTelemetry はリクエスト単位のモデル、トークン数、推定コストを出せる</td>
+<td>技術的な代替として記録するが N3 とする</td>
+</tr>
+<tr>
+<td>API 単価</td>
+<td>Opus 5 は入力 5 / 出力 25、Fable 5 は入力 10 / 出力 50 USD/MTok。5分キャッシュ書込 1.25倍、1時間 2倍、通常キャッシュ読込 0.1倍</td>
+<td>既存 <code>ModelPricing</code> の絶対単価方式を継続する</td>
+</tr>
+</tbody>
+</table>
+<p>参照:</p>
+<ul>
+<li><a href="https://support.claude.com/en/articles/13455879-use-claude-cowork-on-team-and-enterprise-plans">Use Claude Cowork on Team and Enterprise plans</a></li>
+<li><a href="https://support.claude.com/en/articles/14479288-claude-cowork-architecture-overview">Claude Cowork architecture overview</a></li>
+<li><a href="https://support.claude.com/en/articles/14477985-monitor-claude-cowork-activity-with-opentelemetry">Monitor Claude Cowork activity with OpenTelemetry</a></li>
+<li><a href="https://platform.claude.com/docs/en/about-claude/pricing">Claude API pricing</a></li>
+</ul>
+<h3 id="sec-3-2"><span class="num">3.2</span><span class="t">Windows 実機で確認した保存形式</span></h3>
+<p>2026-09-17 に、内容本文を出力せずファイル構造・JSON キー・数値項目だけを確認した。</p>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>実測</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>保存ルート</td>
+<td><code>%AppData%\Claude\local-agent-mode-sessions</code></td>
+</tr>
+<tr>
+<td>Cowork セッションメタデータ</td>
+<td>43 件の <code>local_&lt;UUID&gt;.json</code>。<code>sessionId</code> / <code>cliSessionId</code> / <code>createdAt</code> / <code>lastActivityAt</code> / <code>model</code> 等を持つ</td>
+</tr>
+<tr>
+<td>使用量 JSONL</td>
+<td>289 ファイル、268,893,728 bytes。各セッション配下の <code>.claude\projects\**\*.jsonl</code></td>
+</tr>
+<tr>
+<td>除外すべき監査 JSONL</td>
+<td>43 ファイル、244,923,472 bytes の <code>audit.jsonl</code></td>
+</tr>
+<tr>
+<td>主セッション対応</td>
+<td>43 件すべての <code>cliSessionId</code> と主 JSONL のファイル名が対応</td>
+</tr>
+<tr>
+<td>ID の一意性</td>
+<td><code>sessionId</code> / <code>cliSessionId</code> / 主 JSONL 名はいずれも 43 件すべて一意</td>
+</tr>
+<tr>
+<td>Claude Code との重複</td>
+<td>Cowork 主 ID 43 件とホスト側 Claude Code JSONL 名 609 件の重複は 0 件</td>
+</tr>
+<tr>
+<td>識別子</td>
+<td>調べた主 JSONL 43 件すべて <code>entrypoint=local-agent</code> / <code>userType=external</code></td>
+</tr>
+<tr>
+<td>モデル</td>
+<td>主 JSONL の先頭 usage は Opus 5 が 39 件、Fable 5 が 4 件。メタデータは Opus 5 が 40 件、Fable 5 が 3 件</td>
+</tr>
+<tr>
+<td>プロジェクトパス</td>
+<td>主 JSONL 43 件すべて <code>cwd</code> は Windows パス。既存のプロジェクト正規化を適用できる</td>
+</tr>
+<tr>
+<td>選択フォルダ数</td>
+<td>0 個 14件、1 個 21件、2 個 5件、3〜5 個 各1件</td>
+</tr>
+</tbody>
+</table>
+<p><code>assistant</code> 行の構造は Claude Code と同じで、<code>message.model</code> と次の <code>message.usage</code> を持つ。</p>
+<pre><code class="language-text">input_tokens
+cache_creation_input_tokens
+cache_read_input_tokens
+output_tokens
+cache_creation.ephemeral_5m_input_tokens
+cache_creation.ephemeral_1h_input_tokens
+</code></pre>
+<p>一例では <code>model=claude-opus-5</code>、5分 / 1時間 TTL 内訳も取得できた。
+したがって、固定モデルによる推定は行わず、履歴に記録されたモデルとトークン種別を使う。</p>
+<h3 id="sec-3-3"><span class="num">3.3</span><span class="t">方式比較</span></h3>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>内容</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A</td>
+<td><code>local-agent-mode-sessions</code> の <code>.claude\projects</code> JSONL を直接読む</td>
+<td><strong>採用。</strong> ローカル完結で、既存 Claude Code パーサと単価表を再利用できる</td>
+</tr>
+<tr>
+<td>B</td>
+<td>claude.ai Usage ページの通信を傍受する</td>
+<td>不採用。現行 API は 5時間 / 週間の利用率だけを処理し、セッション・モデル・トークン種別を保持しない</td>
+</tr>
+<tr>
+<td>C</td>
+<td>OpenTelemetry / Compliance API を使う</td>
+<td>不採用。Team / Enterprise と管理者設定に依存し、外部送信・資格情報・保持方針が必要</td>
+</tr>
+<tr>
+<td>D</td>
+<td>Cowork メタデータの <code>model</code> とファイルサイズから推定する</td>
+<td>不採用。usage 実値が読めるため、推定は精度を落とすだけである</td>
+</tr>
+</tbody>
+</table>
+<div class="note"><div class="lab">設計上の判断</div>
+<p>方式 A を採る理由: 現行レポートはローカル履歴を読み取り専用で集計する機能である。
+同じデータ境界を維持したまま実測値を取得でき、利用データの外部送信も増えない。</p>
+</div>
+<hr>
+<h2 id="sec-4"><span class="t">4. 全体構成</span></h2><div class="rule"></div>
+<h3 id="sec-4-1"><span class="num">4.1</span><span class="t">データフロー</span></h3>
+<pre><code class="language-text">%AppData%\Claude\local-agent-mode-sessions
+  └─ &lt;内部ID&gt;\&lt;アカウントID&gt;\&lt;セッション&gt;\.claude\projects\**\*.jsonl
+       │  読み取り専用 / audit・credentials・outputs は列挙しない
+       ▼
+SessionStatsScanner
+  ├─ Cowork ルート探索と対象 JSONL の列挙                 [改修]
+  ├─ ClaudeCodeHistoryParser.ParseLine                    [既存流用]
+  ├─ (requestId, message.id) 重複排除                     [既存流用]
+  └─ tool=cowork / key=cowork:&lt;sessionId&gt; へ正規化        [改修]
+       ▼
+session-stats-cache.json                                  [既存形式を維持]
+       ▼
+SessionStatsAggregator
+  ├─ 期間・日・プロジェクト・モデル・ツール別集計          [改修]
+  └─ API 換算ポイント / 対象率                            [改修]
+       ▼
+report-template.html
+  └─ Cowork 系列・フィルタ・品質・API 換算ポイント         [改修]
+</code></pre>
+<h3 id="sec-4-2"><span class="num">4.2</span><span class="t">責務の分界</span></h3>
+<table>
+<thead>
+<tr>
+<th>層</th>
+<th>持つ責務</th>
+<th>持たない責務</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SessionStatsScanner</code></td>
+<td>Cowork ルート探索、対象ファイル限定、差分判定、I/O、ツール識別</td>
+<td>JSON 1 行の構造解釈、単価計算、HTML 描画</td>
+</tr>
+<tr>
+<td><code>ClaudeCodeHistoryParser</code></td>
+<td>Claude Code / Cowork 共通 JSONL の 1 行パース</td>
+<td>パス探索、Cowork 判定、重複排除</td>
+</tr>
+<tr>
+<td><code>SessionStatsRecord</code></td>
+<td><code>ToolCowork</code>、共通トークン式、<code>cowork:</code> キー</td>
+<td>単価表、画面文言</td>
+</tr>
+<tr>
+<td><code>ModelPricing</code> / <code>CostAccumulator</code></td>
+<td>モデル別単価、構成比、API 換算ポイント、対象 / 除外量</td>
+<td>実請求額、プラン利用率</td>
+</tr>
+<tr>
+<td><code>SessionStatsAggregator</code></td>
+<td>Cowork を含む期間・日・品質の集計</td>
+<td>生 JSONL の再読込</td>
+</tr>
+<tr>
+<td>HTML テンプレート</td>
+<td>描画、絞り込み、並べ替え</td>
+<td>再集計、外部通信、単価の再取得</td>
+</tr>
+</tbody>
+</table>
+<p>新しい <code>CoworkHistoryParser</code> は作らない。実機で JSONL 形式が共通と確認できたため、
+同じ構造を 2 箇所で実装すると将来のフィールド追加時に差が出る。
+<code>ClaudeCodeHistoryParser</code> の XML コメントだけを「Claude 系ローカル履歴」に広げる。</p>
+<h3 id="sec-4-3"><span class="num">4.3</span><span class="t">キャッシュ互換</span></h3>
+<p><code>session-stats-cache.json</code> の <code>schemaVersion=2</code> は維持する。</p>
+<ul>
+<li>セッションの <code>tool</code> は文字列であり、<code>cowork</code> の追加は既存 JSON 形式を壊さない</li>
+<li>ファイルキャッシュのキーはフルパスなので、Cowork JSONL も同じ辞書へ追加できる</li>
+<li>API 換算ポイントはレポート生成時にモデル別内訳から再計算し、キャッシュへ新フィールドを持たせない</li>
+<li>スキーマ版を上げると、元履歴が既に削除された既存セッションを再構築できず失うため、不要な版上げをしない</li>
+</ul>
+<h3 id="sec-4-4"><span class="num">4.4</span><span class="t">状態</span></h3>
+<table>
+<thead>
+<tr>
+<th>状態</th>
+<th>条件</th>
+<th>レポートの扱い</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>notUsed</code></td>
+<td>Cowork ルートが無い、または既知階層はあるが対象 JSONL が無い</td>
+<td>新規 Cowork 系列を 0 とする。既にキャッシュ済みの履歴は保持し、データ品質に「未使用」</td>
+</tr>
+<tr>
+<td><code>ok</code></td>
+<td>対象 JSONL を 1 件以上読み、致命エラーなし</td>
+<td>通常表示</td>
+</tr>
+<tr>
+<td><code>partial</code></td>
+<td>一部ファイルが消失・更新中・読取不能・破損</td>
+<td>読めた分を表示し、件数と理由を品質画面へ出す</td>
+</tr>
+<tr>
+<td><code>unsupported</code></td>
+<td>セッション階層はあるが既知の <code>.claude\projects</code> 階層を確認できない</td>
+<td>古い Cowork キャッシュも合計へ入れず、形式変更の可能性を表示</td>
+</tr>
+<tr>
+<td><code>unreadable</code></td>
+<td>Cowork ルート自体を列挙できない</td>
+<td>新規走査結果は入れず、既にキャッシュ済みの履歴は保持してルート読取失敗を表示</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="sec-5"><span class="t">5. 入力・正規化仕様</span></h2><div class="rule"></div>
+<h3 id="sec-5-1"><span class="num">5.1</span><span class="t">ルート探索</span></h3>
+<p>既定ルートは次で求める。</p>
+<pre><code class="language-csharp">Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+    &quot;Claude&quot;,
+    &quot;local-agent-mode-sessions&quot;)
+</code></pre>
+<p>ルート直下の GUID 名は内部実装であり、固定値としてコードへ入れない。
+探索は <code>&lt;内部ID&gt;\&lt;アカウントID&gt;\&lt;セッションID&gt;</code> のちょうど3階層だけを順に列挙し、
+候補セッション配下の <code>.claude\projects</code> が存在する場合だけ、その中の <code>*.jsonl</code> を再帰列挙する。</p>
+<p>次は<strong>列挙対象にしない</strong>。</p>
+<pre><code class="language-text">audit.jsonl
+.claude\.credentials.json
+.claude\.claude.json
+.claude\tasks\**
+outputs\**
+ユーザーが Cowork に接続した作業フォルダ
+</code></pre>
+<div class="note ng"><div class="lab">注意</div>
+<p>禁止: <code>local-agent-mode-sessions</code> 全体を <code>*.jsonl</code> で再帰走査しない。
+実機では <code>audit.jsonl</code> だけで約245 MBあり、同じ操作を二重計上するうえ、資格情報・成果物の近傍まで
+不要に探索範囲を広げる。</p>
+</div>
+<h3 id="sec-5-2"><span class="num">5.2</span><span class="t">ファイル識別</span></h3>
+<p>対象ファイルは <code>.claude\projects\**\*.jsonl</code> とする。パースできた行に <code>entrypoint</code> がある場合は、
+少なくとも1行の <code>local-agent</code> を確認する。明示された値がすべて非 <code>local-agent</code> なら採用しない。
+全行で <code>entrypoint</code> が欠ける古い形式は、Cowork 専用ルート配下であることを根拠に採用し、
+品質画面へ「識別子なし」を計上して <code>partial</code> とする。</p>
+<p>主セッションとサブエージェントは、既存 Claude Code と同じ規則を使う。</p>
+<table>
+<thead>
+<tr>
+<th>種別</th>
+<th>キー</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主セッション</td>
+<td><code>cowork:&lt;sessionId&gt;</code></td>
+</tr>
+<tr>
+<td>サブエージェント</td>
+<td><code>cowork:&lt;sessionId&gt;#&lt;subagents以下の相対パス&gt;</code></td>
+</tr>
+<tr>
+<td>親キー</td>
+<td><code>cowork:&lt;sessionId&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>claude:</code> と <code>cowork:</code> を分けるため、万一同じ <code>sessionId</code> が両方に存在しても衝突しない。</p>
+<h3 id="sec-5-3"><span class="num">5.3</span><span class="t">重複排除とトークン式</span></h3>
+<p>重複排除は Claude Code と同じ <code>(requestId, message.id)</code> とする。
+同一 API 応答が複数 content block の行へ繰り返し記録されるため、全行加算しない。
+キーを持たない usage 行は捨てずに加算し、品質画面へ件数を出す。</p>
+<table>
+<thead>
+<tr>
+<th>指標</th>
+<th>Cowork の式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>消費トークン</td>
+<td><code>input + cache_creation + output</code></td>
+</tr>
+<tr>
+<td>処理トークン</td>
+<td><code>input + cache_creation + cache_read + output</code></td>
+</tr>
+<tr>
+<td>キャッシュ作成 5分</td>
+<td><code>usage.cache_creation.ephemeral_5m_input_tokens</code></td>
+</tr>
+<tr>
+<td>キャッシュ作成 1時間</td>
+<td><code>usage.cache_creation.ephemeral_1h_input_tokens</code></td>
+</tr>
+<tr>
+<td>TTL 不明</td>
+<td><code>cache_creation_input_tokens - 5分 - 1時間</code>。負値は 0 に丸める</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sec-5-4"><span class="num">5.4</span><span class="t">プロジェクトと時刻</span></h3>
+<ul>
+<li><code>cwd</code> は既存 <code>SessionNormalizer.NormalizeProjectKey</code> で大文字小文字を無視して集約する</li>
+<li>表示は最初に観測した Windows パスを使う</li>
+<li><code>timestamp</code> は UTC として読み、日別集計時にローカル時刻へ変換する</li>
+<li>メタデータの <code>userSelectedFolders</code> は複数フォルダを持ち得るため、プロジェクト名の上書きには使わない</li>
+<li><code>createdAt</code> / <code>lastActivityAt</code> は JSONL 時刻が無い場合の推定値に使わない。推定値と実測値を混ぜない</li>
+</ul>
+<h3 id="sec-5-5"><span class="num">5.5</span><span class="t">読み取り中の変更</span></h3>
+<p>既存 Scanner と同じく、読取前後のファイル長・更新時刻を比較する。
+変化したファイルは今回のキャッシュ更新へ採用せず、次回再走査する。
+開くときは <code>FileShare.ReadWrite</code> とし、動作中の Cowork を妨げない。</p>
+<hr>
+<h2 id="sec-6"><span class="t">6. API 換算ポイント仕様</span></h2><div class="rule"></div>
+<h3 id="sec-6-1"><span class="num">6.1</span><span class="t">指標の定義</span></h3>
+<p>API 換算ポイント（AP）は、API 単価表に記載された <strong>USD / 100万トークンの数値部分</strong>を係数として、
+各トークン数へ掛けた合計とする。通貨への除算は行わず、画面に通貨記号を出さない。</p>
+<pre><code class="language-text">AP = input       × inputPrice
+   + cache5m     × cacheWrite5mPrice
+   + cache1h     × cacheWrite1hPrice
+   + cacheUnknown× cacheWrite5mPrice
+   + cacheRead   × cacheReadPrice
+   + output      × outputPrice
+</code></pre>
+<p>例: <code>claude-opus-5</code> の係数は input 5 / cache5m 6.25 / cache1h 10 /
+cacheRead 0.5 / output 25。1,000 input tokens は 5,000 AP となる。</p>
+<p>AP は次の性質を持つ。</p>
+<ul>
+<li>期間・ツール・セッション間で加算・比較できる</li>
+<li>モデルとトークン種別の単価差を維持する</li>
+<li>既存 <code>CostAccumulator</code> の <code>total</code> は「トークン数 ÷ 1,000,000 × 係数」であるため、<code>AP = total × 1,000,000</code> で算出できる</li>
+<li>単価表が変わると同じ履歴でも値が変わるため、換算係数スナップショットの併記が必須</li>
+</ul>
+<h3 id="sec-6-2"><span class="num">6.2</span><span class="t">表示単位</span></h3>
+<table>
+<thead>
+<tr>
+<th>値</th>
+<th>表示</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1,000 未満</td>
+<td><code>999 AP</code></td>
+</tr>
+<tr>
+<td>1,000 以上</td>
+<td><code>1.23 kAP</code></td>
+</tr>
+<tr>
+<td>1,000,000 以上</td>
+<td><code>1.23 MAP</code></td>
+</tr>
+<tr>
+<td>1,000,000,000 以上</td>
+<td><code>1.23 GAP</code></td>
+</tr>
+</tbody>
+</table>
+<p>小数は表示桁の丸めにだけ使い、内部は <code>decimal</code> で合算する。
+0.005 未満を 0 と表示しても、対象率と内訳計算からは落とさない。</p>
+<h3 id="sec-6-3"><span class="num">6.3</span><span class="t">対象ツールとモデル</span></h3>
+<table>
+<thead>
+<tr>
+<th>ツール</th>
+<th>AP の扱い</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude Code</td>
+<td>現行どおり <code>ModelPricing</code> にあるモデルだけ対象</td>
+</tr>
+<tr>
+<td>Cowork</td>
+<td>Claude Code と同じ。履歴の実モデル名を使う</td>
+</tr>
+<tr>
+<td>Codex</td>
+<td>対象外。内部モデル名と公開 API 単価の対応、キャッシュ書込 TTL が確定できない</td>
+</tr>
+<tr>
+<td>Cursor</td>
+<td>対象外。ローカル履歴にトークンが無い</td>
+</tr>
+</tbody>
+</table>
+<p>モデル名を固定値へフォールバックしない。<code>ModelPricing.Lookup</code> が <code>null</code> の場合は、そのモデルの消費トークンを
+<code>excludedTokens</code> に加え、モデル名を表示する。</p>
+<h3 id="sec-6-4"><span class="num">6.4</span><span class="t">対象率</span></h3>
+<pre><code class="language-text">対象率 = coveredTokens / (coveredTokens + excludedTokens) × 100
+</code></pre>
+<ul>
+<li>分母 0 の場合は <code>—</code></li>
+<li>100% 未満なら注意色にし、除外モデルを直下へ出す</li>
+<li>期間全体とセッション明細の両方へ出す</li>
+<li>Codex / Cursor はツール仕様として対象外なので、Claude 系の対象率の分母へ混ぜない</li>
+</ul>
+<h3 id="sec-6-5"><span class="num">6.5</span><span class="t">金額を出さないための境界</span></h3>
+<p>画面へ出してよいもの:</p>
+<ul>
+<li>AP 合計とツール別 AP</li>
+<li>入力 / キャッシュ書込 / キャッシュ読込 / 出力の構成比</li>
+<li>換算対象率、除外トークン、除外モデル</li>
+<li>計算に使った換算係数（通貨単位なし）、参照した公開単価表の日付 / URL、「生成時点の参考値」という注記</li>
+</ul>
+<p>画面へ出さないもの:</p>
+<ul>
+<li>AP を 1,000,000 で割った値</li>
+<li><code>$</code> / <code>USD</code> / <code>円</code> / 為替レート</li>
+<li>「節約額」「請求額」「料金」「支払額」というラベル</li>
+<li>定額プランの月額との比較</li>
+</ul>
+<hr>
+<h2 id="sec-7"><span class="t">7. 画面仕様</span></h2><div class="rule"></div>
+<h3 id="sec-7-1"><span class="num">7.1</span><span class="t">概要</span></h3>
+<p>既存の「コスト換算の内訳」を「API 利用相当（参考）」ブロックへ改称する。</p>
+<pre><code class="language-text">┌ API 利用相当（参考）──────────────────────────────────┐
+│ API換算ポイント   18.4 MAP       換算対象率 99.8%      │
+│ Claude Code  7.1 MAP   Cowork 11.3 MAP                 │
+│ [入力][5分cache][1時間cache][読込][出力]  構成比       │
+│ ※ API公開係数で重み付けした比較用の参考指標です           │
+│ 除外: 0.2% / model-x                                   │
+└───────────────────────────────────────────────────────┘
+</code></pre>
+<p>既存の構成比を残し、その上に AP 合計・Claude Code・Cowork・対象率を追加する。
+Cowork が 0 件なら Cowork 行は出さない。Claude 系が全量除外なら AP は <code>—</code> とする。</p>
+<h3 id="sec-7-2"><span class="num">7.2</span><span class="t">日別グラフ</span></h3>
+<p>日別の積み上げ系列を 3 系列から 4 系列へ増やす。</p>
+<table>
+<thead>
+<tr>
+<th>系列</th>
+<th>表示名</th>
+<th>色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Claude Code</td>
+<td>Claude Code</td>
+<td>既存色を維持</td>
+</tr>
+<tr>
+<td>Cowork</td>
+<td>Cowork</td>
+<td><code>#14b8a6</code>（ダーク時は <code>#5eead4</code>）</td>
+</tr>
+<tr>
+<td>Codex</td>
+<td>Codex</td>
+<td>既存色を維持</td>
+</tr>
+<tr>
+<td>Cursor</td>
+<td>Cursor</td>
+<td>既存色を維持</td>
+</tr>
+</tbody>
+</table>
+<p>AP の日別グラフは追加しない。概要ブロックと期間切替で比較でき、同種のグラフを増やす必要はない。</p>
+<h3 id="sec-7-3"><span class="num">7.3</span><span class="t">セッション</span></h3>
+<ul>
+<li>ツール絞り込みへ <code>Cowork</code> を追加する</li>
+<li>Cowork バッジは日別グラフと同じ色にする</li>
+<li>未知ツールを Claude Code と表示する現行フォールバックを廃止し、明示的な switch にする</li>
+<li>セッション明細の「API 利用相当」に AP・対象率・構成比を表示する</li>
+<li>主 / サブエージェントの折り畳みは既存 Claude Code と同じ</li>
+</ul>
+<h3 id="sec-7-4"><span class="num">7.4</span><span class="t">データ品質</span></h3>
+<table>
+<thead>
+<tr>
+<th>項目</th>
+<th>Cowork で表示する内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>状態</td>
+<td><code>notUsed</code> / <code>ok</code> / <code>partial</code> / <code>unsupported</code> / <code>unreadable</code></td>
+</tr>
+<tr>
+<td>走査ルート</td>
+<td><code>%AppData%\Claude\local-agent-mode-sessions</code></td>
+</tr>
+<tr>
+<td>対象ファイル</td>
+<td><code>.claude\projects\**\*.jsonl</code> の件数と容量</td>
+</tr>
+<tr>
+<td>除外対象</td>
+<td><code>audit.jsonl</code> 等は「仕様により未走査」と表示し、エラーに数えない</td>
+</tr>
+<tr>
+<td>重複排除</td>
+<td>raw / accepted / duplicate / keyless</td>
+</tr>
+<tr>
+<td>パース品質</td>
+<td>parse error / last line broken / 読取中変更 / 読取不能</td>
+</tr>
+<tr>
+<td>対象範囲</td>
+<td>「ローカル Cowork のみ。クラウドセッションは含まれない」</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sec-7-5"><span class="num">7.5</span><span class="t">未定義ケースの扱い</span></h3>
+<table>
+<thead>
+<tr>
+<th>状況</th>
+<th>挙動</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ルートが無い</td>
+<td><code>notUsed</code>。レポート生成は成功させ、既存キャッシュがあれば履歴表示を維持する</td>
+</tr>
+<tr>
+<td>既知階層はあるが対象 JSONL が無い</td>
+<td><code>notUsed</code>。クラウドのみ利用の可能性を注記し、既存キャッシュがあれば維持する</td>
+</tr>
+<tr>
+<td>内部階層が変わった</td>
+<td><code>unsupported</code>。古い Cowork キャッシュも抑止して警告し、他ツールは生成する</td>
+</tr>
+<tr>
+<td>ルートを列挙できない</td>
+<td><code>unreadable</code>。既存キャッシュがあれば履歴表示を維持し、読取失敗を表示して他ツールも生成する</td>
+</tr>
+<tr>
+<td>JSONL 1 行が壊れている</td>
+<td>行だけを除外し <code>parseErrors</code> を加算する</td>
+</tr>
+<tr>
+<td>末尾が書込中</td>
+<td>ファイルを今回不採用にし、前回キャッシュがあれば維持する</td>
+</tr>
+<tr>
+<td>同じ Cowork ID が複数ファイルで見つかる</td>
+<td>同じファイル内容と確認できない限り自動で捨てず、キー衝突として <code>partial</code> にする</td>
+</tr>
+<tr>
+<td>単価不明モデル</td>
+<td>トークン集計は含め、AP だけ除外する</td>
+</tr>
+<tr>
+<td>全モデルが単価不明</td>
+<td>AP は <code>—</code>、対象率 0%、除外モデルを表示する</td>
+</tr>
+<tr>
+<td>AP が非常に大きい</td>
+<td><code>decimal</code> で保持し、SI接頭辞で表示する。JavaScript の整数精度に依存させないため表示用文字列も C# で作る</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="sec-8"><span class="t">8. セキュリティと制約</span></h2><div class="rule"></div>
+<h3 id="sec-8-1"><span class="num">8.1</span><span class="t">リスク</span></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>リスク</th>
+<th>対策</th>
+<th>残るリスク（受容する）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R1</td>
+<td>Cowork 保存領域には資格情報・指示文・成果物がある</td>
+<td><code>.claude\projects\**\*.jsonl</code> だけを列挙し、資格情報・監査ログ・outputs を開かない</td>
+<td>JSONL 自体には最初の指示文と Windows パスが含まれる。既存の64文字設定と配布時確認が必要</td>
+</tr>
+<tr>
+<td>R2</td>
+<td>内部保存形式が予告なく変わる</td>
+<td><code>unsupported</code> と品質画面、合成テスト、実履歴オプトインテストで検知する</td>
+<td>公式の安定スキーマではないため、Claude Desktop 更新直後に一時的に集計できない可能性がある</td>
+</tr>
+<tr>
+<td>R3</td>
+<td>Cowork 動作中の読み取りで部分データになる</td>
+<td>FileShare.ReadWrite、前後メタデータ比較、前回キャッシュ維持</td>
+<td>レポート生成直前の未確定ターンは次回まで反映されない</td>
+</tr>
+<tr>
+<td>R4</td>
+<td>API 換算値を請求額と誤認する</td>
+<td>無通貨 AP、請求額ではない注記、対象率、換算係数スナップショット</td>
+<td>換算係数から利用者が概算額を逆算することは防がない</td>
+</tr>
+<tr>
+<td>R5</td>
+<td>クラウド Cowork が欠け、合計を全利用量と誤認する</td>
+<td>画面ヘッダと品質画面へ「ローカルのみ」を表示</td>
+<td>ローカル / クラウドの利用割合は本機能から判定できない</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sec-8-2"><span class="num">8.2</span><span class="t">既知の制約（C）</span></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>制約</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>C1</td>
+<td>Cowork の合計は Windows PC に残るローカルセッションだけであり、Claude アカウント全体の Cowork 使用量ではない</td>
+</tr>
+<tr>
+<td>C2</td>
+<td>AP はレポート生成時の換算係数で全履歴を再評価する。同じ履歴でもアプリ更新後に値が変わり得る</td>
+</tr>
+<tr>
+<td>C3</td>
+<td>AP は実請求額・定額プランの消費率・レート制限の使用率ではない</td>
+</tr>
+<tr>
+<td>C4</td>
+<td>Cowork 内部フォルダ構造は公式の公開スキーマではない</td>
+</tr>
+<tr>
+<td>C5</td>
+<td>プロジェクト表示は JSONL の <code>cwd</code> を使い、<code>userSelectedFolders</code> の複数フォルダ構成は表現しない</td>
+</tr>
+<tr>
+<td>C6</td>
+<td>既存どおり、キャッシュのスキーマ版更新時には既に元履歴が消えたセッションを復元できない</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="sec-9"><span class="t">9. ファイル構成と変更範囲</span></h2><div class="rule"></div>
+<p>新規の実装ファイルは作らず、既存の責務へ最小差分で追加する。</p>
+<table>
+<thead>
+<tr>
+<th>対象</th>
+<th>変更</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AIUsageOverlay/Models/SessionStatsRecord.cs</code></td>
+<td><code>ToolCowork = "cowork"</code>、XML コメント、Cowork が Claude 系トークン式を使うことを明示</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay/Services/Parsing/ClaudeCodeHistoryParser.cs</code></td>
+<td>実装変更なしを基本とし、Cowork 共通形式を扱うコメントへ更新。必要な場合だけ <code>entrypoint</code> を結果へ追加</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay/Services/SessionStats/SessionStatsScanner.cs</code></td>
+<td>CoworkRoot、4引数コンストラクタ、限定列挙、状態、<code>ParseCoworkFile</code> 薄いラッパ、<code>cowork:</code> キー</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay/Services/SessionStats/SessionStatsAggregator.cs</code></td>
+<td>Cowork の期間・日別・品質系列、AP 合計 / ツール別 / 対象率のビュー項目</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay/Services/SessionStats/ModelPricing.cs</code></td>
+<td><code>ToolCowork</code> を Claude Code と同じ換算対象にし、既存内部合計を 1,000,000 倍して AP として返す</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay/Resources/Report/report-template.html</code></td>
+<td>Cowork 色・系列・フィルタ・バッジ・品質、AP 表示、未知ツールフォールバック廃止</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay.Tests/ParsingTests.cs</code></td>
+<td>Cowork 共通パース、重複排除、キー、親子、トークン式</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay.Tests/ScanAndRenderTests.cs</code></td>
+<td>ルート探索、除外境界、状態、キャッシュ、4系列、HTML 表示</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay.Tests/CostTests.cs</code></td>
+<td>Cowork AP、ツール別合計、対象率、単価不明、金額非表示</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay.Tests/RealHistoryScanTests.cs</code></td>
+<td><code>AIUSAGE_REAL_SCAN=1</code> 時だけ Cowork 実履歴を走査し、本文を出力せず件数・品質を確認</td>
+</tr>
+<tr>
+<td><code>README.md</code></td>
+<td>対象ツール、ローカル限定、API換算ポイント、データ品質、保存範囲を更新</td>
+</tr>
+<tr>
+<td><code>docs/SPEC_Usage_Dashboard.md</code></td>
+<td>N1 / C7 の解除、4ツール化、既存コスト換算節を本設計へ接続。実装完了時に更新</td>
+</tr>
+</tbody>
+</table>
+<p><code>SessionStatsCache.cs</code> の JSON 形式と <code>schemaVersion</code> は変更しない。</p>
+<hr>
+<h2 id="sec-10"><span class="t">10. テスト方針と実装ステップ</span></h2><div class="rule"></div>
+<p>2026-09-24 の自動テストは 76 件すべて PASS。<code>AIUSAGE_REAL_SCAN=1</code> の実履歴テストも 1 件 PASS。
+ビルドと HTML 検証結果は 10.3 に記録する。</p>
+<h3 id="sec-10-1"><span class="num">10.1</span><span class="t">テストケース</span></h3>
+<p>業務情報を含む実履歴はリポジトリへ入れない。通常テストは最小の合成 JSONL と一時ディレクトリで行う。</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>ケース</th>
+<th>期待</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1</td>
+<td>Cowork ルートなし</td>
+<td>既存3ツールの結果が変更されず、Cowork は <code>notUsed</code></td>
+</tr>
+<tr>
+<td>T2</td>
+<td>ルートに <code>audit.jsonl</code> / <code>.credentials.json</code> / outputs を置く</td>
+<td>どれも開かず、走査件数・パースエラーへ入らない</td>
+</tr>
+<tr>
+<td>T3</td>
+<td><code>entrypoint=local-agent</code> の主 JSONL</td>
+<td><code>tool=cowork</code>、<code>key=cowork:&lt;sessionId&gt;</code> で1セッションになる</td>
+</tr>
+<tr>
+<td>T4</td>
+<td>Cowork サブエージェント</td>
+<td>親キーと子キーが <code>cowork:</code> になり、既定の親子累計が成立する</td>
+</tr>
+<tr>
+<td>T5</td>
+<td>同じ <code>(requestId, message.id)</code> が3行</td>
+<td>usage は1回だけ加算し、duplicate=2</td>
+</tr>
+<tr>
+<td>T6</td>
+<td>requestId 欠落</td>
+<td>捨てずに加算し、keyless を増やす</td>
+</tr>
+<tr>
+<td>T7</td>
+<td>TTL 別 cache creation</td>
+<td>5分 / 1時間 / 不明の合計が <code>cache_creation_input_tokens</code> と一致する</td>
+</tr>
+<tr>
+<td>T8</td>
+<td>読取中に長さ・mtime変更</td>
+<td>今回不採用、前回キャッシュ維持、状態 <code>partial</code></td>
+</tr>
+<tr>
+<td>T9</td>
+<td>既存キャッシュに Cowork を追加</td>
+<td>schemaVersion=2 のまま既存セッションと Cowork の両方が残る</td>
+</tr>
+<tr>
+<td>T10</td>
+<td>Opus 5 の既知トークン</td>
+<td>6.1 の式どおりの AP、構成比、対象率100%</td>
+</tr>
+<tr>
+<td>T11</td>
+<td>Claude Code + Cowork</td>
+<td>AP 合計が両ツールの和、ツール別 AP が分離される</td>
+</tr>
+<tr>
+<td>T12</td>
+<td>単価不明 Cowork モデル</td>
+<td>トークン合計へ含め、AP から除外、対象率とモデル名を表示</td>
+</tr>
+<tr>
+<td>T13</td>
+<td>Codex / Cursor</td>
+<td>AP 対象へ入らず、Claude 系の対象率分母を下げない</td>
+</tr>
+<tr>
+<td>T14</td>
+<td>HTML</td>
+<td>Cowork 4系列・フィルタ・バッジ・品質があり、未知ツールを Claude Code と誤表示しない</td>
+</tr>
+<tr>
+<td>T15</td>
+<td>金額非表示</td>
+<td>生成 HTML の表示文字列全体に <code>$</code> / <code>USD</code> / 円換算 / 請求額がなく、係数表にも通貨単位が無い</td>
+</tr>
+<tr>
+<td>T16</td>
+<td>自己完結性</td>
+<td>HTML に外部 URL、外部 script、外部 CSS、ネットワーク処理が無い</td>
+</tr>
+<tr>
+<td>T17</td>
+<td>危険文字</td>
+<td>既存の <code>&lt;/script&gt;</code> / U+2028 / U+2029 エスケープが Cowork のパス・指示文にも効く</td>
+</tr>
+<tr>
+<td>T18</td>
+<td>実履歴オプトイン</td>
+<td>対象 / 除外件数、モデル、重複排除、parseErrors を出し、指示文・パス本文をテストログへ出さない</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sec-10-2"><span class="num">10.2</span><span class="t">自動化できない範囲</span></h3>
+<ul>
+<li>Claude Desktop 更新後も内部階層と <code>entrypoint</code> が同じか</li>
+<li>Cowork 実行中に生成しても Claude Desktop 側へ影響しないか</li>
+<li>実ブラウザで 4 系列・色・ツール絞り込み・空状態が読みやすいか</li>
+<li>クラウド Cowork が欠ける注記を利用者が全利用量と誤認しないか</li>
+<li>AP が請求額ではないことがラベルと説明だけで理解できるか</li>
+</ul>
+<h3 id="sec-10-3"><span class="num">10.3</span><span class="t">実装状況</span></h3>
+<div class="note"><div class="lab">設計上の判断</div>
+<p>2026-09-24 時点で A0〜B2 と実履歴オプトインテストは完了。Z1 のうち実ブラウザ表示と Claude Desktop 動作中の手動確認は未実施。</p>
+</div>
+
+
+<table data-triage="policy" data-filter-cols="1">
+<thead>
+<tr>
+<th>#</th>
+<th>依存</th>
+<th>規模</th>
+<th>ステップ</th>
+<th>Done の定義</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A0</td>
+<td>—</td>
+<td>S</td>
+<td>実機保存形式と公式仕様の確認</td>
+<td>本書 3.1 / 3.2 と付録 A に証拠があり、推測と未確認を分けていること</td>
+</tr>
+<tr>
+<td>A1</td>
+<td>A0</td>
+<td>M</td>
+<td>Cowork ルート探索と正規化</td>
+<td><strong>完了。</strong> T1〜T9 相当の合成テストを追加</td>
+</tr>
+<tr>
+<td>A2</td>
+<td>A1</td>
+<td>M</td>
+<td>集計と4ツール表示</td>
+<td><strong>完了。</strong> 日別4系列・フィルタ・品質表示を追加</td>
+</tr>
+<tr>
+<td>B1</td>
+<td>A0</td>
+<td>M</td>
+<td>API 換算ポイント</td>
+<td><strong>完了。</strong> AP・ツール別 AP・対象率・係数スナップショットを追加</td>
+</tr>
+<tr>
+<td>B2</td>
+<td>A2, B1</td>
+<td>S</td>
+<td>文書と単価前提の更新</td>
+<td><strong>完了。</strong> README・既存設計書・本書を同期</td>
+</tr>
+<tr>
+<td>Z1</td>
+<td>A2, B1, B2</td>
+<td>M</td>
+<td>実機通し確認</td>
+<td><strong>一部未実施。</strong> 自動テスト・実履歴走査・静的 HTML 検証は完了。実ブラウザと動作中 Cowork は手動確認待ち</td>
+</tr>
+</tbody>
+</table>
+<p>依存関係:</p>
+<pre><code class="language-text">A0 ─┬─ A1 ─ A2 ─┐
+    └─ B1 ───────┼─ B2 ─ Z1
+                 ┘
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>事項</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>並行できる</td>
+<td>A1 の Scanner 系と B1 の AP 計算系。接点は <code>ToolCowork</code> と集計ビュー</td>
+</tr>
+<tr>
+<td>並行できない</td>
+<td>A2 は A1 の Cowork レコードが必要。B2 は画面仕様確定後。Z1 は全実装後</td>
+</tr>
+<tr>
+<td>最長経路</td>
+<td>A0 → A1 → A2 → B2 → Z1</td>
+</tr>
+</tbody>
+</table>
+<div class="note"><div class="lab">設計上の判断</div>
+<p><strong>Z1 が受け入れ基準</strong>である。ビルド・単体テスト成功だけでは完了にしない。</p>
+</div>
+<hr>
+<h2 id="sec-11"><span class="t">11. 決定事項・対応方針一覧</span></h2><div class="rule"></div>
+<h3 id="sec-11-1"><span class="num">11.1</span><span class="t">実装時に確定した判断</span></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>決定</th>
+<th>根拠</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1</td>
+<td>Cowork は Claude Code と別ツール表示にする</td>
+<td>ユーザーの実装移行指示と本書の既定案。保存ルート・利用面・品質状態が別である</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>指標名を「API利用相当（参考）」、値を API 換算ポイント（AP）とする</td>
+<td>金額・通貨を出さず、ツール間・期間間の比較指標に限定する</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>生成時点の係数で過去分も再評価する</td>
+<td>履歴に当時係数が無いため。基準日と参照元をレポートへ残す</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>ローカル Cowork だけを v1 の対象とする</td>
+<td>クラウド履歴の取得経路を本変更へ含めず、「ローカルのみ」を明示する</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sec-11-2"><span class="num">11.2</span><span class="t">対応方針一覧（操作できます）</span></h3>
+<p>この表の方針は Rev 1.0 の実装結果である。
+HTML の判定はこの PC のこのブラウザの localStorage に保存される。共有時は JSON 出力 / 取込を使う。
+1 列目の記号が保存キーなので、採番を変更しない。</p>
+
+
+<table data-triage="policy" data-filter-cols="1,3">
+<thead>
+<tr>
+<th>#</th>
+<th>区分</th>
+<th>項目</th>
+<th>既定の方針</th>
+<th>前提</th>
+<th>根拠・参照</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>S1</td>
+<td>スコープ</td>
+<td>Cowork ローカル履歴の取り込み</td>
+<td>対応する</td>
+<td>Q4</td>
+<td>1.2 / 5 章</td>
+</tr>
+<tr>
+<td>S2</td>
+<td>スコープ</td>
+<td>Cowork の独立表示</td>
+<td>対応する</td>
+<td>Q1</td>
+<td>1.2 / 7 章</td>
+</tr>
+<tr>
+<td>S3</td>
+<td>スコープ</td>
+<td>既存集計への統合</td>
+<td>対応する</td>
+<td>A1</td>
+<td>1.2 / 4 章</td>
+</tr>
+<tr>
+<td>S4</td>
+<td>スコープ</td>
+<td>API 換算ポイント</td>
+<td>対応する</td>
+<td>Q2, Q3</td>
+<td>1.2 / 6 章</td>
+</tr>
+<tr>
+<td>S5</td>
+<td>スコープ</td>
+<td>換算対象率</td>
+<td>対応する</td>
+<td>B1</td>
+<td>1.2 / 6.4</td>
+</tr>
+<tr>
+<td>S6</td>
+<td>スコープ</td>
+<td>増分キャッシュ</td>
+<td>対応する</td>
+<td>A1</td>
+<td>1.2 / 4.3</td>
+</tr>
+<tr>
+<td>S7</td>
+<td>スコープ</td>
+<td>既存レポートとの互換</td>
+<td>対応する</td>
+<td>A1</td>
+<td>1.2 / T1</td>
+</tr>
+<tr>
+<td>N1</td>
+<td>非スコープ</td>
+<td>Cowork クラウドセッション</td>
+<td>対応しない</td>
+<td>Q4</td>
+<td>1.3</td>
+</tr>
+<tr>
+<td>N2</td>
+<td>非スコープ</td>
+<td>実請求額・通貨表示</td>
+<td>対応しない</td>
+<td>Q2</td>
+<td>1.3 / 6.5</td>
+</tr>
+<tr>
+<td>N3</td>
+<td>非スコープ</td>
+<td>Compliance API / OpenTelemetry</td>
+<td>対応しない</td>
+<td>—</td>
+<td>1.3 / 3.3</td>
+</tr>
+<tr>
+<td>N4</td>
+<td>非スコープ</td>
+<td>claude.ai 使用率取得の変更</td>
+<td>対応しない</td>
+<td>—</td>
+<td>1.3</td>
+</tr>
+<tr>
+<td>N5</td>
+<td>非スコープ</td>
+<td>会話本文・成果物・監査ログ</td>
+<td>対応しない</td>
+<td>—</td>
+<td>1.3 / R1</td>
+</tr>
+<tr>
+<td>N6</td>
+<td>非スコープ</td>
+<td>過去単価の自動復元</td>
+<td>対応しない</td>
+<td>Q3</td>
+<td>1.3 / C2</td>
+</tr>
+<tr>
+<td>N7</td>
+<td>非スコープ</td>
+<td>ターン単位の明細</td>
+<td>対応しない</td>
+<td>—</td>
+<td>1.3</td>
+</tr>
+<tr>
+<td>Q1</td>
+<td>決定事項</td>
+<td>Cowork の表示単位</td>
+<td>確定（別ツール）</td>
+<td>—</td>
+<td>11.1</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>決定事項</td>
+<td>API 換算指標の名前と正規化</td>
+<td>確定（AP）</td>
+<td>—</td>
+<td>11.1</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>決定事項</td>
+<td>単価の時点</td>
+<td>確定（生成時係数）</td>
+<td>—</td>
+<td>11.1</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>決定事項</td>
+<td>クラウド Cowork の欠落</td>
+<td>確定（ローカルのみ）</td>
+<td>—</td>
+<td>11.1</td>
+</tr>
+<tr>
+<td>C1</td>
+<td>制約</td>
+<td>ローカル Cowork のみ</td>
+<td>受け入れる</td>
+<td>Q4</td>
+<td>8.2</td>
+</tr>
+<tr>
+<td>C2</td>
+<td>制約</td>
+<td>生成時単価で再評価</td>
+<td>受け入れる</td>
+<td>Q3</td>
+<td>8.2</td>
+</tr>
+<tr>
+<td>C3</td>
+<td>制約</td>
+<td>AP は請求額・使用率ではない</td>
+<td>受け入れる</td>
+<td>Q2</td>
+<td>8.2</td>
+</tr>
+<tr>
+<td>C4</td>
+<td>制約</td>
+<td>非公開の内部フォルダ構造</td>
+<td>受け入れる</td>
+<td>—</td>
+<td>8.2</td>
+</tr>
+<tr>
+<td>C5</td>
+<td>制約</td>
+<td>cwd をプロジェクト表示に使う</td>
+<td>受け入れる</td>
+<td>—</td>
+<td>8.2</td>
+</tr>
+<tr>
+<td>C6</td>
+<td>制約</td>
+<td>元履歴消失後の再構築不可</td>
+<td>受け入れる</td>
+<td>—</td>
+<td>8.2</td>
+</tr>
+<tr>
+<td>A0</td>
+<td>ステップ</td>
+<td>実機・公式仕様調査</td>
+<td>対応済み</td>
+<td>—</td>
+<td>3 章 / 付録 A</td>
+</tr>
+<tr>
+<td>A1</td>
+<td>ステップ</td>
+<td>Cowork 走査と正規化</td>
+<td>対応済み</td>
+<td>A0</td>
+<td>10.3</td>
+</tr>
+<tr>
+<td>A2</td>
+<td>ステップ</td>
+<td>集計と4ツール表示</td>
+<td>対応済み</td>
+<td>A1</td>
+<td>10.3</td>
+</tr>
+<tr>
+<td>B1</td>
+<td>ステップ</td>
+<td>API 換算ポイント</td>
+<td>対応済み</td>
+<td>A0</td>
+<td>10.3</td>
+</tr>
+<tr>
+<td>B2</td>
+<td>ステップ</td>
+<td>文書更新</td>
+<td>対応済み</td>
+<td>A2, B1</td>
+<td>10.3</td>
+</tr>
+<tr>
+<td>Z1</td>
+<td>ステップ</td>
+<td>実機通し確認</td>
+<td>一部未実施</td>
+<td>A2, B1, B2</td>
+<td>10.3</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sec-11-3"><span class="num">11.3</span><span class="t">判断が他へ波及する項目</span></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>この項目を変えると</th>
+<th>影響先</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1</td>
+<td>Claude Code と合算表示にする</td>
+<td><code>ToolCowork</code>、日別4系列、フィルタ、色、品質表示、T3 / T14</td>
+</tr>
+<tr>
+<td>Q2</td>
+<td>AP ではなく別の指標にする</td>
+<td><code>CostView</code>、式、単位、画面ラベル、T10〜T15</td>
+</tr>
+<tr>
+<td>Q3</td>
+<td>履歴時点の単価を使う</td>
+<td><code>ModelPricing.Table</code> に有効期間、モデルIDと日時の対応、キャッシュ再計算規則が必要</td>
+</tr>
+<tr>
+<td>Q4</td>
+<td>クラウドも必須にする</td>
+<td>ローカル方式を単独採用できない。認証・API・外部通信・プラン差・保持方針の再設計が必要</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="sec-a"><span class="t">付録 A. 参照した原典</span></h2><div class="rule"></div>
+<table>
+<thead>
+<tr>
+<th>原典</th>
+<th>確認したこと</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AIUsageOverlay/Services/SessionStats/SessionStatsScanner.cs</code></td>
+<td>3ツールのルート、差分走査、Claude Code 重複排除、キー生成、FileShare.ReadWrite</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay/Services/Parsing/ClaudeCodeHistoryParser.cs</code></td>
+<td><code>message.usage</code>、モデル、requestId、message.id、cwd、sessionId、tool_use のパース</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay/Models/SessionStatsRecord.cs</code></td>
+<td>ツール定数、消費 / 処理トークン式、キャッシュ保存モデル</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay/Services/SessionStats/ModelPricing.cs</code></td>
+<td>Fable 5.1 / Fable 5 / Opus 5 等の単価表、構成比用の内部絶対単価計算</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay/Services/SessionStats/SessionStatsAggregator.cs</code></td>
+<td>期間・日・ツール・品質・セッション明細のビュー生成</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay/Resources/Report/report-template.html</code></td>
+<td>3ツール固定の色・グラフ・フィルタ・未知ツールフォールバック</td>
+</tr>
+<tr>
+<td><code>AIUsageOverlay.Tests/CostTests.cs</code></td>
+<td>TTL 別内訳、単価、構成比、未知モデル / Codex 除外の既存テスト</td>
+</tr>
+<tr>
+<td><code>docs/SPEC_Usage_Dashboard.md</code></td>
+<td>Cowork が N1 / C7 で非スコープ、金額非表示の既存判断</td>
+</tr>
+<tr>
+<td><code>README.md</code></td>
+<td>現行の操作、4タブ、用語、保存、セキュリティ、コスト構成比の説明</td>
+</tr>
+<tr>
+<td><code>%AppData%\Claude\local-agent-mode-sessions</code></td>
+<td>3.2 の件数、容量、階層、JSON キー、usage、モデル、entrypoint、cwd。内容本文は出力していない</td>
+</tr>
+<tr>
+<td>Anthropic Help Center / Platform Docs</td>
+<td>ローカル / クラウドの保存境界、監視経路、現行 API 単価</td>
+</tr>
+</tbody>
+</table>
+<h2 id="sec-b"><span class="t">付録 B. 現行仕様書との関係</span></h2><div class="rule"></div>
+<p><code>docs/SPEC_Usage_Dashboard.md</code> は実装済みの基本機能を定義しているが、次の記述を本設計の実装完了時に更新する。</p>
+<table>
+<thead>
+<tr>
+<th>現行記述</th>
+<th>本設計による変更</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>N1: Cowork は形式確認不能</td>
+<td>実機で形式確認済み。ローカル Cowork を S1 へ移す</td>
+</tr>
+<tr>
+<td>4.3: Cowork は収集対象外</td>
+<td>クラウド Cowork だけを対象外にする</td>
+</tr>
+<tr>
+<td>C7: 合計は Claude Code + Codex のみ</td>
+<td>Claude Code + Cowork + Codex + Cursor の各ツール仕様に基づく合計へ改訂</td>
+</tr>
+<tr>
+<td>7.1.1: 構成比のみ</td>
+<td>構成比を維持し、AP と対象率を追加</td>
+</tr>
+<tr>
+<td>8.2 / 8.4.1</td>
+<td>Cowork 系列・AP・ローカル限定注記を追加</td>
+</tr>
+<tr>
+<td>13.3 N1 の波及</td>
+<td>本設計 Q1 / Q4 の波及表へ移す</td>
+</tr>
+<tr>
+<td>B.4: Cowork 形式は確認不能</td>
+<td>3.2 の実測へ差し替える</td>
+</tr>
+</tbody>
+</table>
+<p>現行仕様書には Cursor 未反映、ヘッダ Rev / 対象バージョン / テスト件数、Codex の旧一意化記述などの
+既存ドリフトもある。これらは本機能の実装時に B2 で現行コードと突合して直す。</p>
+<h2 id="sec-c"><span class="t">付録 C. レビュー結果</span></h2><div class="rule"></div>
+<h3 id="sec-c-1"><span class="num">C.1</span><span class="t">事実誤認の修正</span></h3>
+<ul>
+<li>初稿は既存 <code>CostAccumulator</code> の内部合計をそのまま AP に使えるように読めた。実装は <code>tokens / 1,000,000 × price</code> なので、AP へは 1,000,000 倍が必要と明記した。</li>
+<li>初稿は表示許可項目を「公開単価表」としており、金額非表示テストと矛盾した。画面表示は通貨単位のない「換算係数」とし、原典の日付 / URL だけを併記する形へ修正した。</li>
+</ul>
+<h3 id="sec-c-2"><span class="num">C.2</span><span class="t">未定義ケースの定義</span></h3>
+<ul>
+<li>Q4 は走査実装の採否に関わるため、期限と A1 の依存へ移した。Z1 まで保留できる構成は取り消した。</li>
+<li>金額非表示の判定範囲を AP ブロックだけでなく、生成 HTML の表示文字列全体へ広げた。</li>
+</ul>
+<h3 id="sec-c-3"><span class="num">C.3</span><span class="t">過剰設計の削除</span></h3>
+<p>指摘なし。</p>
+<h3 id="sec-c-4"><span class="num">C.4</span><span class="t">突合して問題なしと確認できた項目</span></h3>
+<ul>
+<li>Cowork 主 JSONL の usage / model / sessionId / entrypoint は既存 Claude Code parser で読める。</li>
+<li>Cowork ルートと通常の <code>%USERPROFILE%\.claude\projects</code> で主 JSONL のファイル名重複は実測 0 件だった。</li>
+<li>キャッシュは tool を文字列で保持し、AP の再計算に必要なモデル別トークンも既に保存するため、schemaVersion を上げずに拡張できる。</li>
+<li>別コンテキストのレビューを 2 回試行したが、いずれも Codex の利用上限で開始できなかった。このため本付録は原典とのセルフレビュー結果であり、独立レビュー済みとは扱わない。</li>
+</ul>
+<h3 id="sec-c-5"><span class="num">C.5</span><span class="t">実装レビューで修正した項目</span></h3>
+<ul>
+<li>Cowork ルート全体の再帰列挙を避け、既知の3階層と <code>.claude\projects</code> だけを走査するよう固定した。</li>
+<li>ファイル読取前後の長さ・更新時刻が変わった場合、今回値を採用せず前回キャッシュを維持する順序へ修正した。</li>
+<li><code>entrypoint</code> 欠落を即時拒否せず <code>partial</code> として採用し、明示された非 <code>local-agent</code> は拒否する三状態判定にした。</li>
+<li><code>unsupported</code> では古い Cowork キャッシュを抑止し、<code>notUsed</code> では履歴保持方針に従ってキャッシュを維持するよう区別した。</li>
+<li>AP 対象率の分母から Codex / Cursor を外し、Claude Code / Cowork の係数既知率だけを示すよう修正した。</li>
+<li>未知ツールを Claude Code とみなすフォールバックを Scanner / Aggregator / HTML から除去した。</li>
+</ul>
+      </div>
+    </article>
+  </div>
+</main>
+<script>
+"use strict";
+
+/* =========================================================================
+ * 目次 / パンくず / 全文検索
+ *
+ * 現在位置は IntersectionObserver で 1 度だけ求め、目次のハイライトと
+ * パンくずの両方に使う。別実装にすると片方だけずれる。
+ * ====================================================================== */
+const article = document.getElementById('doc');
+const nav     = document.getElementById('nav');
+const crumb   = document.getElementById('crumb');
+const navRows = Array.from(nav.querySelectorAll('a.ch, a.sec'));
+const rowById = new Map(navRows.map(a => [a.dataset.target, a]));
+const groups  = Array.from(nav.querySelectorAll('.chgrp'));
+/* Q カードは h3 の代わりに出るので、現在位置の対象に含める */
+const anchors = Array.from(article.querySelectorAll('h2[id], h3[id], .qcard[id]'));
+
+let curId = null;      // 現在位置の見出し id
+let filtering = false; // 目次を絞り込み中か（絞り込み中は章を強制展開する）
+
+/**
+ * scrollToEl(target, gap)
+ * 目的: article 内スクロールで target を上端付近へ寄せる
+ * 引数: target ... スクロール先の要素 / gap ... 上に空ける余白 px
+ * 戻値: なし
+ *
+ * offsetTop は offsetParent 次第でずれるので、矩形の差分から計算する。
+ */
+function scrollToEl(target, gap){
+  const top = target.getBoundingClientRect().top
+            - article.getBoundingClientRect().top + article.scrollTop;
+  article.scrollTo({top: Math.max(0, top - (gap || 8)), behavior: 'smooth'});
+}
+
+/**
+ * setOpen(group, open)
+ * 目的: 目次の 1 章を開閉し、キャレットの向きを合わせる
+ * 引数: group ... .chgrp 要素 / open ... true で展開
+ * 戻値: なし
+ */
+function setOpen(group, open){
+  const secs = group.querySelector('.secs');
+  if (!secs) return;                       // 節を持たない章は開閉しない
+  group.classList.toggle('open', !!open);
+  secs.style.display = open ? '' : 'none';
+  const caret = group.querySelector('.ca');
+  if (caret) caret.textContent = open ? '▼' : '▶';
+}
+
+/**
+ * renderCrumb(row)
+ * 目的: パンくず（章番号 / 章名 › 節番号 / 節名）を描き直す
+ * 引数: row ... 現在位置に対応する目次の <a>。null なら空にする
+ * 戻値: なし
+ */
+function renderCrumb(row){
+  crumb.textContent = '';
+  if (!row) return;
+  const group  = row.closest('.chgrp');
+  const chRow  = group ? group.querySelector('a.ch') : null;
+  const add = (cls, text) => {
+    if (!text) return;
+    const s = document.createElement('span');
+    s.className = cls;
+    s.textContent = text;
+    crumb.appendChild(s);
+  };
+  if (chRow) { add('n', chRow.dataset.num); add('ct', chRow.dataset.title); }
+  if (row !== chRow) {
+    if (chRow) add('sep', '›');
+    add('n', row.dataset.num);
+    add('t', row.dataset.title);
+  }
+  // 実装を止める Q を読んでいることは、本文より先に目に入る位置で伝える
+  if (row.dataset.blocking === '1') add('blk', '実装を止める');
+}
+
+/**
+ * setCurrent(id)
+ * 目的: 現在位置を id の見出しに移し、目次・パンくずへ反映する
+ * 引数: id ... 見出し（または Q カード）の id
+ * 戻値: なし
+ */
+function setCurrent(id){
+  if (id === curId) return;
+  curId = id;
+  navRows.forEach(a => a.classList.remove('cur'));
+  const row = rowById.get(id);
+  if (!row) { renderCrumb(null); return; }
+  row.classList.add('cur');
+  const group = row.closest('.chgrp');
+  if (group) {
+    if (!filtering) setOpen(group, true);   // 読んでいる章は自動で開く
+    const chRow = group.querySelector('a.ch');
+    if (chRow) chRow.classList.add('cur');
+  }
+  // 目次が長いので、現在位置がサイドバーの外に出たらスクロールで見せる
+  const r = row.getBoundingClientRect(), nr = nav.getBoundingClientRect();
+  if (r.top < nr.top || r.bottom > nr.bottom) row.scrollIntoView({block: 'nearest'});
+  renderCrumb(row);
+}
+
+/* 目次のクリック。キャレットだけは本文へ飛ばさず開閉に使う */
+navRows.forEach(a => {
+  a.addEventListener('click', ev => {
+    const group = a.closest('.chgrp');
+    if (ev.target.classList && ev.target.classList.contains('ca')) {
+      ev.preventDefault();
+      if (group) setOpen(group, !group.classList.contains('open'));
+      return;
+    }
+    ev.preventDefault();
+    const target = document.getElementById(a.dataset.target);
+    if (!target) return;
+    if (group) setOpen(group, true);
+    scrollToEl(target, 8);
+    setCurrent(a.dataset.target);
+  });
+});
+
+document.getElementById('expand-all')
+  .addEventListener('click', () => groups.forEach(g => setOpen(g, true)));
+document.getElementById('collapse-all')
+  .addEventListener('click', () => groups.forEach(g => setOpen(g, false)));
+
+/* -------------------------------------------------------------------------
+ * 目次の絞り込み（本文検索とは別の入力欄）
+ *   節が一致したら親章も残す。絞り込み中は全章を強制展開する
+ *   （たたまれた章の中の一致を見落とさないため）。
+ * ---------------------------------------------------------------------- */
+const navqEl = document.getElementById('navq');
+
+function filterNav(){
+  const term = navqEl.value.trim().toLowerCase();
+  filtering = !!term;
+  const hay = a => ((a.dataset.num || '') + ' ' + (a.dataset.title || '')).toLowerCase();
+  groups.forEach(g => {
+    const chRow = g.querySelector('a.ch');
+    const secs  = Array.from(g.querySelectorAll('a.sec'));
+    // h2 より前に h3 がある文書では、章行を持たない器ができる。
+    // ここで null を踏むと例外で絞り込み全体が死ぬので、節だけで判定する。
+    const chHit = !term || (chRow ? hay(chRow).includes(term) : false);
+    let secHit = false;
+    secs.forEach(s => {
+      const hit = !term || hay(s).includes(term);
+      if (hit) secHit = true;
+      s.classList.toggle('hidden', !(hit || chHit));
+    });
+    g.classList.toggle('hidden', !!term && !chHit && !secHit);
+    if (term) setOpen(g, true);
+  });
+  if (!term) {
+    // 絞り込み解除で「現在章のみ展開」に戻す
+    const cur    = curId ? rowById.get(curId) : null;
+    const curGrp = cur ? cur.closest('.chgrp') : null;
+    groups.forEach(g => setOpen(g, g === curGrp));
+  }
+}
+navqEl.addEventListener('input', filterNav);
+
+/* -------------------------------------------------------------------------
+ * 表のセルをチップにする
+ *   区分・種別・分類の列は値ごとに色を固定する（1 意味 1 色）。
+ *   期限の列は「実装前」を含むものだけ赤チップにする。
+ *   該当する見出しの列が無ければ何もしない（素の体裁のまま出す）。
+ *   注意: チップ化した セルの中のリンクやコード表記は素文字になる。
+ *         区分・期限は短い語だけを入れる運用にしておくこと。
+ * ---------------------------------------------------------------------- */
+const KIND_COLOR = {
+  'スコープ':   'var(--accent)', '非スコープ': 'var(--fg3)',
+  '要確認事項': 'var(--warn)',   '制約':       'var(--note)',
+  'ステップ':   'var(--ok)',
+  '実機':       'var(--accent)', '発注元':     'var(--warn)', '社内': 'var(--fg2)'
+};
+
+function decorateCells(){
+  Array.from(article.querySelectorAll('table')).forEach(table => {
+    const head = table.tHead && table.tHead.rows[0];
+    if (!head) return;
+    const kindCols = [], dueCols = [];
+    Array.from(head.cells).forEach((c, i) => {
+      const s = c.textContent.trim();
+      if (/区分|種別|分類/.test(s)) kindCols.push(i);
+      if (/期限|期日/.test(s))      dueCols.push(i);
+    });
+    if (!kindCols.length && !dueCols.length) return;
+    Array.from(table.tBodies).forEach(tb => Array.from(tb.rows).forEach(row => {
+      const chipify = (i, cls, color, maxLen) => {
+        const cell = row.cells[i];
+        if (!cell || cell.querySelector('.chip')) return;
+        // リンクやコード表記を含むセルは触らない。textContent を潰すと
+        // 参照が黙って消え、HTML のリンク検査でも拾えない。
+        if (cell.querySelector('a, code')) return;
+        const v = cell.textContent.trim();
+        if (!v || v.length > maxLen) return;   // 長文はチップにしない
+        const sp = document.createElement('span');
+        sp.className = cls;
+        if (color) sp.style.color = color;
+        sp.textContent = v;
+        cell.textContent = '';
+        cell.appendChild(sp);
+      };
+      kindCols.forEach(i => {
+        const v = ((row.cells[i] || {}).textContent || '').trim();
+        chipify(i, 'chip', KIND_COLOR[v] || 'var(--fg2)', 12);
+      });
+      dueCols.forEach(i => {
+        const cell = row.cells[i];
+        // 期限は「B0（実装前）」のように区分より少し長くなるので上限を緩める
+        if (cell && cell.textContent.indexOf('実装前') >= 0) chipify(i, 'chip ng', '', 16);
+      });
+    }));
+  });
+}
+decorateCells();
+
+/* -------------------------------------------------------------------------
+ * 本文の全文検索
+ *   検索のたびに以前の <mark> を解除し、TreeWalker でテキストノードを走査して
+ *   一致箇所を <mark> で包む。DOM 構造は壊さない。
+ * ---------------------------------------------------------------------- */
+const qEl    = document.getElementById('q');
+const hitsEl = document.getElementById('hits');
+let marks = [];   // 現在のハイライト要素（文書順）
+let markIdx = -1; // 選択中のハイライト位置
+
+/** 直前の検索でつけた <mark> をすべて外し、元のテキストノードへ戻す */
+function clearMarks(){
+  for (const m of marks) {
+    const p = m.parentNode;
+    if (!p) continue;
+    p.replaceChild(document.createTextNode(m.textContent), m);
+    p.normalize();  // 分割されたテキストノードを結合し直す
+  }
+  marks = [];
+  markIdx = -1;
+}
+
+/**
+ * highlight(term)
+ * 目的: 本文中の term（大文字小文字を無視）をすべて <mark> で包む
+ * 引数: term ... 検索文字列。空文字なら何もしない
+ * 戻値: なし（結果は marks 配列に入る）
+ */
+function highlight(term){
+  if (!term) return;
+  const lower = term.toLowerCase();
+  const SKIP = {MARK:1, SCRIPT:1, STYLE:1, OPTION:1, SELECT:1, INPUT:1, TEXTAREA:1, BUTTON:1};
+  /* トリアージの操作パネルは「文書の中身」ではないので検索対象から外す。
+     含めると「対応」「判定済」のような UI 文字列が大量に一致して本文が埋もれる。
+     さらに悪いことに、絞り込みで件数表示を書き換えた瞬間に <mark> が DOM から
+     切り離され、件数と ▲▼ の対象がずれる。 */
+  const EXCLUDE = '.triage-bar, .tri-status, .tri-memo';
+  // 走査中に DOM を書き換えると walker が壊れるので、対象を先に集める
+  const targets = [];
+  const walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT, {
+    acceptNode(node){
+      if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+      if (SKIP[node.parentNode.nodeName]) return NodeFilter.FILTER_REJECT;
+      const pe = node.parentElement;
+      if (pe && pe.closest && pe.closest(EXCLUDE)) return NodeFilter.FILTER_REJECT;
+      return node.nodeValue.toLowerCase().includes(lower)
+        ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    }
+  });
+  let n;
+  while ((n = walker.nextNode())) targets.push(n);
+
+  for (const node of targets) {
+    const text = node.nodeValue;
+    const frag = document.createDocumentFragment();
+    let pos = 0;
+    for (;;) {
+      const i = text.toLowerCase().indexOf(lower, pos);
+      if (i < 0) break;
+      if (i > pos) frag.appendChild(document.createTextNode(text.slice(pos, i)));
+      const mk = document.createElement('mark');
+      mk.textContent = text.substr(i, term.length);
+      frag.appendChild(mk);
+      marks.push(mk);
+      pos = i + term.length;
+    }
+    if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+    node.parentNode.replaceChild(frag, node);
+  }
+}
+
+/** 現在のハイライトから delta 個先の一致へ移動する（+1 で次、-1 で前） */
+function gotoMark(delta){
+  // 行の絞り込みなどで DOM から切り離された <mark> は数に入れない
+  if (marks.some(m => !m.isConnected)) {
+    marks = marks.filter(m => m.isConnected);
+    markIdx = -1;
+    hitsEl.textContent = marks.length ? marks.length + ' 件' : '該当なし';
+  }
+  if (marks.length === 0) return;
+  if (markIdx >= 0 && marks[markIdx]) marks[markIdx].classList.remove('cur');
+  markIdx = (markIdx + delta + marks.length) % marks.length;
+  const m = marks[markIdx];
+  m.classList.add('cur');
+  scrollToEl(m, Math.round(article.clientHeight / 3));
+  hitsEl.textContent = (markIdx + 1) + ' / ' + marks.length + ' 件';
+}
+
+/** 入力欄の内容で検索を実行する（ハイライト + 件数表示） */
+function runSearch(){
+  const term = qEl.value.trim();
+  clearMarks();
+  highlight(term);
+  if (!term) { hitsEl.textContent = ''; return; }
+  hitsEl.textContent = marks.length ? marks.length + ' 件' : '該当なし';
+  if (marks.length) gotoMark(1);
+}
+
+// 入力は 200ms のデバウンスをかける（1 文字ごとの全文走査を避ける）
+let timer = null;
+qEl.addEventListener('input', () => {
+  clearTimeout(timer);
+  timer = setTimeout(runSearch, 200);
+});
+qEl.addEventListener('keydown', ev => {
+  if (ev.key !== 'Enter') return;
+  ev.preventDefault();
+  if (marks.length === 0) { runSearch(); return; }
+  gotoMark(ev.shiftKey ? -1 : 1);
+});
+document.getElementById('next').addEventListener('click', () => gotoMark(1));
+document.getElementById('prev').addEventListener('click', () => gotoMark(-1));
+document.getElementById('clear').addEventListener('click', () => {
+  qEl.value = '';
+  runSearch();
+  qEl.focus();
+});
+document.getElementById('print').addEventListener('click', () => window.print());
+
+// Ctrl+F はブラウザ既定を奪わず、ツールバーの検索欄へフォーカスする方が便利
+document.addEventListener('keydown', ev => {
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'f') {
+    ev.preventDefault();
+    qEl.focus();
+    qEl.select();
+  }
+});
+
+/* 節を持たない章は開閉できないので、空の .secs を捨ててキャレットを出さない */
+groups.forEach(g => {
+  const secs = g.querySelector('.secs');
+  if (secs && !secs.children.length) secs.remove();
+});
+/* 初期表示: いったん全章をたたみ、先頭の見出しを現在位置にする（その章だけ開く） */
+groups.forEach(g => setOpen(g, false));
+if (anchors.length) setCurrent(anchors[0].id);
+
+/* IntersectionObserver が無い環境（古いブラウザ・DOM スタブでの検証時）でも
+   目次クリック・検索は動かしたいので、現在位置の追跡だけを諦める。
+   ここで例外を投げると以降のスクリプト全体が止まるため、必ず存在確認してから使う。 */
+if (typeof IntersectionObserver === 'function') {
+  const visible = new Set();
+  const io = new IntersectionObserver(entries => {
+    for (const e of entries) {
+      if (e.isIntersecting) visible.add(e.target); else visible.delete(e.target);
+    }
+    if (visible.size === 0) return;
+    // 表示中の見出しのうち、文書順で最初のものを現在位置とする
+    const first = anchors.find(h => visible.has(h));
+    if (first) setCurrent(first.id);
+  }, {root: article, rootMargin: '0px 0px -75% 0px', threshold: 0});
+  anchors.forEach(h => io.observe(h));
+}
+</script>
+
+<script>
+/* ==========================================================================
+   トリアージ UI
+   --------------------------------------------------------------------------
+   table[data-triage="<id>"] に対して、絞り込みバーと「対応 / メモ」列を注入する。
+
+   保存先:
+     localStorage キー `design-triage-v1:spec-cowork-usage-report-a0cebace`。表 id 単位で持つ。
+     ブラウザ・PC を跨がないので、共有は JSON 出力 / 取込で行う。
+
+   行の識別キー:
+     表の 1 列目のテキスト（`S1` / `Q8` / `C3` 等の識別子）を使う。
+     行順を入れ替えても同じ項目に同じ判定が紐づく。
+     1 列目が空・重複する場合は "<表id>:row<行番号>" にフォールバックする。
+   ========================================================================== */
+(function () {
+  'use strict';
+
+  var LS_KEY = 'design-triage-v1:spec-cowork-usage-report-a0cebace';
+  // 対応方針一覧と実装ステップ表で同じ語彙を使う。
+  //   対応する = やると決めた（ステップなら着手予定）
+  //   着手中   = 実装中
+  //   保留     = 判断を先送り（要確認事項の既定）
+  //   見送り   = やらないと決めた
+  //   対応済   = 完了
+  var STATUSES = [
+    { v: '',     label: '未判定'   },
+    { v: 'do',   label: '対応する' },
+    { v: 'wip',  label: '着手中'   },
+    { v: 'hold', label: '保留'     },
+    { v: 'skip', label: '見送り'   },
+    { v: 'done', label: '対応済'   }
+  ];
+  // 状態の色は 1 意味 1 色。進捗バーと select の枠で同じ色を使う。
+  var STATUS_COLOR = {
+    do: 'var(--accent)', wip: 'var(--note)', hold: 'var(--warn)',
+    skip: 'var(--fg2)',  done: 'var(--ok)'
+  };
+  // 絞り込みチップ。ドロップダウンより 1 クリック速い。
+  var FILTER_CHIPS = [
+    ['__all', 'すべて'], ['__none', '未判定'], ['do', '対応する'], ['wip', '着手中'],
+    ['hold', '保留'], ['skip', '見送り'], ['done', '対応済'], ['__memo', 'メモ有り']
+  ];
+
+  /* ------------------------------------------------------------ 永続化 */
+  var store = {};
+  var storageOk = true;
+  try {
+    store = JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {};
+  } catch (err) {
+    store = {}; storageOk = false;
+  }
+
+  /** 判定内容を localStorage へ書き戻す。失敗したら画面に警告を出す（握りつぶさない）。 */
+  function save() {
+    if (!storageOk) return;
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(store));
+    } catch (err) {
+      storageOk = false;
+      Array.prototype.forEach.call(
+        document.querySelectorAll('.triage-bar .warnmsg'),
+        function (n) {
+          n.textContent = '保存できません（localStorage 不可）。JSON出力で控えを取ってください。';
+        }
+      );
+    }
+  }
+
+  /** 表 id と行キーから判定内容を取り出す。未記入なら空のエントリを返す。 */
+  function getEntry(id, key) { return (store[id] && store[id][key]) || { s: '', m: '' }; }
+
+  /** 判定内容を書き込む。空になったらキーごと消す（JSON をきれいに保つため）。 */
+  function setEntry(id, key, entry) {
+    if (!store[id]) store[id] = {};
+    if (!entry.s && !entry.m) delete store[id][key];
+    else store[id][key] = entry;
+    save();
+  }
+
+  /* -------------------------------------------------------- 小ユーティリティ */
+  function el(tag, attrs, text) {
+    var n = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function normText(s) { return (s || '').replace(/\s+/g, ' ').trim(); }
+  function labelOf(v) {
+    for (var i = 0; i < STATUSES.length; i++) if (STATUSES[i].v === v) return STATUSES[i].label;
+    return v;
+  }
+  /** Blob を作ってダウンロードさせる。UTF-8 BOM は呼び出し側で付ける。 */
+  function download(name, mime, content) {
+    var blob = new Blob([content], { type: mime + ';charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  }
+  function csvCell(s) { return '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"'; }
+  function stamp() {
+    var d = new Date(), p = function (n) { return ('0' + n).slice(-2); };
+    return String(d.getFullYear()) + p(d.getMonth() + 1) + p(d.getDate())
+         + '_' + p(d.getHours()) + p(d.getMinutes());
+  }
+
+  /* 同じ triage id を共有する表どうしの同期。
+     実装ステップ表と対応方針一覧は同じ id を使うため、同じ行キーを持つ行が複数の表に存在する。
+     片方を変えたらもう片方も追従させる
+     （追従しないと「同じ項目に 2 つの状態がある」ように見えてしまう）。 */
+  var byKey = {};                       // { "<id>::<key>": [row, ...] }
+  function regRow(id, key, row) {
+    var k = id + '::' + key;
+    (byKey[k] || (byKey[k] = [])).push(row);
+  }
+  /** 同一キーの他の行へ値を反映する。発火元の行（origin）は更新しない。 */
+  function syncSiblings(id, key, entry, origin) {
+    var list = byKey[id + '::' + key] || [];
+    list.forEach(function (r) {
+      if (r === origin) return;
+      if (r.__sel.value !== entry.s) { r.__sel.value = entry.s; r.__paint(); }
+      if (r.__memo.value !== entry.m) r.__memo.value = entry.m;
+      if (r.__refresh) r.__refresh();
+    });
+  }
+
+  /** ツールバーの「トリアージ判定済 n / 総数」を更新する。
+      同じ項目が複数の表に出ていても 1 件として数える（byKey が id::key で一意）。 */
+  function refreshGlobalTally() {
+    var target = document.getElementById('tri-tally');
+    if (!target) return;
+    var total = 0, decided = 0;
+    Object.keys(byKey).forEach(function (k) {
+      var rows = byKey[k];
+      if (!rows.length) return;
+      total++;
+      if (rows[0].__sel.value) decided++;
+    });
+    if (!total) { target.textContent = ''; return; }
+    target.textContent = '';
+    target.appendChild(document.createTextNode('トリアージ判定済 '));
+    var b = el('b', { 'class': 'dc' }, String(decided));
+    target.appendChild(b);
+    target.appendChild(document.createTextNode(' / ' + total));
+  }
+
+  /* ------------------------------------------------------------------ 本体 */
+  /**
+   * 1 つの表をトリアージ表に仕立てる。
+   * @param {HTMLTableElement} table data-triage 属性を持つ表
+   */
+  function initTriage(table) {
+    var id = table.getAttribute('data-triage');
+    var thead = table.tHead, tbody = table.tBodies[0];
+    if (!id || !thead || !tbody) return;
+
+    var headers = Array.prototype.map.call(thead.rows[0].cells, function (c) {
+      return normText(c.textContent);
+    });
+    var rows = Array.prototype.slice.call(tbody.rows);
+    var filterCols = (table.getAttribute('data-filter-cols') || '')
+      .split(',').filter(function (x) { return x !== ''; }).map(Number);
+
+    thead.rows[0].appendChild(el('th', null, '対応'));
+    thead.rows[0].appendChild(el('th', null, 'メモ'));
+
+    // 1 列目を行キーにする。重複・空はフォールバック。
+    var seen = {};
+    rows.forEach(function (row, idx) {
+      var first = normText(row.cells[0] ? row.cells[0].textContent : '');
+      var key = (first && !seen[first]) ? first : (id + ':row' + idx);
+      seen[first] = 1;
+      row.__key = key;
+      row.__text = normText(row.textContent).toLowerCase();
+      row.__cols = Array.prototype.map.call(row.cells, function (c) {
+        return normText(c.textContent);
+      });
+
+      var entry = getEntry(id, key);
+
+      var tdS = el('td', { 'class': 'tri-status' });
+      var sel = el('select', { 'aria-label': '対応可否' });
+      STATUSES.forEach(function (st) {
+        var o = el('option', { value: st.v }, st.label);
+        if (st.v === entry.s) o.selected = true;
+        sel.appendChild(o);
+      });
+      tdS.appendChild(sel);
+
+      // メモは 1 行 input。長文は要確認事項カード側に書く運用にして行高を揃える。
+      var tdM = el('td', { 'class': 'tri-memo' });
+      var memo = el('input', { type: 'text', placeholder: 'メモ…', 'aria-label': 'メモ' });
+      memo.value = entry.m || '';
+      tdM.appendChild(memo);
+
+      row.appendChild(tdS);
+      row.appendChild(tdM);
+      row.__sel = sel;
+      row.__memo = memo;
+
+      /** 選択状態を行と select の見た目へ反映する。 */
+      function paint() {
+        row.classList.remove('tri-do', 'tri-wip', 'tri-skip', 'tri-done', 'tri-hold');
+        sel.className = sel.value ? 'st-' + sel.value : '';
+        if (sel.value) row.classList.add('tri-' + sel.value);
+      }
+      row.__paint = paint;
+      row.__refresh = function () { applyFilter(); };
+      paint();
+      regRow(id, key, row);
+
+      sel.addEventListener('change', function () {
+        var e2 = { s: sel.value, m: memo.value };
+        setEntry(id, key, e2);
+        paint(); applyFilter();
+        syncSiblings(id, key, e2, row);
+        refreshGlobalTally();
+      });
+      memo.addEventListener('input', function () {
+        var e2 = { s: sel.value, m: memo.value };
+        setEntry(id, key, e2);
+        syncSiblings(id, key, e2, row);
+        // 「メモ有り」で絞り込み中にメモを消したら、その行は消える方が筋が通る
+        applyFilter();
+      });
+    });
+
+    /* --- 絞り込みバー（表の直上のパネル） --- */
+    var bar = el('div', { 'class': 'triage-bar' });
+
+    var search = el('input', { type: 'search', placeholder: '本文で絞り込み…' });
+    search.addEventListener('input', applyFilter);
+    bar.appendChild(search);
+
+    var colSelects = [];
+    filterCols.forEach(function (ci) {
+      var vals = {};
+      rows.forEach(function (r) { if (r.__cols[ci]) vals[r.__cols[ci]] = 1; });
+      var keys = Object.keys(vals).sort();
+      if (keys.length < 2) return;
+      var s = el('select');
+      s.appendChild(el('option', { value: '' }, (headers[ci] || '列') + '：すべて'));
+      keys.forEach(function (v) { s.appendChild(el('option', { value: v }, v)); });
+      s.addEventListener('change', applyFilter);
+      s.__ci = ci;
+      bar.appendChild(s);
+      colSelects.push(s);
+    });
+
+    var stFilter = '__all';
+    var chips = [];
+    FILTER_CHIPS.forEach(function (p) {
+      var c = el('button', { type: 'button', 'class': 'fchip' }, p[1]);
+      c.__v = p[0];
+      if (p[0] === stFilter) c.classList.add('on');
+      c.addEventListener('click', function () {
+        stFilter = p[0];
+        chips.forEach(function (x) { x.classList.toggle('on', x.__v === stFilter); });
+        applyFilter();
+      });
+      bar.appendChild(c);
+      chips.push(c);
+    });
+
+    var warn = el('span', { 'class': 'warnmsg' },
+      storageOk ? '' : '保存できません（localStorage 不可）。JSON出力で控えを取ってください。');
+    bar.appendChild(warn);
+
+    /* 右側: 進捗バー + 判定済 n/総数 + 一括 + CSV / JSON / 取込 */
+    var right = el('div', { 'class': 'right' });
+
+    var prog = el('div', { 'class': 'tri-progress' });
+    right.appendChild(prog);
+
+    var count = el('span', { 'class': 'tri-count' });
+    right.appendChild(count);
+
+    /* 表示中の行をまとめて設定する */
+    var bulk = el('select');
+    bulk.appendChild(el('option', { value: '' }, '表示中を一括…'));
+    STATUSES.forEach(function (st) {
+      bulk.appendChild(el('option', { value: st.v || '__clear' }, '→ ' + st.label));
+    });
+    bulk.addEventListener('change', function () {
+      if (!bulk.value) return;
+      var v = bulk.value === '__clear' ? '' : bulk.value;
+      var visible = rows.filter(function (r) { return !r.classList.contains('hidden-by-filter'); });
+      if (!confirm('表示中の ' + visible.length + ' 件を「' + labelOf(v) + '」に設定します。よろしいですか？')) {
+        bulk.value = ''; return;
+      }
+      visible.forEach(function (r) {
+        r.__sel.value = v;
+        r.__sel.dispatchEvent(new Event('change'));
+      });
+      bulk.value = '';
+    });
+    right.appendChild(bulk);
+
+    /* CSV 出力（表示中の行のみ・Excel で開ける UTF-8 BOM 付き） */
+    var btnCsv = el('button', { type: 'button', 'class': 'act' }, 'CSV');
+    btnCsv.addEventListener('click', function () {
+      var visible = rows.filter(function (r) { return !r.classList.contains('hidden-by-filter'); });
+      var lines = [headers.concat(['対応', 'メモ']).map(csvCell).join(',')];
+      visible.forEach(function (r) {
+        lines.push(r.__cols.map(csvCell)
+          .concat([csvCell(labelOf(r.__sel.value)), csvCell(r.__memo.value)]).join(','));
+      });
+      download('triage_' + id + '_' + stamp() + '.csv', 'text/csv',
+        '\ufeff' + lines.join('\r\n') + '\r\n');
+    });
+    right.appendChild(btnCsv);
+
+    /* JSON 出力（全表分をまとめて出す。引き継ぎ用） */
+    var btnJson = el('button', { type: 'button', 'class': 'act' }, 'JSON');
+    btnJson.addEventListener('click', function () {
+      download('triage_' + stamp() + '.json', 'application/json',
+        JSON.stringify({ key: LS_KEY, savedAt: new Date().toISOString(), data: store }, null, 2));
+    });
+    right.appendChild(btnJson);
+
+    /* JSON 取込（他者の判定を取り込む。現在の内容は上書きされる） */
+    var btnLoad = el('button', { type: 'button', 'class': 'act' }, '取込');
+    var file = el('input', { type: 'file', accept: '.json,application/json' });
+    file.style.display = 'none';
+    btnLoad.addEventListener('click', function () { file.click(); });
+    file.addEventListener('change', function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      var fr = new FileReader();
+      fr.onload = function () {
+        try {
+          var obj = JSON.parse(String(fr.result));
+          var data = obj && obj.data ? obj.data : obj;
+          if (!data || typeof data !== 'object') throw new Error('data がオブジェクトではありません');
+          if (!confirm('取り込むと現在の判定は上書きされます。よろしいですか？')) return;
+          store = data; save();
+          location.reload();
+        } catch (err) {
+          alert('JSON を読み込めませんでした: ' + err.message);
+        }
+      };
+      fr.onerror = function () { alert('ファイルを読み込めませんでした。'); };
+      fr.readAsText(f, 'utf-8');
+    });
+    right.appendChild(btnLoad);
+    right.appendChild(file);
+
+    bar.appendChild(right);
+    table.parentNode.insertBefore(bar, table);
+
+    var empty = el('div', { 'class': 'triage-empty' }, '該当する行がありません。');
+    empty.style.display = 'none';
+    table.parentNode.insertBefore(empty, table.nextSibling);
+
+    /** 状態別の件数を幅で表す帯を描き直す。数字の羅列より速く読める。 */
+    function paintProgress(tally) {
+      prog.textContent = '';
+      ['do', 'wip', 'hold', 'done', 'skip'].forEach(function (k) {
+        if (!tally[k]) return;
+        var seg = el('i', { title: labelOf(k) + ' ' + tally[k] + ' 件' });
+        seg.style.flex = String(tally[k]);
+        seg.style.background = STATUS_COLOR[k];
+        prog.appendChild(seg);
+      });
+    }
+
+    /** 絞り込み条件を全行に適用し、進捗バーと件数表示を更新する。 */
+    function applyFilter() {
+      var q = normText(search.value).toLowerCase();
+      var shown = 0;
+      var tally = { '': 0, do: 0, wip: 0, hold: 0, skip: 0, done: 0 };
+
+      rows.forEach(function (r) {
+        tally[r.__sel.value] = (tally[r.__sel.value] || 0) + 1;
+
+        var ok = true;
+        if (q && r.__text.indexOf(q) < 0) ok = false;
+        if (ok) {
+          for (var i = 0; i < colSelects.length; i++) {
+            var s = colSelects[i];
+            if (s.value && r.__cols[s.__ci] !== s.value) { ok = false; break; }
+          }
+        }
+        if (ok && stFilter !== '__all') {
+          var v = r.__sel.value;
+          if (stFilter === '__none')      ok = (v === '');
+          else if (stFilter === '__memo') ok = !!normText(r.__memo.value);
+          else                            ok = (v === stFilter);
+        }
+        r.classList.toggle('hidden-by-filter', !ok);
+        if (ok) shown++;
+      });
+
+      paintProgress(tally);
+      count.textContent = '';
+      count.appendChild(document.createTextNode('判定済 '));
+      count.appendChild(el('b', null, String(rows.length - tally[''])));
+      count.appendChild(document.createTextNode(
+        ' / ' + rows.length + (shown === rows.length ? '' : '（表示 ' + shown + '）')));
+      empty.style.display = shown ? 'none' : '';
+    }
+
+    applyFilter();
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll('table[data-triage]'), initTriage);
+  refreshGlobalTally();
+})();
+</script>
+</body>
+</html>

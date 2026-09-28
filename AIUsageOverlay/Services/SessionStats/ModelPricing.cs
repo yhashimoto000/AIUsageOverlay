@@ -1,4 +1,5 @@
 using AIUsageOverlay.Models;
+using System.Globalization;
 
 namespace AIUsageOverlay.Services.SessionStats
 {
@@ -35,6 +36,12 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>キャッシュ読込の既定単価。入力単価に対する倍率。</summary>
         public const decimal DefaultCacheReadRatio = 0.10m;
+
+        /// <summary>換算係数を公式API単価表と照合した日。</summary>
+        public const string CoefficientReferenceDate = "2026-09-17";
+
+        /// <summary>換算係数の公式参照元。</summary>
+        public const string CoefficientSourceUrl = "platform.claude.com/docs/en/about-claude/pricing";
 
         /// <summary>
         /// 単価表。キーはモデル名の接頭辞で、日付サフィックス付きの名前
@@ -98,6 +105,9 @@ namespace AIUsageOverlay.Services.SessionStats
         private decimal _read;
         private decimal _output;
 
+        /// <summary>ツール別の内部換算値。画面出力時に100万倍してAPへ戻す。</summary>
+        private readonly SortedDictionary<string, decimal> _weightedByTool = new(StringComparer.Ordinal);
+
         /// <summary>換算に含めたトークン数（課金相当）。</summary>
         private long _coveredTokens;
 
@@ -116,18 +126,22 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>
         /// モデル 1 種類分の内訳を加算する。
         ///
-        /// 対象は Claude Code のみ。Codex はキャッシュ書込量が常に 0 で記録され、
-        /// TTL 別の区分も無く、モデル名（gpt-5.6-sol 等）が公開単価表と対応しないため、
-        /// 換算対象から外して除外量に計上する。
+        /// 対象は Claude Code と Cowork。Codex はキャッシュ書込量が常に 0 で記録され、
+        /// TTL 別の区分も無く、モデル名（gpt-5.6-sol 等）が公開係数表と対応しないため、
+        /// 換算対象と対象率の分母から外す。
         /// </summary>
-        /// <param name="tool">SessionStatsRecord.ToolClaudeCode または ToolCodex</param>
+        /// <param name="tool">SessionStatsRecord のツール識別子</param>
         /// <param name="model">モデル名</param>
         /// <param name="tokens">そのモデルのトークン内訳</param>
         public void Add(string tool, string model, TokenTotals tokens)
         {
-            var price = tool == SessionStatsRecord.ToolClaudeCode
-                ? ModelPricing.Lookup(model)
-                : null;
+            var isEligibleTool = tool is SessionStatsRecord.ToolClaudeCode or SessionStatsRecord.ToolCowork;
+            if (!isEligibleTool)
+            {
+                return;
+            }
+
+            var price = ModelPricing.Lookup(model);
 
             if (price is null)
             {
@@ -150,12 +164,21 @@ namespace AIUsageOverlay.Services.SessionStats
 
             var inputUnit = price.InputPerMillion;
 
-            _input           += Weight(tokens.Input, inputUnit);
-            _write5m         += Weight(tokens.CacheCreate5m, inputUnit * ModelPricing.CacheWrite5mRatio);
-            _write1h         += Weight(tokens.CacheCreate1h, inputUnit * ModelPricing.CacheWrite1hRatio);
-            _writeUnknownTtl += Weight(unknownTtl, inputUnit * ModelPricing.CacheWrite5mRatio);
-            _read            += Weight(tokens.CacheRead, inputUnit * price.CacheReadRatio);
-            _output          += Weight(tokens.Output, price.OutputPerMillion);
+            var input = Weight(tokens.Input, inputUnit);
+            var write5m = Weight(tokens.CacheCreate5m, inputUnit * ModelPricing.CacheWrite5mRatio);
+            var write1h = Weight(tokens.CacheCreate1h, inputUnit * ModelPricing.CacheWrite1hRatio);
+            var writeUnknown = Weight(unknownTtl, inputUnit * ModelPricing.CacheWrite5mRatio);
+            var read = Weight(tokens.CacheRead, inputUnit * price.CacheReadRatio);
+            var output = Weight(tokens.Output, price.OutputPerMillion);
+
+            _input += input;
+            _write5m += write5m;
+            _write1h += write1h;
+            _writeUnknownTtl += writeUnknown;
+            _read += read;
+            _output += output;
+            _weightedByTool[tool] = _weightedByTool.GetValueOrDefault(tool) +
+                input + write5m + write1h + writeUnknown + read + output;
         }
 
         /// <summary>トークン数に 100 万トークンあたりの単価を掛ける。</summary>
@@ -173,12 +196,26 @@ namespace AIUsageOverlay.Services.SessionStats
         public CostView Build(bool withPrices = false)
         {
             var total = _input + _write5m + _write1h + _writeUnknownTtl + _read + _output;
+            var apiEquivalentPoints = total * 1_000_000m;
             var view = new CostView
             {
                 CoveredTokens = _coveredTokens,
                 ExcludedTokens = _excludedTokens,
                 ExcludedModels = _excludedModels.ToList(),
                 Available = total > 0m,
+                ApiEquivalentPoints = apiEquivalentPoints,
+                ApiEquivalentPointsText = FormatApiPoints(apiEquivalentPoints),
+                ApiEquivalentPointsByTool = _weightedByTool
+                    .Select(kv => new ToolPointView
+                    {
+                        Tool = kv.Key,
+                        Points = kv.Value * 1_000_000m,
+                        PointsText = FormatApiPoints(kv.Value * 1_000_000m),
+                    })
+                    .ToList(),
+                CoveragePercent = CoveragePercent(_coveredTokens, _excludedTokens),
+                CoefficientReferenceDate = ModelPricing.CoefficientReferenceDate,
+                CoefficientSourceUrl = ModelPricing.CoefficientSourceUrl,
                 Prices = withPrices
                     ? _usedPrices
                         .Select(kv => new ModelPriceView
@@ -212,5 +249,33 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <param name="total">全体の相対コスト</param>
         private static double Percent(decimal part, decimal total)
             => total <= 0m ? 0d : Math.Round((double)(part / total) * 100d, 1);
+
+        /// <summary>Claude系の換算対象率を求める。対象自体が無ければ null。</summary>
+        private static double? CoveragePercent(long covered, long excluded)
+        {
+            var total = covered + excluded;
+            return total <= 0
+                ? null
+                : Math.Round((double)covered / total * 100d, 1);
+        }
+
+        /// <summary>API換算ポイントをSI接頭辞付きの無通貨文字列へ整形する。</summary>
+        private static string FormatApiPoints(decimal points)
+        {
+            var value = Math.Abs(points);
+            if (value >= 1_000_000_000m)
+            {
+                return (points / 1_000_000_000m).ToString("0.##", CultureInfo.InvariantCulture) + " GAP";
+            }
+            if (value >= 1_000_000m)
+            {
+                return (points / 1_000_000m).ToString("0.##", CultureInfo.InvariantCulture) + " MAP";
+            }
+            if (value >= 1_000m)
+            {
+                return (points / 1_000m).ToString("0.##", CultureInfo.InvariantCulture) + " kAP";
+            }
+            return points.ToString("0.##", CultureInfo.InvariantCulture) + " AP";
+        }
     }
 }
