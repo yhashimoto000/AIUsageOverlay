@@ -33,6 +33,7 @@ namespace AIUsageOverlay.Services.SessionStats
         {
             "Read", "Glob", "Grep", "WebFetch", "WebSearch", "NotebookRead", "Task", "Agent", "Explore",
             "ReadFile", "SemanticSearch", "GetMcpTools", "ReadLints", "rg",
+            "GetDynamicTools", "CallDynamicTool", "FetchMcpResource", "SearchConversations",
         };
 
         /// <summary>Claude Code の実装系ツール名。Cursor の編集系も含む。</summary>
@@ -40,6 +41,7 @@ namespace AIUsageOverlay.Services.SessionStats
         {
             "Edit", "Write", "MultiEdit", "NotebookEdit",
             "ApplyPatch", "StrReplace", "Delete", "EditNotebook",
+            "SetActiveBranch",
         };
 
         /// <summary>Claude Code の対話系ツール名。Cursor の確認・計画系も含む。</summary>
@@ -47,6 +49,7 @@ namespace AIUsageOverlay.Services.SessionStats
         {
             "AskUserQuestion", "TodoWrite", "TaskCreate", "TaskUpdate", "ExitPlanMode", "EnterPlanMode",
             "AskQuestion", "CreatePlan", "SwitchMode", "GenerateImage",
+            "UpdateCurrentStep", "CreateGoal", "UpdateGoal",
         };
 
         /// <summary>シェル実行を表す Claude Code / Cursor のツール名。中身のコマンドで判定する。</summary>

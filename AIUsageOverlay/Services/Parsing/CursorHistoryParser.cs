@@ -143,6 +143,26 @@ namespace AIUsageOverlay.Services.Parsing
                 return null;
 
             var raw = match.Groups[1].Value.Trim();
+
+            // 例: "Thursday, Sep 3, 2026, 11:39 PM (UTC+9)"
+            // DateTimeOffset.TryParse は末尾の (UTC±N) を解釈できないため、本体とオフセットを分ける。
+            var withOffset = Regex.Match(raw,
+                @"^(?<body>.+?)\s*\(UTC(?<offset>[+-]\d{1,2})\)$",
+                RegexOptions.CultureInvariant);
+            if (withOffset.Success &&
+                DateTime.TryParse(
+                    withOffset.Groups["body"].Value.Trim(),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AllowWhiteSpaces,
+                    out var local) &&
+                int.TryParse(withOffset.Groups["offset"].Value, NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out var hours))
+            {
+                var offset = TimeSpan.FromHours(hours);
+                return new DateTimeOffset(
+                    DateTime.SpecifyKind(local, DateTimeKind.Unspecified), offset).UtcDateTime;
+            }
+
             if (DateTimeOffset.TryParse(raw, CultureInfo.InvariantCulture,
                 DateTimeStyles.AllowWhiteSpaces, out var parsed))
             {

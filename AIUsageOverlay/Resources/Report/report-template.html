@@ -360,7 +360,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
       </p>
       <div class="filters">
         <label>ツール <select id="session-tool"><option value="">すべて</option>
-          <option value="claude-code">Claude Code</option><option value="codex">Codex</option></select></label>
+          <option value="claude-code">Claude Code</option><option value="codex">Codex</option><option value="cursor">Cursor</option></select></label>
         <label>プロジェクト <select id="session-project"><option value="">すべて</option></select></label>
         <label><input type="checkbox" id="session-expand"> サブエージェントを開く</label>
         <input type="search" id="session-search" placeholder="指示文・プロジェクト・モデルで検索" size="34">
@@ -582,6 +582,7 @@ function renderDaily() {
   const plotH = 210;
   const w = padL + plotW + padR;
   const h = padT + plotH + padB;
+  // Cursor 棒は API 蓄積の入力+出力+キャッシュW（キャッシュR は桁が飛びすぎるため除外）
   const max = Math.max.apply(null, days.map(d => d.claudeBillable + d.codexBillable + (d.cursorBillable||0))) || 1;
 
   const svg = svgEl("svg", { width: w, height: h, viewBox: "0 0 " + w + " " + h });
@@ -972,7 +973,7 @@ function detailContent(s, children) {
 
   // 1. 基本情報
   const basic = [
-    ["ツール", s.tool === "codex" ? "Codex" : "Claude Code"],
+    ["ツール", s.tool === "codex" ? "Codex" : s.tool === "cursor" ? "Cursor" : "Claude Code"],
     ["開始", s.start],
     ["終了", s.end],
     ["経過時間", s.elapsedMeasurable ? fmtDuration(s.elapsedSec) : "測定不可"],
@@ -1008,6 +1009,8 @@ function detailContent(s, children) {
     [stackedBar(parts), legend, miniKeyValue(tokenRows)],
     s.tool === "codex"
       ? "Codex はキャッシュ読込が入力の内数のため、新規入力は差し引いた値です。"
+      : s.tool === "cursor"
+      ? "Cursor のローカル履歴にはトークン数が含まれません。日次グラフの Cursor 段はダッシュボード API 蓄積分です。"
       : null));
 
   // 3. コスト換算。単価が分からないモデル（Codex を含む）は換算できないので理由を出す

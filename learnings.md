@@ -133,6 +133,10 @@
 - 傍受データは `cursor-tokens.json` に月別集計で永続化する。重複除去は **イベント単位**（`timestamp|conversationId|model|各トークン数`）。conversationId 単位だと同一会話の複数リクエスト分が落ちる。
 - 起動セッション内の初回成功時に当月全件をページネーション完走する。2回目以降の定期更新はダッシュボード Navigate 時に傍受できたページだけを差分マージする（全件再取得ではない）。
 - `FetchUsageAsync` は `about:blank` 前に `__cursorTokenEventPages` を C# 側へ退避する。退避しないと ReleaseMemory 後にマージが常に 0 件になる。
+- API レスポンスの配列名は `usageEventsDisplay`（`usageEvents` ではない）。`startDate`/`endDate` はミリ秒の文字列。
+- 日次棒グラフ用に `cursor-tokens.json` の `daily`（ローカル日付）へも集計し、`ApplyCursorDailyTokens` で `DayView.CursorBillable` に流す。グラフ値は入力+出力+キャッシュW（キャッシュRは桁が飛びすぎるため除外）。
+- Cursor で Claude/Codex と同型に揃えるべきだった漏れ: セッションフィルタ option、明細のツール名、トークン 0 の注釈、サブエージェント AgentLabel、PhaseClassifier の Cursor 固有ツール（SetActiveBranch / MCP / UpdateCurrentStep 等）。
+- Cursor 経過時間は実装済みだったが、`<timestamp>Thu, Sep 3, 2026, 11:39 PM (UTC+9)</timestamp>` 形式を `DateTimeOffset.TryParse` できず全件測定不可になっていた。本体と `(UTC±N)` を分けてパースするよう修正。
 - `PeriodView` ではなく `UsageReport.CursorMonthly` に別フィールドとして注入し、品質タブ内の専用ブロックに表示する。
 - リリースは「csproj の版数更新 → master へ `--no-ff` マージ → 注釈付きタグ → 両リモートへ master とタグを push」の順で行う。マージコミットの件名は `merge: <内容>（vX.Y.Z）` に揃える。
 - **タグ push は GitHub Release の即時公開を伴う。** 公開を伴う push は、実行前に push 先（github / backlog / 両方）を確認してから行う。

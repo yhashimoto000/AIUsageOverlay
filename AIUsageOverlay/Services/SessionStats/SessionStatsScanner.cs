@@ -814,11 +814,12 @@ namespace AIUsageOverlay.Services.SessionStats
                 // 時刻が取れなくてもセッション自体は残す
             }
 
-            var (key, parentKey, sessionId) = BuildCursorKeys(path);
+            var (key, parentKey, sessionId, agentLabel) = BuildCursorKeys(path);
             var cwd = ExtractCursorProjectSlug(path);
             var record = builder.Build(key, sessionId, cwd);
             record.ParentKey = parentKey;
             record.IsSubagent = parentKey is not null;
+            record.AgentLabel = agentLabel;
             record.RootId = sessionId;
             if (record.ByDay.Count == 0 && record.StartUtc > DateTime.UnixEpoch)
             {
@@ -833,28 +834,35 @@ namespace AIUsageOverlay.Services.SessionStats
         }
 
         /// <summary>
-        /// Cursor のファイルパスからセッションキー・親キー・セッション ID を決める。
+        /// Cursor のファイルパスからセッションキー・親キー・セッション ID・エージェント表示名を決める。
+        /// Claude と同様、サブエージェントは subagents/ 以降の相対パスを AgentLabel にする。
         /// 親: .../agent-transcripts/{uuid}/{uuid}.jsonl
         /// 子: .../agent-transcripts/{uuid}/subagents/{child}.jsonl
         /// </summary>
         /// <param name="path">履歴ファイルのパス</param>
-        private static (string Key, string? ParentKey, string SessionId) BuildCursorKeys(string path)
+        private static (string Key, string? ParentKey, string SessionId, string? AgentLabel) BuildCursorKeys(string path)
         {
             var id = Path.GetFileNameWithoutExtension(path);
             var normalized = path.Replace('\\', '/');
             var marker = normalized.IndexOf("/subagents/", StringComparison.OrdinalIgnoreCase);
             if (marker < 0)
             {
-                return ($"cursor:{id}", null, id);
+                return ($"cursor:{id}", null, id, null);
+            }
+
+            var relative = normalized[(marker + "/subagents/".Length)..];
+            if (relative.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase))
+            {
+                relative = relative[..^6];
             }
 
             var parentFolder = Path.GetFileName(
                 Path.GetDirectoryName(Path.GetDirectoryName(path)) ?? string.Empty);
             if (string.IsNullOrEmpty(parentFolder))
             {
-                return ($"cursor:{id}", null, id);
+                return ($"cursor:{id}", null, id, relative);
             }
-            return ($"cursor:{id}", $"cursor:{parentFolder}", id);
+            return ($"cursor:{id}", $"cursor:{parentFolder}", id, relative);
         }
 
         /// <summary>

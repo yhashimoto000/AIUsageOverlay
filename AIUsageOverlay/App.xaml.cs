@@ -745,6 +745,8 @@ namespace AIUsageOverlay
                 var cursorStore = Services.UsageService.LoadCursorTokenStoreStatic();
                 foreach (var kv in cursorStore.Monthly)
                     report.CursorMonthly[kv.Key] = kv.Value;
+                Services.SessionStats.SessionStatsAggregator.ApplyCursorDailyTokens(
+                    report, cursorStore, now);
 
                 var renderer = new Services.SessionStats.UsageReportRenderer();
                 return renderer.Render(report, outputFolder: null, now);
