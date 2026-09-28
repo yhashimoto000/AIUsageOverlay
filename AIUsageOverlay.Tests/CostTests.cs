@@ -128,6 +128,9 @@ public class CostTests
         Assert.Equal(42.0, view.CacheReadPercent);
         Assert.Equal(21.0, view.OutputPercent);
         Assert.Equal(0.0, view.CacheWriteUnknownPercent);
+        Assert.Equal(59_500m, view.ApiEquivalentPoints);
+        Assert.Equal("59.5 kAP", view.ApiEquivalentPointsText);
+        Assert.Equal(100.0, view.CoveragePercent);
     }
 
     /// <summary>
@@ -175,6 +178,7 @@ public class CostTests
         Assert.True(view.Available);
         Assert.Equal(100.0, view.CacheWriteUnknownPercent);
         Assert.Equal(0.0, view.CacheWrite5mPercent);
+        Assert.Equal(6_250m, view.ApiEquivalentPoints);
     }
 
     /// <summary>
@@ -194,6 +198,7 @@ public class CostTests
         Assert.Equal(2000, view.CoveredTokens);
         Assert.Equal(500, view.ExcludedTokens);
         Assert.Equal(new[] { "claude-unlisted-9" }, view.ExcludedModels);
+        Assert.Equal(80.0, view.CoveragePercent);
     }
 
     /// <summary>
@@ -228,7 +233,7 @@ public class CostTests
     /// TTL の区分も無く、モデル名が公開単価表と対応しないため。
     /// </summary>
     [Fact]
-    public void C10_Codexは換算せず除外量に計上する()
+    public void C10_Codexは換算対象率の分母へ入れない()
     {
         var acc = new CostAccumulator();
         acc.Add(SessionStatsRecord.ToolCodex, "gpt-5.6-sol",
@@ -239,8 +244,49 @@ public class CostTests
         Assert.False(view.Available);
         Assert.Equal(0, view.CoveredTokens);
 
-        // Codex は cacheRead が input の内数なので (5000 - 4000) + 1000 = 2000
-        Assert.Equal(2000, view.ExcludedTokens);
-        Assert.Equal(new[] { "gpt-5.6-sol" }, view.ExcludedModels);
+        Assert.Equal(0, view.ExcludedTokens);
+        Assert.Empty(view.ExcludedModels);
+        Assert.Null(view.CoveragePercent);
+    }
+
+    /// <summary>Cowork は Claude Code と同じ係数で換算し、ツール別APを分離する。</summary>
+    [Fact]
+    public void C12_ClaudeCodeとCoworkのAPを合算してツール別にも返す()
+    {
+        var acc = new CostAccumulator();
+        acc.Add(SessionStatsRecord.ToolClaudeCode, "claude-opus-5",
+            new TokenTotals { Input = 1000 });
+        acc.Add(SessionStatsRecord.ToolCowork, "claude-opus-5",
+            new TokenTotals { Output = 100 });
+
+        var view = acc.Build();
+
+        Assert.Equal(7_500m, view.ApiEquivalentPoints);
+        Assert.Equal(2, view.ApiEquivalentPointsByTool.Count);
+        Assert.Equal(5_000m, view.ApiEquivalentPointsByTool
+            .Single(x => x.Tool == SessionStatsRecord.ToolClaudeCode).Points);
+        Assert.Equal(2_500m, view.ApiEquivalentPointsByTool
+            .Single(x => x.Tool == SessionStatsRecord.ToolCowork).Points);
+        Assert.Equal(100.0, view.CoveragePercent);
+    }
+
+    /// <summary>Cowork の未知モデルはAPだけから除外し、対象率へ反映する。</summary>
+    [Fact]
+    public void C13_Coworkの未知モデルは換算対象率へ反映する()
+    {
+        var acc = new CostAccumulator();
+        acc.Add(SessionStatsRecord.ToolCowork, "claude-opus-5",
+            new TokenTotals { Input = 1000 });
+        acc.Add(SessionStatsRecord.ToolCowork, "claude-unknown-9",
+            new TokenTotals { Input = 1000 });
+        acc.Add(SessionStatsRecord.ToolCursor, "cursor-unknown",
+            new TokenTotals { Input = 5000 });
+
+        var view = acc.Build();
+
+        Assert.Equal(1000, view.CoveredTokens);
+        Assert.Equal(1000, view.ExcludedTokens);
+        Assert.Equal(50.0, view.CoveragePercent);
+        Assert.Equal(new[] { "claude-unknown-9" }, view.ExcludedModels);
     }
 }

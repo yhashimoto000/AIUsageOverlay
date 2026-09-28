@@ -17,7 +17,7 @@ namespace AIUsageOverlay.Services.Parsing
     }
 
     /// <summary>
-    /// Claude Code 履歴 JSONL の 1 行をパースした結果。
+    /// Claude Code / Cowork 共通形式の履歴 JSONL を 1 行パースした結果。
     /// ファイル単位の集約は SessionStatsScanner が行う。
     /// </summary>
     public class ClaudeCodeLine
@@ -42,6 +42,9 @@ namespace AIUsageOverlay.Services.Parsing
 
         /// <summary>セッション ID。</summary>
         public string? SessionId { get; init; }
+
+        /// <summary>履歴を生成した入口。Cowork は local-agent。</summary>
+        public string? EntryPoint { get; init; }
 
         /// <summary>サブエージェント（サイドチェーン）かどうか。</summary>
         public bool IsSidechain { get; init; }
@@ -81,7 +84,7 @@ namespace AIUsageOverlay.Services.Parsing
     }
 
     /// <summary>
-    /// Claude Code の履歴 JSONL を 1 行ずつ構造体へ変換する純関数パーサ。
+    /// Claude Code / Cowork 共通形式の履歴 JSONL を 1 行ずつ構造体へ変換する純関数パーサ。
     /// ファイル I/O は持たない（CLAUDE.md の規約でパースは Services/Parsing に置く）。
     /// </summary>
     public static class ClaudeCodeHistoryParser
@@ -146,6 +149,7 @@ namespace AIUsageOverlay.Services.Parsing
                     Model               = message is { } mo ? ReadString(mo, "model") : null,
                     Cwd                 = ReadString(root, "cwd"),
                     SessionId           = ReadString(root, "sessionId"),
+                    EntryPoint          = ReadString(root, "entrypoint"),
                     IsSidechain         = root.TryGetProperty("isSidechain", out var sc) &&
                                           sc.ValueKind == JsonValueKind.True,
                     InputTokens         = input,

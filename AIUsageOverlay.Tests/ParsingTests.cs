@@ -20,6 +20,11 @@ public class ParsingTests
         => SessionStatsScanner.ParseClaudeFile(DataPath(name), includePrompt)
            ?? throw new InvalidOperationException($"レコードが作られなかった: {name}");
 
+    /// <summary>指定したCoworkテストデータを読み、レコードへ畳む。</summary>
+    private static SessionStatsRecord ParseCowork(string name, bool includePrompt = true)
+        => SessionStatsScanner.ParseCoworkFile(DataPath(name), includePrompt)
+           ?? throw new InvalidOperationException($"Coworkレコードが作られなかった: {name}");
+
     /// <summary>Codex の 1 ファイルを読み、レコードへ畳む。</summary>
     private static SessionStatsRecord ParseCodex(string name, bool includePrompt = true)
         => SessionStatsScanner.ParseCodexFile(DataPath(name), includePrompt)
@@ -320,8 +325,47 @@ public class ParsingTests
 
         Assert.Equal(1150, tokens.Billable(SessionStatsRecord.ToolClaudeCode));
         Assert.Equal(1950, tokens.Processed(SessionStatsRecord.ToolClaudeCode));
+        Assert.Equal(1150, tokens.Billable(SessionStatsRecord.ToolCowork));
+        Assert.Equal(1950, tokens.Processed(SessionStatsRecord.ToolCowork));
         Assert.Equal(300, tokens.Billable(SessionStatsRecord.ToolCodex));
         Assert.Equal(1100, tokens.Processed(SessionStatsRecord.ToolCodex));
+    }
+
+    /// <summary>Cowork共通形式を読み、重複排除とTTL内訳を維持する。</summary>
+    [Fact]
+    public void Cowork共通形式をcoworkキーへ正規化する()
+    {
+        var record = ParseCowork("cowork_normal.jsonl");
+
+        Assert.Equal(SessionStatsRecord.ToolCowork, record.Tool);
+        Assert.Equal("cowork:cowork-session-1", record.Key);
+        Assert.False(record.SourceIdentityMissing);
+        Assert.Equal(2, record.Dedup.RawRecords);
+        Assert.Equal(1, record.Dedup.AcceptedRecords);
+        Assert.Equal(10, record.Tokens.Input);
+        Assert.Equal(20, record.Tokens.Output);
+        Assert.Equal(30, record.Tokens.CacheCreate);
+        Assert.Equal(10, record.Tokens.CacheCreate5m);
+        Assert.Equal(20, record.Tokens.CacheCreate1h);
+        Assert.Equal(40, record.Tokens.CacheRead);
+    }
+
+    /// <summary>entrypoint欠落は専用ルートを根拠に採用し、品質情報へ残す。</summary>
+    [Fact]
+    public void Coworkのentrypoint欠落は採用して識別子欠落を記録する()
+    {
+        var record = ParseCowork("claude_normal.jsonl");
+
+        Assert.True(record.SourceIdentityMissing);
+        Assert.StartsWith("cowork:", record.Key, StringComparison.Ordinal);
+    }
+
+    /// <summary>明示的にlocal-agent以外の履歴はCoworkとして採用しない。</summary>
+    [Fact]
+    public void Cowork以外のentrypointは採用しない()
+    {
+        Assert.Null(SessionStatsScanner.ParseCoworkFile(
+            DataPath("cowork_foreign.jsonl"), includePrompt: true));
     }
 
     /// <summary>

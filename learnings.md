@@ -184,3 +184,53 @@
 ### Policy（方針）
 - **テキスト競合が無くても意味的な衝突は別に確認する。** 今回は「第 3 のツール追加」と「ツール別のコスト換算」がぶつかり得たため、マージ後に実データでレポートを生成し、除外一覧に想定外のモデルが混ざっていないかを見た。ビルドとテストの成功だけでは足りない。
 - **ツールが増えたら `CostAccumulator.Add` の `tool` 判定を見直す。** 現状は `ToolClaudeCode` だけを換算し、それ以外は除外に倒す。増えたツールのモデル単価が判明したら明示的に足す（既定で通さない）。
+
+## 2026-09-17（Cowork 使用量レポートの事前調査）
+### Facts（事実）
+- Windows 実機の `%AppData%\Claude\local-agent-mode-sessions` は AIUsageOverlay から読み取り可能で、調査時点では Cowork メタデータ 43 件、`.claude\projects\**\*.jsonl` 289 件（268,893,728 bytes）が存在した。
+- Cowork の主 JSONL 43 件はすべて `entrypoint=local-agent` / `userType=external` で、Claude Code と同じ `message.usage`（input / output / cache creation / cache read / TTL 別 cache creation）を持っていた。主 JSONL のモデルは Opus 5 が 39 件、Fable 5 が 4 件だった。
+- Cowork 主セッションの `cliSessionId` 43 件はすべて対応する JSONL 名を持ち、ホスト側 Claude Code JSONL 名 609 件との重複は 0 件だった。
+- 同じ保存領域には `audit.jsonl` 43 件（244,923,472 bytes）、`.credentials.json`、成果物、接続した作業ファイルもある。ルート全体の `*.jsonl` 再帰走査は、二重計上と不要な機密ファイル近傍の探索を招く。
+- Anthropic 公式仕様では Cowork のローカルセッションは PC に保存される一方、クラウドセッションはアカウント側へ保存される。ローカル履歴だけでは Cowork 全体を網羅できない。
+### Policy（方針）
+- Cowork は `.claude\projects\**\*.jsonl` だけを読み、`audit.jsonl`・資格情報・成果物・接続フォルダを列挙しない。JSONL の行パーサと `(requestId, message.id)` 重複排除は Claude Code と共通化し、ツールキーだけ `cowork:` へ分ける。
+- API 公開単価を使う指標は請求額と呼ばず、金額・通貨を表示しない加算可能な API 換算ポイントとする。単価不明モデルは固定モデルへフォールバックせず、対象率と除外モデルを表示する。
+- レポートには「ローカル Cowork のみ」を明示し、クラウド Cowork、Compliance API、OpenTelemetry は別スコープにする。
+
+## 2026-09-24（Cowork 使用量レポートの実装）
+### Facts（事実）
+- Cowork の保存ルートは再帰走査せず、`<内部ID>\<アカウントID>\<セッションID>\.claude\projects\**\*.jsonl` の既知階層だけを列挙すれば、`audit.jsonl`・資格情報・成果物を開かずに usage を集計できる。
+- `entrypoint` は古い履歴で欠ける可能性がある。全行欠落は Cowork 専用ルートを根拠に採用して品質へ計上し、明示された値がすべて非 `local-agent` のファイルだけを拒否する必要がある。
+- Cowork 未使用時は履歴保持方針に従ってキャッシュ済みセッションを維持する一方、既知階層が消えた `unsupported` では古い Cowork キャッシュを抑止しないと形式変更を見逃す。
+- API 利用相当の対象率へ Codex / Cursor を含めると、仕様上対象外のツールによって率が下がる。分母は Claude Code / Cowork の処理トークンだけに限定する。
+- Cowork 追加後の自動テストは 76 件すべて成功し、`AIUSAGE_REAL_SCAN=1` の実履歴テストも成功した。実ブラウザ表示と Claude Desktop 動作中の手動確認は未実施。
+### Policy（方針）
+- 新しいツールを追加するときは Scanner・Aggregator・HTML の未知値フォールバックを確認し、既存ツールへ暗黙変換しない。
+- 走査状態は `notUsed`（未使用）・`unsupported`（形式変更）・`unreadable`（読取不能）を分け、キャッシュ採否も状態ごとに明示する。
+- AP は Claude Code / Cowork のみを対象にし、金額・通貨を表示せず、係数基準日・参照元・対象率を同時に残す。
+
+## 2026-09-25（Codex 容量表示の現行 rate_limits 対応）
+### Facts（事実）
+- 現行の Codex 使用量データは `rate_limits.primary` / `secondary` に `window_minutes`（300 / 10080）、`used_percent`、`resets_at` を持つ。既存パーサーは期間名だけで判定していたため、JSONを取得できても5時間枠・週間枠へ割り当てられなかった。
+- 既存の百分率正規化は値が1以下なら一律100倍していたため、0〜100値域の `used_percent: 1` を100%と誤解釈した。
+- Codex取得失敗時の `CodexStatusText` / `CodexSubText` は更新されていたが、現行XAMLにバインドされておらず、初回失敗の理由が画面へ表示されなかった。
+- `window_minutes` と `used_percent` の0〜100値域へ対応後、Codex専用テスト2件と全テスト78件が成功し、Releaseビルドも警告0・エラー0で成功した。
+### Policy（方針）
+- 使用量APIの期間判定は表示名だけに依存せず、安定した時間幅フィールドがある場合はその値を優先する。
+- API仕様で0〜100値域と確認できた `used_percent` はそのまま扱い、既存の `ratio` / `fraction` 系や単位不明フィールドの互換挙動とは分離する。
+- 取得失敗用のViewModelプロパティを追加・維持する場合は、全レイアウトのXAMLバインディングまで確認する。
+
+## 2026-09-25（Codex 容量の Web API 変更対応）
+### Facts（事実）
+- WebView2 は候補を回収できており、現行の使用制限応答は `/backend-api/wham/usage` から HTTP 200 で返っていた。取得失敗ではなく、パーサーが旧構造だけを解釈していたことが表示消失の原因だった。
+- 旧構造は `rate_limits.primary / secondary` と `window_minutes`、現行構造は `rate_limit.primary_window / secondary_window` と `limit_window_seconds`。現行値は5時間枠が18,000秒、週間枠が604,800秒だった。
+- `reset_after_seconds` と `reset_at` が同居する。従来のリセット時刻判定は `reset` を含む全キーをUnix時刻候補にしていたため、相対秒数を1970年の絶対時刻として先に採用する可能性があった。絶対時刻キーを明示判定するよう修正した。
+- 修正後の実Web取得で `/backend-api/wham/usage` を解析し、5時間43%・週間7%を取得できた。ローカル履歴フォールバックは削除し、Web取得を正規経路として維持した。
+- 誤採用防止のためwham由来候補だけを解析するようにした後、通常起動では再び候補を識別できなくなった。ページ自身の通信ではwham応答を取得できていたが、fetch/XHR傍受時に取得元URLを捨てていたことが原因だった。候補へURLパスとHTTP状態を付けた最終版では、実画面に5時間20%・週間3%が表示され、履歴にも同値が保存された。
+- 候補収集中の早期終了判定も、汎用パーサーが解釈できる非wham応答ではなく、取得元確認済みのwham応答に限定した。最終版の通常起動で5時間33%・週間5%の表示と履歴保存を再確認した。
+### Policy（方針）
+- Web取得候補数だけでは通信失敗と解析失敗を区別できない。取得元URL・HTTP状態・JSONのキー階層を値なしで診断し、実応答に基づいて原因を切り分ける。
+- 使用制限の期間判定は primary / secondary の名称ではなく、APIが返す時間幅を優先する。分単位と秒単位の両形式を受け入れる。
+- 相対時間（`reset_after_seconds`）と絶対時刻（`reset_at`）をキー名で明確に分離し、数値という理由だけでUnix時刻に変換しない。
+- 複数APIの応答を同じ候補配列へ集める場合、本文だけでなく取得元URLの安全なパス部分を保持する。機密値を含むクエリ文字列・ヘッダー・Cookieは保持しない。
+- 非同期に候補が増える取得処理では、汎用的に解析可能な候補が先着しただけで打ち切らない。本命の取得元を識別できた場合だけ早期終了する。
