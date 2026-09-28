@@ -4,7 +4,7 @@
 |---|---|
 | 版数 | Rev 1.0（実装反映） |
 | 作成日 | 2026-09-24 |
-| 対象 | AIUsageOverlay v2.3.0 以降の使用量レポート |
+| 対象 | AIUsageOverlay v2.4.0 以降の使用量レポート |
 | 位置付け | Cowork ローカル履歴の取り込みと、金額を表示しない API 換算指標の実装仕様 |
 | 閲覧用 HTML | `SPEC_Cowork_Usage_Report.html`。11 章のトリアージ表で対応可否を記録できる |
 
