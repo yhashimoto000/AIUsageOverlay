@@ -80,7 +80,16 @@ namespace AIUsageOverlay.Services
     window.__codexRaw = null;
     window.__codexRawCandidates = [];
 
-    function tryCapture(url, text) {
+    function safePath(url) {
+        try {
+            const parsed = new URL(url || '', location.origin);
+            return parsed.pathname || '/';
+        } catch {
+            return '/unknown';
+        }
+    }
+
+    function tryCapture(url, text, status) {
         try {
             if (!text || text.length <= 10) return;
             if (!Array.isArray(window.__codexRawCandidates)) {
@@ -114,7 +123,8 @@ namespace AIUsageOverlay.Services
 
             if (relevantUrl || relevantText) {
                 window.__codexRaw = text;
-                window.__codexRawCandidates.push(text);
+                window.__codexRawCandidates.push(
+                    `__URL__:${safePath(url)}|status=${status || 0}\n${text}`);
             }
         } catch {}
     }
@@ -125,7 +135,9 @@ namespace AIUsageOverlay.Services
         try {
             const url = typeof args[0] === 'string' ? args[0]
                       : (args[0] instanceof Request ? args[0].url : '');
-            response.clone().text().then(t => tryCapture(url, t)).catch(() => {});
+            response.clone().text()
+                .then(t => tryCapture(url, t, response.status))
+                .catch(() => {});
         } catch {}
         return response;
     };
@@ -138,7 +150,7 @@ namespace AIUsageOverlay.Services
     const _origSend = XMLHttpRequest.prototype.send;
     XMLHttpRequest.prototype.send = function() {
         this.addEventListener('load', function() {
-            try { tryCapture(this._codexUrl, this.responseText); } catch {}
+            try { tryCapture(this._codexUrl, this.responseText, this.status); } catch {}
         });
         return _origSend.apply(this, arguments);
     };
@@ -209,16 +221,12 @@ namespace AIUsageOverlay.Services
                     return null;
                 }
 
-                CodexUsageData? result = null;
-                foreach (var raw in rawCandidates)
-                {
-                    result = CodexUsageParser.Parse(raw);
-                    if (result != null) break;
-                }
+                var result = ParseUsageCandidates(rawCandidates);
 
                 if (result == null)
                 {
-                    LastError = $"Codex使用制限情報が取得できませんでした（候補: {_lastCandidateCount}件）";
+                    var whamDetail = BuildWhamFailureDetail(rawCandidates);
+                    LastError = $"Codex使用制限情報が取得できませんでした（候補: {_lastCandidateCount}件、{whamDetail}）";
                 }
 
                 return result;
@@ -236,6 +244,71 @@ namespace AIUsageOverlay.Services
             {
                 // 取得完了後（成功・失敗いずれも）にアイドル時メモリを抑制する
                 await ReleaseMemoryAsync();
+            }
+        }
+
+        /// <summary>
+        /// 収集候補を解析する。Codex専用の wham usage 応答を先に評価し、
+        /// 広範に収集した別機能の usage / limit 応答を先に誤採用しないようにする。
+        /// </summary>
+        internal static CodexUsageData? ParseUsageCandidates(IReadOnlyList<string> candidates)
+        {
+            foreach (var raw in candidates.OrderByDescending(candidate =>
+                         IsWhamUsageCandidate(candidate)))
+            {
+                var result = CodexUsageParser.Parse(raw);
+                if (result != null)
+                    return result;
+            }
+
+            return null;
+        }
+
+        /// <summary>候補がCodex専用のwham usage API由来か判定する。</summary>
+        private static bool IsWhamUsageCandidate(string candidate)
+            => candidate.StartsWith(
+                "__URL__:/backend-api/wham/usage",
+                StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// wham usage候補の有無・HTTP状態・時間幅だけを失敗表示へ付加する。
+        /// 使用率、ユーザー情報、レスポンス本文は含めない。
+        /// </summary>
+        private static string BuildWhamFailureDetail(IReadOnlyList<string> candidates)
+        {
+            var candidate = candidates.FirstOrDefault(IsWhamUsageCandidate);
+            if (candidate == null)
+                return "wham候補なし";
+
+            var lineBreak = candidate.IndexOf('\n');
+            var header = lineBreak >= 0 ? candidate[..lineBreak] : candidate;
+            var statusMatch = Regex.Match(header, @"\|status=(\d+)", RegexOptions.IgnoreCase);
+            var status = statusMatch.Success ? statusMatch.Groups[1].Value : "不明";
+            if (lineBreak < 0 || lineBreak == candidate.Length - 1)
+                return $"wham status={status} 本文なし";
+
+            try
+            {
+                using var document = JsonDocument.Parse(candidate[(lineBreak + 1)..]);
+                if (document.RootElement.ValueKind != JsonValueKind.Object
+                    || !document.RootElement.TryGetProperty("rate_limit", out var rateLimit)
+                    || rateLimit.ValueKind != JsonValueKind.Object)
+                    return $"wham status={status} rate_limitなし";
+
+                var windows = new List<string>();
+                foreach (var property in rateLimit.EnumerateObject())
+                {
+                    if (property.Value.ValueKind == JsonValueKind.Object
+                        && property.Value.TryGetProperty("limit_window_seconds", out var seconds)
+                        && seconds.TryGetDouble(out var value))
+                        windows.Add(value.ToString("0"));
+                }
+
+                return $"wham status={status} windows={string.Join('/', windows)}";
+            }
+            catch (JsonException)
+            {
+                return $"wham status={status} JSON不正";
             }
         }
 
@@ -338,7 +411,7 @@ namespace AIUsageOverlay.Services
 
                 fallbackCandidates.AddRange(result);
                 _lastCandidateCount = fallbackCandidates.Count;
-                if (ContainsParseableCodexData(result))
+                if (ContainsParseableWhamUsageData(result))
                     return fallbackCandidates;
             }
 
@@ -414,7 +487,7 @@ namespace AIUsageOverlay.Services
                 if (ContainsLoggedOutState(candidates))
                     return null;
 
-                if (ContainsParseableCodexData(candidates))
+                if (ContainsParseableWhamUsageData(candidates))
                     return await PreferRemainingUsagePageTextAsync(candidates);
 
                 if (stablePolls >= StableCapturePolls)
@@ -430,7 +503,7 @@ namespace AIUsageOverlay.Services
                 if (ContainsLoggedOutState(apiCandidates))
                     return null;
 
-                if (ContainsParseableCodexData(apiCandidates))
+                if (ContainsParseableWhamUsageData(apiCandidates))
                     return await PreferRemainingUsagePageTextAsync(lastCandidates);
             }
 
@@ -443,7 +516,7 @@ namespace AIUsageOverlay.Services
                     return null;
                 }
 
-                if (ContainsParseableCodexData(inlineCandidates))
+                if (ContainsParseableWhamUsageData(inlineCandidates))
                     return await PreferRemainingUsagePageTextAsync(lastCandidates);
             }
 
@@ -583,6 +656,7 @@ namespace AIUsageOverlay.Services
             const string script = @"
 (async () => {
     const urls = [
+        '/backend-api/wham/usage',
         '/backend-api/me',
         '/backend-api/settings/user',
         '/backend-api/accounts/check/v4-2023-04-27',
@@ -604,7 +678,7 @@ namespace AIUsageOverlay.Services
             const response = await fetch(url, { credentials: 'include' });
             const text = await response.text();
             if (text && text.length > 10) {
-                results.push(`__URL__:${url}\n${text}`);
+                results.push(`__URL__:${url}|status=${response.status}\n${text}`);
             }
         } catch {}
     }
@@ -671,15 +745,15 @@ namespace AIUsageOverlay.Services
         }
 
         /// <summary>
-        /// 候補文字列の中に CodexUsageParser が解釈できるデータが含まれているかを判定する。
-        /// ルーティング変更時に最初のページで無関係な JSON だけを捕捉した場合は、
-        /// 次の URL へフォールバックして本命の usage limit データを探す。
+        /// 候補文字列の中に、取得元を確認できて解析可能なwham usage応答があるか判定する。
+        /// 非wham候補だけで収集を打ち切ると、後から到着する本命応答を逃すため対象を限定する。
         /// </summary>
-        private static bool ContainsParseableCodexData(IReadOnlyList<string> candidates)
+        internal static bool ContainsParseableWhamUsageData(IReadOnlyList<string> candidates)
         {
             foreach (var candidate in candidates)
             {
-                if (CodexUsageParser.Parse(candidate) != null)
+                if (IsWhamUsageCandidate(candidate)
+                    && CodexUsageParser.Parse(candidate) != null)
                     return true;
             }
 

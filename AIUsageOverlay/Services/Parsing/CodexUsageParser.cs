@@ -18,6 +18,9 @@ namespace AIUsageOverlay.Services.Parsing
         /// <summary>DOM テキスト由来であることを示すプレフィックス（スクレイパーが付与）</summary>
         private const string PageTextPrefix = "__PAGETEXT__:";
 
+        /// <summary>現行Codex使用制限API由来であることを示す取得元プレフィックス。</summary>
+        private const string WhamUsagePrefix = "__URL__:/backend-api/wham/usage";
+
         // ────────────────────────────────────────────────────────────────
         // 公開メソッド
         // ────────────────────────────────────────────────────────────────
@@ -33,10 +36,11 @@ namespace AIUsageOverlay.Services.Parsing
             if (raw.StartsWith(PageTextPrefix))
                 return ParseFromPageText(raw[PageTextPrefix.Length..]);
 
+            var isWhamUsage = raw.StartsWith(WhamUsagePrefix, StringComparison.OrdinalIgnoreCase);
             var payload = StripDiagnosticPrefix(raw);
             var trimmed = payload.TrimStart();
             return trimmed.StartsWith('{') || trimmed.StartsWith('[')
-                ? ParseFromJson(payload)
+                ? ParseFromJson(payload, isWhamUsage)
                 : ParseFromPageText(payload);
         }
 
@@ -58,7 +62,7 @@ namespace AIUsageOverlay.Services.Parsing
         /// ChatGPT/Codex 側の内部 JSON はフィールド名が変わりやすいため、
         /// five_hour / seven_day のような明示キーに加え、period/name と usage/limit の組も探索する。
         /// </summary>
-        private static CodexUsageData? ParseFromJson(string json)
+        private static CodexUsageData? ParseFromJson(string json, bool isWhamUsage)
         {
             try
             {
@@ -72,6 +76,8 @@ namespace AIUsageOverlay.Services.Parsing
                     return null;
 
                 var acc = new UsageLimitAccumulator();
+                if (isWhamUsage)
+                    MergeWhamUsage(doc.RootElement, acc);
                 FindUsageLimitFields(doc.RootElement, "", acc);
                 return acc.ToData();
             }
@@ -132,6 +138,14 @@ namespace AIUsageOverlay.Services.Parsing
             foreach (var prop in el.EnumerateObject())
             {
                 var key = prop.Name.ToLowerInvariant();
+                if (key == "window_minutes"
+                    && TryGetNumber(prop.Value, out var windowMinutes))
+                {
+                    var windowPeriod = DetectPeriodFromWindowMinutes(windowMinutes);
+                    if (windowPeriod != UsageLimitPeriod.Unknown)
+                        return windowPeriod;
+                }
+
                 if (key is not ("period" or "name" or "title" or "label" or "window" or "bucket" or "feature_name"))
                     continue;
 
@@ -146,6 +160,43 @@ namespace AIUsageOverlay.Services.Parsing
             }
 
             return UsageLimitPeriod.Unknown;
+        }
+
+        /// <summary>
+        /// Codex rate_limits API の window_minutes から制限期間を判定する。
+        /// 現行 API は primary を 300 分、secondary を 10080 分として返す。
+        /// </summary>
+        private static UsageLimitPeriod DetectPeriodFromWindowMinutes(double windowMinutes)
+            => windowMinutes switch
+            {
+                300 => UsageLimitPeriod.Session,
+                10_080 => UsageLimitPeriod.Weekly,
+                _ => UsageLimitPeriod.Unknown
+            };
+
+        /// <summary>
+        /// wham usage API の rate_limit 配下を解析する。別機能の同じ時間幅を誤採用しないよう、
+        /// 取得元が wham usage と確認できた候補にだけ適用する。
+        /// </summary>
+        private static void MergeWhamUsage(JsonElement root, UsageLimitAccumulator acc)
+        {
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("rate_limit", out var rateLimit)
+                || rateLimit.ValueKind != JsonValueKind.Object)
+                return;
+
+            foreach (var window in rateLimit.EnumerateObject())
+            {
+                if (window.Value.ValueKind != JsonValueKind.Object
+                    || !window.Value.TryGetProperty("limit_window_seconds", out var secondsElement)
+                    || !TryGetNumber(secondsElement, out var windowSeconds))
+                    continue;
+
+                if (windowSeconds == 18_000)
+                    acc.MergeSession(ReadPeriodValues(window.Value, UsageLimitPeriod.Session));
+                else if (windowSeconds == 604_800)
+                    acc.MergeWeekly(ReadPeriodValues(window.Value, UsageLimitPeriod.Weekly));
+            }
         }
 
         /// <summary>
@@ -308,7 +359,7 @@ namespace AIUsageOverlay.Services.Parsing
                             values.RemainingMinutes = resetMinutes;
                     }
 
-                    if (values.ResetsAt == null && IsResetKey(key))
+                    if (values.ResetsAt == null && IsResetTimestampKey(key))
                     {
                         var resetsAt = TryGetDateTimeOffset(prop.Value);
                         if (resetsAt.HasValue)
@@ -748,8 +799,21 @@ namespace AIUsageOverlay.Services.Parsing
             && !key.Contains("time");
 
         /// <summary>キー名がリセット日時を表すか判定する。</summary>
-        private static bool IsResetKey(string key)
-            => key.Contains("reset") || key.Contains("resets_at") || key.Contains("reset_at");
+        private static bool IsResetTimestampKey(string key)
+        {
+            var normalized = key.ToLowerInvariant()
+                .Replace("-", "_", StringComparison.Ordinal)
+                .Replace(" ", "_", StringComparison.Ordinal);
+            if (normalized.Contains("after", StringComparison.Ordinal)
+                || normalized.Contains("_in", StringComparison.Ordinal)
+                || normalized.Contains("duration", StringComparison.Ordinal)
+                || normalized.Contains("remaining", StringComparison.Ordinal)
+                || normalized.Contains("ttl", StringComparison.Ordinal))
+                return false;
+
+            return normalized.Contains("reset", StringComparison.Ordinal)
+                || normalized.Contains("expire", StringComparison.Ordinal);
+        }
 
         /// <summary>
         /// reset_after / resets_in_seconds のような数値のリセット待ち時間を分に変換する。
@@ -845,11 +909,14 @@ namespace AIUsageOverlay.Services.Parsing
 
         /// <summary>
         /// 0〜1 の ratio と 0〜100 の percent の両方を 0〜100 の整数に正規化する。
+        /// rate_limits API の used_percent だけは値域が 0〜100 と明示されているため、そのまま扱う。
         /// </summary>
         private static int NormalizePercent(double value, string key)
         {
             if (value < 0) return -1;
-            var normalized = value <= 1.0 || key.Contains("ratio") || key.Contains("fraction")
+            var normalized = key == "used_percent"
+                ? value
+                : value <= 1.0 || key.Contains("ratio") || key.Contains("fraction")
                 ? value * 100.0
                 : value;
             return ClampPercent((int)Math.Round(normalized));

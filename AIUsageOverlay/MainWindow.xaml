@@ -196,7 +196,19 @@
                                      IsHitTestVisible="False"/>
                     </Grid>
                     <TextBlock x:Name="CodexMeta" FontSize="10" Foreground="{StaticResource Brush.Text2}"
-                               Margin="0,4,0,0" TextTrimming="CharacterEllipsis"/>
+                               Margin="0,4,0,0" TextTrimming="CharacterEllipsis"
+                               Visibility="{Binding CodexBarVisibility}"/>
+                    <Grid Margin="0,4,0,0" Visibility="{Binding CodexDotVisibility}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding CodexStatusText}" FontSize="10"
+                                   FontWeight="SemiBold" Foreground="{StaticResource Brush.Codex}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding CodexSubText}" FontSize="10"
+                                   Foreground="{StaticResource Brush.Text2}" Margin="6,0,0,0"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </Grid>
                 </StackPanel>
 
                 <!-- Cursor ブロック -->
@@ -277,14 +289,20 @@
                         Visibility="{Binding CodexSectionVisibility}"/>
                 <!-- Codex -->
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                            Visibility="{Binding CodexSectionVisibility}">
+                            Visibility="{Binding CodexSectionVisibility}"
+                            Opacity="{Binding CodexSectionOpacity}">
                     <TextBlock Text="X" FontSize="10" FontWeight="Bold" Foreground="#8A8A92"
                                VerticalAlignment="Center" Margin="0,0,6,0"/>
                     <ProgressBar Width="34" Height="5" Value="{Binding CodexUsagePercent}" Maximum="100"
                                  Foreground="{StaticResource Brush.Codex}"
-                                 Style="{StaticResource RoundProgressBarStyle}" VerticalAlignment="Center"/>
+                                 Style="{StaticResource RoundProgressBarStyle}" VerticalAlignment="Center"
+                                 Visibility="{Binding CodexBarVisibility}"/>
                     <TextBlock Text="{Binding CodexUsagePercentText}" FontSize="11" FontWeight="Bold"
-                               Foreground="{StaticResource Brush.Codex}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                               Foreground="{StaticResource Brush.Codex}" VerticalAlignment="Center" Margin="6,0,0,0"
+                               Visibility="{Binding CodexBarVisibility}"/>
+                    <TextBlock Text="{Binding CodexStatusText}" FontSize="10" FontWeight="SemiBold"
+                               Foreground="{StaticResource Brush.Codex}" VerticalAlignment="Center"
+                               ToolTip="{Binding CodexSubText}" Visibility="{Binding CodexDotVisibility}"/>
                 </StackPanel>
                 <!-- 区切り -->
                 <Border Width="1" Height="14" Background="#333333" Margin="10,0"
@@ -464,7 +482,8 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0"
+                                Visibility="{Binding CodexBarVisibility}">
                         <Grid Margin="0,0,0,3">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -484,6 +503,17 @@
                                FontSize="17" FontWeight="Bold" Foreground="{StaticResource Brush.Codex}"
                                VerticalAlignment="Center" MinWidth="44" TextAlignment="Right"
                                Visibility="{Binding CodexBarVisibility}"/>
+                    <Grid Grid.ColumnSpan="2" Visibility="{Binding CodexDotVisibility}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding CodexStatusText}" FontSize="11"
+                                   FontWeight="SemiBold" Foreground="{StaticResource Brush.Codex}"/>
+                        <TextBlock Grid.Column="1" Text="{Binding CodexSubText}" FontSize="10"
+                                   Foreground="{StaticResource Brush.Text2}" Margin="8,0,0,0"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </Grid>
                 </Grid>
 
                 <!-- Codex 週間（メインバーが 5時間枠のときだけ出す。週間枠が主軸のときは上段が週間） -->
