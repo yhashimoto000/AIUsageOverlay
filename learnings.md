@@ -234,3 +234,17 @@
 - 相対時間（`reset_after_seconds`）と絶対時刻（`reset_at`）をキー名で明確に分離し、数値という理由だけでUnix時刻に変換しない。
 - 複数APIの応答を同じ候補配列へ集める場合、本文だけでなく取得元URLの安全なパス部分を保持する。機密値を含むクエリ文字列・ヘッダー・Cookieは保持しない。
 - 非同期に候補が増える取得処理では、汎用的に解析可能な候補が先着しただけで打ち切らない。本命の取得元を識別できた場合だけ早期終了する。
+
+## 2026-11-02（Codex 使用量が取得できない事象の修正）
+### Facts（事実）
+- ページ自身の通信では `/backend-api/wham/usage` が呼ばれなくなっており、fetch/XHR 傍受の候補 120 件に wham 応答が 1 件も含まれていなかった（`wham候補なし`）。
+- 既存の `ReadKnownChatGptApiResponsesAsync` は `ExecuteScriptAsync` に async IIFE を渡していた。WebView2 は Promise を解決せずシリアライズ不能値を返すため、デシリアライズに失敗して **常に空配列** を返していた。既知 API の直接読みは実質機能しておらず、傍受が取れなくなった時点で取得経路が全滅した。
+- Promise の解決を window 変数経由のポーリングへ直すと、`/backend-api/wham/usage` は **HTTP 401**（`{"detail": ...}` 25 文字）を返した。同じエンドポイントをページ自身が呼んだ応答は 200 で、Cookie だけでは認証が通らないことを示していた。
+- `/api/auth/session` の `accessToken` を `Authorization: Bearer` で付けて直接 fetch すると 200 になり、5時間枠 0% / 週間枠 8% を取得して履歴へ記録できた（`history.json` の codex 系列が 0 件 → 4 件）。
+- 現行で使えるのは `/backend-api/wham/usage` のみ。`/backend-api/codex/usage` は 401、`/backend-api/codex/usage_limits` `/backend-api/codex/rate_limits` `/backend-api/wham/rate_limits` は 404 だった。
+- 自動テスト 82 件成功。Debug / Release ビルドとも警告 0・エラー 0。オーバーレイの実画面での見え方は未確認。
+### Policy（方針）
+- WebView2 の `ExecuteScriptAsync` に Promise を返す式を渡さない。非同期取得は window 変数へ蓄積し、完了フラグをポーリングして取り出す。戻り値を直接受け取る実装は「失敗」ではなく「無言の空振り」になり、別経路が生きている間は発覚しない。
+- ChatGPT の `backend-api` を直接読むときは `/api/auth/session` の accessToken を Bearer で付ける。トークンはブラウザ内だけで扱い、C# 側・診断ログ・外部送信のいずれにも渡さない。
+- 傍受候補から `/api/auth/` の応答を除外し、認証トークンを解析対象にもログにも載せない。
+- 取得失敗時は `%AppData%\AIUsageOverlay\codex-web-diagnostic.log` へ取得元パス・HTTP 状態・JSON キー階層（値なし）を残す。毎回その場しのぎの診断コードを足し直さないための恒久機能として維持する。

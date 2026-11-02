@@ -69,6 +69,12 @@ namespace AIUsageOverlay.Services
         /// <summary>候補が同一状態で続いた場合に早期終了する回数。</summary>
         private const int StableCapturePolls = 3;
 
+        /// <summary>既知 API 直接読みの完了待ちポーリング間隔ミリ秒。</summary>
+        private const int ApiProbePollIntervalMs = 500;
+
+        /// <summary>既知 API 直接読みの完了待ちポーリング上限回数（上限 12 秒）。</summary>
+        private const int MaxApiProbePolls = 24;
+
         /// <summary>
         /// Codex / usage limit を含むレスポンスを捕捉する fetch/XHR 傍受スクリプト。
         /// window.__codexRawCandidates に候補を蓄積する。
@@ -98,6 +104,8 @@ namespace AIUsageOverlay.Services
             if (window.__codexRawCandidates.length >= 100) return;
 
             const u = (url || '').toLowerCase();
+            // 認証トークンを含む応答は候補に残さない（解析にも診断ログにも渡さない）
+            if (u.includes('/api/auth/')) return;
             const t = (text || '').toLowerCase();
             const relevantUrl =
                 u.includes('codex') ||
@@ -227,6 +235,9 @@ namespace AIUsageOverlay.Services
                 {
                     var whamDetail = BuildWhamFailureDetail(rawCandidates);
                     LastError = $"Codex使用制限情報が取得できませんでした（候補: {_lastCandidateCount}件、{whamDetail}）";
+
+                    // ChatGPT 側の API 変更を後から追えるよう、取得元とキー階層だけを診断ログへ残す
+                    CodexWebDiagnostics.WriteFailureLog(rawCandidates, LastError);
                 }
 
                 return result;
@@ -649,47 +660,80 @@ namespace AIUsageOverlay.Services
         /// GET のみで、会話送信・Codex 実行・補完生成は行わないためトークンは消費しない。
         /// 404 や権限エラーは通常候補として扱い、Parser が無視する。
         /// </summary>
+        /// <remarks>
+        /// WebView2 の ExecuteScriptAsync は Promise を解決せずシリアライズ不能値を返すため、
+        /// async IIFE の戻り値を直接受け取ると常に空配列になる（取得が一切行われないのと同義）。
+        /// 取得結果は window.__codexApiProbe へ蓄積し、完了フラグをポーリングして取り出す。
+        /// </remarks>
         private async Task<IReadOnlyList<string>> ReadKnownChatGptApiResponsesAsync()
         {
             if (_webView?.CoreWebView2 == null) return [];
 
-            const string script = @"
-(async () => {
+            const string startScript = @"
+(() => {
+    if (window.__codexApiProbe && window.__codexApiProbe.running) return 'running';
+    window.__codexApiProbe = { running: true, done: false, results: [] };
     const urls = [
         '/backend-api/wham/usage',
+        '/backend-api/wham/rate_limits',
+        '/backend-api/wham/accounts/check',
         '/backend-api/me',
         '/backend-api/settings/user',
         '/backend-api/accounts/check/v4-2023-04-27',
-        '/backend-api/models',
-        '/backend-api/codex',
-        '/backend-api/codex/bootstrap',
-        '/backend-api/codex/settings',
         '/backend-api/codex/usage',
         '/backend-api/codex/usage_limits',
-        '/backend-api/codex/settings/usage',
-        '/backend-api/codex/limits',
         '/backend-api/codex/rate_limits',
-        '/backend-api/codex/quota',
         '/backend-api/user_segments/codex_surface_usage'
     ];
-    const results = [];
-    for (const url of urls) {
+    (async () => {
+        // backend-api は Cookie だけでは 401 になるため、ページ自身と同じ Bearer トークンを付ける。
+        // トークンはブラウザ内だけで扱い、C# 側・診断ログ・外部送信のいずれにも渡さない。
+        let headers = {};
         try {
-            const response = await fetch(url, { credentials: 'include' });
-            const text = await response.text();
-            if (text && text.length > 10) {
-                results.push(`__URL__:${url}|status=${response.status}\n${text}`);
+            const session = await fetch('/api/auth/session', { credentials: 'include' });
+            if (session.ok) {
+                const data = await session.json();
+                if (data && data.accessToken) {
+                    headers = { Authorization: `Bearer ${data.accessToken}` };
+                }
             }
         } catch {}
-    }
-    return results;
+        for (const url of urls) {
+            try {
+                const response = await fetch(url, { credentials: 'include', headers });
+                const text = await response.text();
+                if (text && text.length > 10) {
+                    window.__codexApiProbe.results.push(
+                        `__URL__:${url}|status=${response.status}\n${text}`);
+                }
+            } catch {}
+        }
+        window.__codexApiProbe.done = true;
+        window.__codexApiProbe.running = false;
+    })();
+    return 'started';
 })()
 ";
 
+            const string readScript =
+                "window.__codexApiProbe && window.__codexApiProbe.done"
+                + " ? window.__codexApiProbe.results : null";
+
             try
             {
-                var encoded = await _webView.CoreWebView2.ExecuteScriptAsync(script);
-                return JsonSerializer.Deserialize<List<string>>(encoded) ?? [];
+                await _webView.CoreWebView2.ExecuteScriptAsync(startScript);
+
+                for (int i = 0; i < MaxApiProbePolls; i++)
+                {
+                    await Task.Delay(ApiProbePollIntervalMs);
+                    var encoded = await _webView.CoreWebView2.ExecuteScriptAsync(readScript);
+                    if (string.IsNullOrEmpty(encoded) || encoded == "null")
+                        continue;
+
+                    return JsonSerializer.Deserialize<List<string>>(encoded) ?? [];
+                }
+
+                return [];
             }
             catch
             {
