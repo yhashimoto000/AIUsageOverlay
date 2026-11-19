@@ -642,8 +642,16 @@ namespace AIUsageOverlay
                 // メニューを開かなくても分かるよう、オーバーレイの隅にも出す
                 _mainWindow?.SetUsageReportStatus("レポート生成中…");
 
-                var includePrompt =
-                    _mainWindow?.ViewModel.GetSettings().UsageReportIncludePrompt ?? true;
+                var settings = _mainWindow?.ViewModel.GetSettings();
+                var includePrompt = settings?.UsageReportIncludePrompt ?? true;
+
+                // 効果額・費用換算の前提値。設定を読めない場合だけ既定値へ落とす。
+                var assumptions = settings is null
+                    ? Services.SessionStats.ReportAssumptions.Default
+                    : new Services.SessionStats.ReportAssumptions(
+                        settings.UsageReportHourlyRateJpy,
+                        settings.UsageReportReductionFactor,
+                        settings.UsageReportUsdJpyRate);
                 var progress = new Progress<(int Done, int Total)>(p =>
                 {
                     if (p.Total == 0)
@@ -659,7 +667,8 @@ namespace AIUsageOverlay
                 });
 
                 var path = await Task.Run(
-                    () => GenerateUsageReport(includePrompt, progress, _usageReportCancellation.Token),
+                    () => GenerateUsageReport(
+                        includePrompt, assumptions, progress, _usageReportCancellation.Token),
                     _usageReportCancellation.Token);
 
                 if (path is null)
@@ -702,11 +711,13 @@ namespace AIUsageOverlay
         /// 他インスタンスが集計中で Mutex を取得できない場合は null を返す。
         /// </summary>
         /// <param name="includePrompt">指示文の先頭 64 文字を出力するか（S11）</param>
+        /// <param name="assumptions">効果額・費用換算の前提値</param>
         /// <param name="progress">進捗通知</param>
         /// <param name="cancellationToken">キャンセル用トークン</param>
         /// <returns>生成した HTML のパス。Mutex を取得できなければ null</returns>
         private static string? GenerateUsageReport(
             bool includePrompt,
+            Services.SessionStats.ReportAssumptions assumptions,
             IProgress<(int Done, int Total)> progress,
             CancellationToken cancellationToken)
         {
@@ -738,7 +749,7 @@ namespace AIUsageOverlay
                     .GetName().Version?.ToString(3) ?? "0.0.0";
                 var now = DateTime.Now;
                 var report = Services.SessionStats.SessionStatsAggregator.Build(
-                    scan, includePrompt, version, cacheWasCorrupted, now);
+                    scan, includePrompt, version, cacheWasCorrupted, now, assumptions);
 
                 // Cursor のローカル履歴にはトークン情報がないため、
                 // cursor-tokens.json（ダッシュボード API 傍受で蓄積）を別途注入する。

@@ -16,6 +16,12 @@ public class RealHistoryScanTests
     /// <summary>計測を有効にする環境変数名。</summary>
     private const string EnableVariable = "AIUSAGE_REAL_SCAN";
 
+    /// <summary>レポート生成を有効にする環境変数名。</summary>
+    private const string ReportVariable = "AIUSAGE_REAL_REPORT";
+
+    /// <summary>レポートの出力先を指定する環境変数名。未指定なら一時フォルダ。</summary>
+    private const string ReportFolderVariable = "AIUSAGE_REAL_REPORT_DIR";
+
     /// <summary>
     /// 実機の全履歴を走査し、所要時間・件数・分類率を出力する。
     /// 数値の判断は人間が行う（自動での合否判定はしない）。
@@ -102,5 +108,44 @@ public class RealHistoryScanTests
 
         Assert.True(scan.Sessions.Count > 0, "実機履歴が 1 件も読めなかった");
         Assert.All(scan.Sessions, s => Assert.Null(s.FirstPrompt));
+    }
+
+    /// <summary>
+    /// 実機の全履歴からレポート HTML を生成し、目視確認用に書き出す。
+    ///
+    /// 効果・稼働タブは合成データでは出ない見え方（枠の偏り、履歴が消えた月の欠け、
+    /// 単価表に無いモデルの量）を含むため、生成物を人間が開いて確かめる必要がある。
+    /// 読み取り専用であり、キャッシュには書き込まない。
+    /// 出力先は AIUSAGE_REAL_REPORT_DIR で指定する（未指定なら一時フォルダ）。
+    /// </summary>
+    [Fact]
+    public void 実機履歴からレポートを生成する()
+    {
+        if (Environment.GetEnvironmentVariable(ReportVariable) != "1")
+        {
+            return;
+        }
+
+        var scanner = new SessionStatsScanner();
+        var scan = scanner.Scan(cache: null, includePrompt: false);
+
+        var now = DateTime.Now;
+        var report = SessionStatsAggregator.Build(
+            scan, includePrompt: false, appVersion: "preview", cacheWasCorrupted: false,
+            nowLocal: now, assumptions: new ReportAssumptions(5000, 2.0, 150.0));
+
+        var folder = Environment.GetEnvironmentVariable(ReportFolderVariable);
+        var path = new UsageReportRenderer().Render(
+            report,
+            string.IsNullOrWhiteSpace(folder) ? Path.GetTempPath() : folder,
+            now);
+
+        File.WriteAllText(
+            Path.Combine(Path.GetTempPath(), "aiusage-real-report-path.txt"), path);
+
+        var impact = report.Periods["all"].Impact;
+        Assert.True(File.Exists(path));
+        Assert.True(impact.TotalActiveMinutes > 0, "稼働枠が 1 つも記録されなかった");
+        Assert.NotEmpty(impact.Hourly);
     }
 }

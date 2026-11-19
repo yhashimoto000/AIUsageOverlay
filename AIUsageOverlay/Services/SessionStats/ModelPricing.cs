@@ -108,6 +108,12 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>ツール別の内部換算値。画面出力時に100万倍してAPへ戻す。</summary>
         private readonly SortedDictionary<string, decimal> _weightedByTool = new(StringComparer.Ordinal);
 
+        /// <summary>
+        /// モデル別の内部換算値。単位は USD（100 万トークンあたりの公開単価で重み付けした値）。
+        /// 「従量課金だった場合の費用」をモデル別に出すために持つ。
+        /// </summary>
+        private readonly SortedDictionary<string, decimal> _weightedByModel = new(StringComparer.Ordinal);
+
         /// <summary>換算に含めたトークン数（課金相当）。</summary>
         private long _coveredTokens;
 
@@ -177,8 +183,9 @@ namespace AIUsageOverlay.Services.SessionStats
             _writeUnknownTtl += writeUnknown;
             _read += read;
             _output += output;
-            _weightedByTool[tool] = _weightedByTool.GetValueOrDefault(tool) +
-                input + write5m + write1h + writeUnknown + read + output;
+            var weighted = input + write5m + write1h + writeUnknown + read + output;
+            _weightedByTool[tool] = _weightedByTool.GetValueOrDefault(tool) + weighted;
+            _weightedByModel[model] = _weightedByModel.GetValueOrDefault(model) + weighted;
         }
 
         /// <summary>トークン数に 100 万トークンあたりの単価を掛ける。</summary>
@@ -203,6 +210,12 @@ namespace AIUsageOverlay.Services.SessionStats
                 ExcludedTokens = _excludedTokens,
                 ExcludedModels = _excludedModels.ToList(),
                 Available = total > 0m,
+                UsdAmount = total,
+                // モデル別は期間の集計にだけ載せる。セッション明細へ入れると同じ表が
+                // セッションの数だけ JSON に載り、生成物が無用に膨らむ（設計書 7.1.1）。
+                UsdByModel = withPrices
+                    ? _weightedByModel.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal)
+                    : new Dictionary<string, decimal>(StringComparer.Ordinal),
                 ApiEquivalentPoints = apiEquivalentPoints,
                 ApiEquivalentPointsText = FormatApiPoints(apiEquivalentPoints),
                 ApiEquivalentPointsByTool = _weightedByTool

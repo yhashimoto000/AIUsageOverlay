@@ -222,5 +222,34 @@ namespace AIUsageOverlay.Models
         /// </summary>
         [JsonPropertyName("usageReportReminderDays")]
         public int UsageReportReminderDays { get; set; } = 7;
+
+        /// <summary>
+        /// 効果額の計算に使う社内工数単価（円 / 時間）。既定 5,000 円。
+        ///
+        /// 効果額は実測値ではなく推定値であり、この単価と削減係数の置き方で何倍にも変わる。
+        /// レポートには計算式と前提を必ず併記する。
+        /// </summary>
+        [JsonPropertyName("usageReportHourlyRateJpy")]
+        public int UsageReportHourlyRateJpy { get; set; } = 5000;
+
+        /// <summary>
+        /// 効果額の削減係数 k（AI 稼働時間に掛ける倍率）。既定 2.0。
+        ///
+        /// k = 1.0 は「AI が 1 時間かけた仕事を人がやっても 1 時間」という置き方で、
+        /// AI のほうが速いという前提を数字に入れていない状態になる。
+        /// 3 倍速なら削減は 2 時間ぶん（k = 2.0）。いずれも実測値ではないため、
+        /// レポート画面で変更して感度を確認できるようにしている。
+        /// </summary>
+        [JsonPropertyName("usageReportReductionFactor")]
+        public double UsageReportReductionFactor { get; set; } = 2.0;
+
+        /// <summary>
+        /// 従量課金だった場合の費用を円で出すための為替レート（円 / USD）。既定 150 円。
+        ///
+        /// API 公開単価は USD 建てで、実勢レートは日々変わる。自動取得はしない
+        /// （外部サーバーへの通信を増やさないため）。生成時点の参考値として扱う。
+        /// </summary>
+        [JsonPropertyName("usageReportUsdJpyRate")]
+        public double UsageReportUsdJpyRate { get; set; } = 150.0;
     }
 }

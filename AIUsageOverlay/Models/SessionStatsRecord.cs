@@ -235,6 +235,26 @@ namespace AIUsageOverlay.Models
         [JsonPropertyName("byDay")]
         public List<DayBreakdown> ByDay { get; set; } = new();
 
+        /// <summary>稼働枠の幅（分）。この幅に記録が 1 件でもあれば「稼働」と数える。</summary>
+        public const int ActiveSlotMinutes = 5;
+
+        /// <summary>1 時間あたりの稼働枠数。</summary>
+        public const int ActiveSlotsPerHour = 60 / ActiveSlotMinutes;
+
+        /// <summary>1 日あたりの稼働枠数。</summary>
+        public const int ActiveSlotsPerDay = 24 * ActiveSlotsPerHour;
+
+        /// <summary>
+        /// 稼働していた 5 分枠（設計書 7.2.1）。キーはローカル日付（yyyy-MM-dd）、
+        /// 値は枠番号（hour * 12 + minute / 5、0〜287）の昇順リスト。
+        ///
+        /// 記録が 1 件でもある枠だけを持つ。セッションの開始〜終了の差（経過時間）には
+        /// 離席・放置・レビュー中の待ち時間が含まれるため、稼働時間の算出には使わない。
+        /// 枠はセッションをまたいで重複し得るので、合算するときは必ず集合で重複排除する。
+        /// </summary>
+        [JsonPropertyName("activeSlots")]
+        public Dictionary<string, List<int>> ActiveSlots { get; set; } = new();
+
         /// <summary>ツール名別の実行回数。Codex は exec の内訳をコマンド名で持つ。</summary>
         [JsonPropertyName("toolCounts")]
         public Dictionary<string, int> ToolCounts { get; set; } = new();

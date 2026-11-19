@@ -249,6 +249,32 @@ svg .grid { stroke: var(--border); stroke-width: 1; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 18px; font-size: 13px; }
 .kv dt { color: var(--text-muted); }
 .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* ── 効果・稼働タブ ───────────────────────────────────────── */
+.assume { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; }
+.assume label { display: block; color: var(--text-muted); font-size: 12px; }
+.assume input {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 8px; font: inherit; width: 112px;
+  font-variant-numeric: tabular-nums;
+}
+.assume .fixed { font-size: 13px; font-weight: 650; }
+.assume .unit { color: var(--text-muted); font-size: 12px; margin-left: 4px; }
+.formula {
+  background: var(--surface-2); border-radius: 6px; padding: 8px 12px;
+  font-variant-numeric: tabular-nums; margin-bottom: 10px; font-size: 13px;
+}
+.bar-line {
+  display: grid; grid-template-columns: 124px 1fr 104px;
+  gap: 10px; align-items: center; margin: 3px 0;
+}
+.bar-line .nm {
+  color: var(--text-muted); font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bar-line .vl { text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
+.bar-line.now .nm { color: var(--accent); font-weight: 650; }
+.warn-value { color: var(--bad); }
 code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
 </style>
 </head>
@@ -280,6 +306,7 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
 
   <nav class="tabs" role="tablist">
     <button role="tab" data-tab="overview" aria-selected="true">概要</button>
+    <button role="tab" data-tab="impact" aria-selected="false">効果・稼働</button>
     <button role="tab" data-tab="sessions" aria-selected="false">セッション</button>
     <button role="tab" data-tab="tools" aria-selected="false">ツール内訳</button>
     <button role="tab" data-tab="quality" aria-selected="false">データ品質</button>
@@ -476,6 +503,204 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; font-
         <thead><tr><th>パス</th><th>理由</th></tr></thead>
         <tbody></tbody>
       </table></div>
+    </div>
+  </section>
+
+  <!-- 効果・稼働 ──────────────────────────────────────────── -->
+  <section class="panel" id="panel-impact">
+    <div class="block">
+      <h2>この数字の前提</h2>
+      <p class="note">
+        効果額と費用は、下の置き方次第で何倍にも変わります。数字より先に前提を出しています。
+        値を変えるとこのタブの金額がすべて追従します（この画面だけの変更で、保存はされません。
+        既定値を変えるには設定ファイルの <code>usageReportHourlyRateJpy</code> /
+        <code>usageReportReductionFactor</code> / <code>usageReportUsdJpyRate</code> を編集してください）。
+      </p>
+      <div class="assume">
+        <div>
+          <label for="in-rate">社内工数単価</label>
+          <input type="number" id="in-rate" step="100" min="0"><span class="unit">円 / h</span>
+        </div>
+        <div>
+          <label for="in-factor">削減係数 k</label>
+          <input type="number" id="in-factor" step="0.1" min="0"><span class="unit">× AI 稼働時間</span>
+        </div>
+        <div>
+          <label for="in-fx">為替レート</label>
+          <input type="number" id="in-fx" step="1" min="0"><span class="unit">円 / USD</span>
+        </div>
+        <div>
+          <label>稼働の数え方</label>
+          <span class="fixed" id="slot-width">—</span>
+          <span class="unit">記録が 1 件でもある枠を稼働とみなす</span>
+        </div>
+        <div>
+          <label>API 単価の基準日</label>
+          <span class="fixed" id="impact-coef-date">—</span>
+          <span class="unit" id="impact-coef-src"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="block">
+      <h2>サマリ<span class="meta" id="impact-period-label"></span></h2>
+      <p class="note">
+        上の期間ボタンに連動します。ただし<b>月次サマリ・フェーズ / モデルの月別推移・
+        効果額の年換算だけは、期間を変えても常に全期間</b>です
+        （月単位の推移を見るためのブロックなので、期間で切ると意味をなさないため）。
+      </p>
+      <div class="cards" id="impact-kpi"></div>
+    </div>
+
+    <div class="block">
+      <h2>効果額</h2>
+      <p class="note">
+        AI が実際に動いていた時間に、工数単価と削減係数を掛けた<b>推定値</b>です。実測値ではありません。
+      </p>
+      <div class="formula" id="benefit-formula">—</div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>内訳</h3>
+          <table class="mini" id="benefit-table"><tbody></tbody></table>
+        </div>
+        <div class="detail-card">
+          <h3>係数を変えたときの年換算</h3>
+          <div id="benefit-sens"></div>
+          <p class="hint">
+            年換算 = 直近 3 か月の月平均 × 12。実績が 3 か月に満たない場合は取得できた月の平均。
+          </p>
+        </div>
+      </div>
+      <p class="note" style="margin:10px 0 0">
+        削減係数 k は実測値ではありません。k = 1.0 は「AI が 1 時間かけた仕事を人がやっても 1 時間」
+        という置き方で、AI のほうが速いという前提を数字に入れていない状態になります
+        （3 倍速なら削減は 2 時間ぶん = k 2.0）。一方で、AI が動く間の指示・レビューで
+        人が張り付いている時間は差し引かれていません。どちらも測っていないため、
+        社内で説明するときは <b>k をいくつに置いたかを必ず併記してください</b>。
+      </p>
+    </div>
+
+    <div class="block">
+      <h2>従量課金だった場合の費用（参考値）</h2>
+      <p class="note">
+        定額プランで実際に支払った額ではありません。同じトークン量を API の公開単価で
+        課金したと仮定した場合の金額です。<b>効果額と直接引き算しても意味はありません</b>
+        （実際の支払いは契約プランの月額です）。
+      </p>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>モデル別</h3>
+          <div class="scroll-x"><table class="mini" id="impact-cost-table">
+            <thead><tr>
+              <th class="grow">モデル</th><th class="num">ターン</th>
+              <th class="num">課金相当トークン</th><th class="num">USD</th><th class="num">円</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
+        <div class="detail-card">
+          <h3>換算の対象外</h3>
+          <div id="impact-excluded"></div>
+          <p class="hint">
+            Codex は内部モデル名が公開単価表と対応せず、キャッシュ書込の TTL 区分も無いため
+            換算対象外です。単価表に無い Claude モデルも換算せず、量とモデル名をここに出します。
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="block">
+      <h2>時間帯別の AI 稼働率</h2>
+      <p class="note" id="hourly-note">—</p>
+      <div id="hourly-chart"></div>
+      <div class="legend">
+        <span class="lg-investigate">稼働率（その時間帯の枠のうち稼働していた割合）</span>
+      </div>
+    </div>
+
+    <div class="block">
+      <h2>日別の AI 稼働時間</h2>
+      <p class="note">効果額の計算に使っている時間そのものです。土日も含みます（淡い色が土日）。</p>
+      <div id="active-daily-chart"></div>
+    </div>
+
+    <div class="block">
+      <h2>月次サマリ<span class="meta">（常に全期間）</span></h2>
+      <p class="note">
+        営業日は土日を除いただけで、祝日は考慮していません。
+        稼働時間が「—」の月は、履歴ファイルが既に削除されていて枠を再計算できない月です。
+      </p>
+      <div class="filters">
+        <label for="month-filter">月</label>
+        <select id="month-filter"><option value="">すべて</option></select>
+        <input type="search" id="month-search" placeholder="月・数値で絞り込み" size="22">
+        <span class="count" id="month-count"></span>
+      </div>
+      <div class="scroll-x"><table id="month-table">
+        <thead><tr>
+          <th>月</th><th class="num">営業日</th><th class="num">稼働日</th>
+          <th class="num">セッション</th><th class="num">うちサブ</th><th class="num">ターン</th>
+          <th class="num">AI 稼働時間</th><th class="num">課金相当トークン</th>
+          <th class="num">従量課金相当</th><th class="num">効果額</th>
+        </tr></thead>
+        <tbody></tbody>
+        <tfoot></tfoot>
+      </table></div>
+    </div>
+
+    <div class="block">
+      <h2>定着率</h2>
+      <p class="note">
+        母数は<b>選択期間のうち、最初に稼働した日から最後に稼働した日まで</b>の営業日です。
+        連続日数も営業日で数え、土日は切れ目にしません。祝日は考慮しません。
+      </p>
+      <div class="cards" id="adoption-cards"></div>
+    </div>
+
+    <div class="block">
+      <h2>サブエージェント</h2>
+      <p class="note">
+        並列で動かした分がどれだけを占めるか。稼働時間は 5 分枠で重複排除するため、
+        並列に走らせても時間は二重計上されません（トークンは別で、使った分だけ増えます）。
+      </p>
+      <div class="cards" id="subagent-cards"></div>
+      <div id="subagent-bars"></div>
+    </div>
+
+    <div class="block">
+      <h2>フェーズ構成比の推移<span class="meta">（常に全期間）</span></h2>
+      <p class="note">
+        <b>回数の構成比であり、時間ではありません。</b>未分類を分母から外していないため、
+        分類率が低い月は未分類の帯が大きく出ます。
+      </p>
+      <div id="phase-monthly"></div>
+      <div class="legend" id="phase-monthly-legend"></div>
+    </div>
+
+    <div class="block">
+      <h2>モデル別の利用比率</h2>
+      <p class="note">Opus / Sonnet の使い分け。コスト最適化の材料になります。</p>
+      <div class="filters">
+        <input type="search" id="model-search" placeholder="モデル名で絞り込み" size="22">
+        <span class="count" id="model-impact-count"></span>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-card">
+          <h3>選択期間</h3>
+          <div class="scroll-x"><table class="mini" id="model-impact-table">
+            <thead><tr>
+              <th class="grow">モデル</th><th class="num">ターン</th>
+              <th class="num">課金相当トークン</th><th class="num">構成比</th>
+            </tr></thead>
+            <tbody></tbody>
+          </table></div>
+        </div>
+        <div class="detail-card">
+          <h3>月別のターン構成比（常に全期間）</h3>
+          <div id="model-monthly"></div>
+          <div class="legend" id="model-monthly-legend"></div>
+        </div>
+      </div>
     </div>
   </section>
 </div>
@@ -1521,6 +1746,604 @@ function renderQuality() {
 
 /* ── 描画のとりまとめ ─────────────────────────────────────── */
 
+/* ── 効果・稼働タブ ───────────────────────────────────────────
+   金額はすべて推定値であり、前提（工数単価・削減係数・為替）の置き方で何倍にも変わる。
+   入力欄の値だけを変えて再計算できるよう、描画は「前提に連動する部分」と
+   「履歴から決まる部分」に分けている。                                       */
+
+/* 月次期間のキー（yyyy-MM）を古い順に並べる */
+function impactMonths() {
+  return Object.keys(DATA.periods)
+    .filter(k => k.indexOf("month:") === 0)
+    .map(k => k.slice("month:".length))
+    .sort();
+}
+
+/* 金額計算の前提値。期間では変わらない */
+const ASSUMPTIONS = (DATA.impact && DATA.impact.assumptions) || {};
+
+/* 選択中の期間の稼働・効果データ。上の期間ボタンに連動する */
+function impactOf() {
+  const p = period();
+  return (p && p.impact) || {};
+}
+
+/* 全期間の稼働・効果データ。月次サマリなど常に全期間で見るブロックが使う */
+function impactAll() {
+  const p = DATA.periods.all;
+  return (p && p.impact) || {};
+}
+
+/* 月ごとの稼働時間（分）。月次サマリは期間ボタンに関わらず全期間を出す */
+const IMPACT_MINUTES_BY_MONTH = (function () {
+  const map = {};
+  (impactAll().activeByDay || []).forEach(d => {
+    const m = d.date.slice(0, 7);
+    map[m] = (map[m] || 0) + d.minutes;
+  });
+  return map;
+})();
+
+/* 月ごとのセッション数とサブエージェント数 */
+const IMPACT_SESSIONS_BY_MONTH = (function () {
+  const map = {};
+  (DATA.sessions || []).forEach(s => {
+    const m = (s.startDay || "").slice(0, 7);
+    if (!m) { return; }
+    if (!map[m]) { map[m] = { total: 0, sub: 0 }; }
+    map[m].total++;
+    if (s.isSubagent) { map[m].sub++; }
+  });
+  return map;
+})();
+
+function impactRate() { return Number(document.getElementById("in-rate").value) || 0; }
+function impactFactor() { return Number(document.getElementById("in-factor").value) || 0; }
+function impactFx() { return Number(document.getElementById("in-fx").value) || 0; }
+
+function fmtYen(n) { return "¥" + Math.round(n || 0).toLocaleString("ja-JP"); }
+
+function fmtYenShort(n) {
+  const v = Math.abs(n || 0);
+  if (v >= 1e8) { return "¥" + ((n || 0) / 1e8).toFixed(2) + " 億"; }
+  if (v >= 1e4) { return "¥" + Math.round((n || 0) / 1e4).toLocaleString("ja-JP") + " 万"; }
+  return fmtYen(n);
+}
+
+/* 従量課金だった場合の費用（USD）。選択期間のモデル別合計で、換算対象外は 0 のまま */
+function totalImpactUsd() {
+  return (impactOf().modelCost || []).reduce((a, m) => a + (m.usd || 0), 0);
+}
+
+/* その月の営業日数（土日を除くだけ。祝日は考慮しない） */
+function businessDaysOfMonth(ym) {
+  const parts = ym.split("-");
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  let count = 0;
+  const d = new Date(year, month - 1, 1);
+  while (d.getMonth() === month - 1) {
+    if (d.getDay() !== 0 && d.getDay() !== 6) { count++; }
+    d.setDate(d.getDate() + 1);
+  }
+  return count;
+}
+
+/* 最大値に対する比率で伸びる横棒 */
+function ratioBar(value, max, varName) {
+  const svg = svgEl("svg", {
+    width: "100%", height: 14, viewBox: "0 0 100 14", preserveAspectRatio: "none",
+  });
+  svg.appendChild(svgEl("rect",
+    { x: 0, y: 0, width: 100, height: 14, rx: 2, fill: "var(--surface-2)" }));
+  const w = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  if (w > 0) {
+    svg.appendChild(svgEl("rect",
+      { x: 0, y: 0, width: w, height: 14, rx: 2, fill: "var(" + varName + ")" }));
+  }
+  return svg;
+}
+
+function barLine(name, value, max, label, varName, isNow) {
+  return el("div", { class: "bar-line" + (isNow ? " now" : "") }, [
+    el("span", { class: "nm", title: name, text: name }),
+    ratioBar(value, max, varName || "--accent"),
+    el("span", { class: "vl", text: label }),
+  ]);
+}
+
+function impactKpiCard(label, value, sub) {
+  return el("div", { class: "card" }, [
+    el("div", { class: "label", text: label }),
+    el("div", { class: "value", text: value }),
+    el("div", { class: "sub", text: sub }),
+  ]);
+}
+
+/* 前提値に連動する部分だけを計算し直す */
+function renderImpactMoney() {
+  renderImpactKpi();
+  renderBenefit();
+  renderImpactCost();
+  renderMonthTable();
+  renderModelImpact();
+}
+
+function renderImpactKpi() {
+  const imp = impactOf();
+  const ad = imp.adoption || {};
+  const hours = (imp.totalActiveMinutes || 0) / 60;
+  const benefit = hours * impactFactor() * impactRate();
+  const usd = totalImpactUsd();
+  const host = document.getElementById("impact-kpi");
+  host.textContent = "";
+  host.appendChild(impactKpiCard("表示期間", period().label,
+    ad.firstDay ? ad.firstDay + " 〜 " + ad.lastDay : "稼働の記録なし"));
+  host.appendChild(impactKpiCard("AI 稼働時間（" + (ASSUMPTIONS.slotMinutes || 5) + " 分枠の合計）",
+    hours.toFixed(0) + " h",
+    ad.usedBusinessDays ? "1 営業日あたり " + (hours / ad.usedBusinessDays).toFixed(1) + " h" : "—"));
+  host.appendChild(impactKpiCard("効果額（推定）", fmtYenShort(benefit),
+    hours.toFixed(0) + " h × k " + impactFactor() + " × " + fmt(impactRate()) + " 円"));
+  host.appendChild(impactKpiCard("従量課金だった場合（参考）", fmtYenShort(usd * impactFx()),
+    "$" + fmt(Math.round(usd)) + " @ " + impactFx() + " 円"));
+  host.appendChild(impactKpiCard("定着率（営業日ベース）",
+    ad.businessDays ? (ad.usedBusinessDays / ad.businessDays * 100).toFixed(1) + "%" : "—",
+    (ad.usedBusinessDays || 0) + " / " + (ad.businessDays || 0) + " 営業日"));
+}
+
+function renderBenefit() {
+  const imp = impactOf();
+  const ad = imp.adoption || {};
+  const months = impactMonths();
+  const hours = (imp.totalActiveMinutes || 0) / 60;
+  const benefit = hours * impactFactor() * impactRate();
+
+  document.getElementById("benefit-formula").textContent =
+    "効果額 = AI 稼働時間 " + hours.toFixed(0) + " h × 削減係数 " + impactFactor() +
+    " × " + fmt(impactRate()) + " 円/h = " + fmtYen(benefit);
+
+  // 年換算は全期間の直近 3 か月から出す。期間ボタンでは変えない。
+  // 導入初期の少ない月を混ぜると実態より低く出るうえ、短い期間の実績を 12 倍しても荒すぎる。
+  const last3 = months.slice(-3);
+  const last3Hours = last3.reduce((a, m) => a + (IMPACT_MINUTES_BY_MONTH[m] || 0), 0) / 60;
+  const perYearBase = last3.length ? (last3Hours / last3.length) * 12 * impactRate() : 0;
+
+  const tbody = document.querySelector("#benefit-table tbody");
+  tbody.textContent = "";
+  [
+    [period().label + "の合計", fmtYen(benefit)],
+    ["1 営業日あたり", fmtYen(ad.usedBusinessDays ? benefit / ad.usedBusinessDays : 0)],
+    ["年換算（全期間の直近 3 か月 × 12）", fmtYen(perYearBase * impactFactor())],
+  ].forEach(row => tbody.appendChild(el("tr", {}, [
+    el("td", { class: "grow", text: row[0] }),
+    el("td", { class: "num", text: row[1] }),
+  ])));
+
+  const host = document.getElementById("benefit-sens");
+  host.textContent = "";
+  const factors = [0.5, 1.0, 1.5, 2.0, 3.0];
+  const max = Math.max.apply(null, factors.map(k => k * perYearBase).concat([1]));
+  factors.forEach(k => {
+    const value = k * perYearBase;
+    const isNow = Math.abs(k - impactFactor()) < 0.001;
+    host.appendChild(barLine("k = " + k.toFixed(1) + (isNow ? "（現在）" : ""),
+      value, max, fmtYenShort(value), isNow ? "--good" : "--accent", isNow));
+  });
+}
+
+function renderImpactCost() {
+  const allModels = impactOf().modelCost || [];
+  const rows = allModels.filter(m => (m.usd || 0) > 0);
+  const tbody = document.querySelector("#impact-cost-table tbody");
+  tbody.textContent = "";
+  rows.forEach(m => tbody.appendChild(el("tr", {}, [
+    el("td", { class: "grow", text: m.model }),
+    el("td", { class: "num", text: fmt(m.turns) }),
+    el("td", { class: "num", text: fmtCompact(m.billable) }),
+    el("td", { class: "num", text: "$" + fmt(Math.round(m.usd)) }),
+    el("td", { class: "num", text: fmtYen(m.usd * impactFx()) }),
+  ])));
+  const total = totalImpactUsd();
+  tbody.appendChild(el("tr", {}, [
+    el("td", { class: "grow", text: "合計" }),
+    el("td", { class: "num", text: "" }),
+    el("td", { class: "num", text: "" }),
+    el("td", { class: "num", text: "$" + fmt(Math.round(total)) }),
+    el("td", { class: "num", text: fmtYen(total * impactFx()) }),
+  ]));
+
+  // 換算から外した分。量を隠さないため、除外トークンとモデル名を必ず出す。
+  const excluded = allModels.filter(m => !(m.usd > 0));
+  const host = document.getElementById("impact-excluded");
+  host.textContent = "";
+  const sum = excluded.reduce((a, m) => a + (m.billable || 0), 0);
+  host.appendChild(el("p", { class: "note", style: "margin:0 0 6px",
+    text: "除外トークン合計 " + fmtCompact(sum) }));
+  if (!excluded.length) {
+    host.appendChild(el("p", { class: "empty", text: "なし" }));
+    return;
+  }
+  const max = Math.max.apply(null, excluded.map(m => m.billable || 0).concat([1]));
+  excluded.slice(0, 10).forEach(m => host.appendChild(
+    barLine(m.model, m.billable || 0, max, fmtCompact(m.billable || 0), "--phase-unknown", false)));
+}
+
+function renderMonthTable() {
+  const months = impactMonths();
+  const sel = document.getElementById("month-filter").value;
+  const query = document.getElementById("month-search").value.trim().toLowerCase();
+  const tbody = document.querySelector("#month-table tbody");
+  const tfoot = document.querySelector("#month-table tfoot");
+  tbody.textContent = "";
+  tfoot.textContent = "";
+
+  const total = { bdays: 0, days: 0, sessions: 0, sub: 0, turns: 0, min: 0, billable: 0, usd: 0 };
+  let shown = 0;
+  months.forEach(m => {
+    const p = DATA.periods["month:" + m];
+    if (!p) { return; }
+    const minutes = IMPACT_MINUTES_BY_MONTH[m] || 0;
+    const counts = IMPACT_SESSIONS_BY_MONTH[m] || { total: 0, sub: 0 };
+    const usd = (p.cost && p.cost.usdAmount) || 0;
+    const bdays = businessDaysOfMonth(m);
+    const cells = [
+      m,
+      String(bdays),
+      String((p.byDay || []).length),
+      fmt(counts.total),
+      fmt(counts.sub),
+      fmt(p.turnCount || 0),
+      minutes ? (minutes / 60).toFixed(1) + " h" : "—",
+      fmtCompact(p.billable || 0),
+      usd ? fmtYen(usd * impactFx()) : "—",
+      minutes ? fmtYen(minutes / 60 * impactFactor() * impactRate()) : "—",
+    ];
+
+    total.bdays += bdays;
+    total.days += (p.byDay || []).length;
+    total.sessions += counts.total;
+    total.sub += counts.sub;
+    total.turns += p.turnCount || 0;
+    total.min += minutes;
+    total.billable += p.billable || 0;
+    total.usd += usd;
+
+    if (sel && m !== sel) { return; }
+    if (query && cells.join(" ").toLowerCase().indexOf(query) < 0) { return; }
+    shown++;
+    tbody.appendChild(el("tr", {}, cells.map((c, i) =>
+      el("td", { class: i === 0 ? null : "num", text: c }))));
+  });
+
+  if (shown === 0) {
+    tbody.appendChild(el("tr", {}, [el("td", { colspan: 10, class: "empty", text: "該当なし" })]));
+  }
+  tfoot.appendChild(el("tr", {}, [
+    el("td", { text: "合計" }),
+    el("td", { class: "num", text: String(total.bdays) }),
+    el("td", { class: "num", text: String(total.days) }),
+    el("td", { class: "num", text: fmt(total.sessions) }),
+    el("td", { class: "num", text: fmt(total.sub) }),
+    el("td", { class: "num", text: fmt(total.turns) }),
+    el("td", { class: "num", text: (total.min / 60).toFixed(1) + " h" }),
+    el("td", { class: "num", text: fmtCompact(total.billable) }),
+    el("td", { class: "num", text: fmtYen(total.usd * impactFx()) }),
+    el("td", { class: "num", text: fmtYen(total.min / 60 * impactFactor() * impactRate()) }),
+  ]));
+  document.getElementById("month-count").textContent =
+    shown + " / 全 " + months.length + " 件";
+}
+
+function renderModelImpact() {
+  const rows = impactOf().modelCost || [];
+  const query = document.getElementById("model-search").value.trim().toLowerCase();
+  const sum = rows.reduce((a, m) => a + (m.billable || 0), 0);
+  const tbody = document.querySelector("#model-impact-table tbody");
+  tbody.textContent = "";
+  const shown = rows.filter(m => !query || m.model.toLowerCase().indexOf(query) >= 0);
+  shown.forEach(m => tbody.appendChild(el("tr", {}, [
+    el("td", { class: "grow", text: m.model }),
+    el("td", { class: "num", text: fmt(m.turns) }),
+    el("td", { class: "num", text: fmtCompact(m.billable) }),
+    el("td", { class: "num", text: sum ? ((m.billable || 0) / sum * 100).toFixed(1) + "%" : "—" }),
+  ])));
+  if (!shown.length) {
+    tbody.appendChild(el("tr", {}, [el("td", { colspan: 4, class: "empty", text: "該当なし" })]));
+  }
+  document.getElementById("model-impact-count").textContent =
+    shown.length + " / 全 " + rows.length + " 件";
+}
+
+/* 時間帯別の稼働率（縦棒）。業務時間帯（8〜18 時）を濃い色にして区別する */
+function renderHourlyChart() {
+  const imp = impactOf();
+  const data = imp.hourly || [];
+  document.getElementById("hourly-note").textContent =
+    period().label + "のうち、実際に稼働した平日 " + (imp.hourlyWeekdayCount || 0) +
+    " 日が母数です。各時間帯の 60 分を " + (ASSUMPTIONS.slotMinutes || 5) +
+    " 分枠に割り、記録が 1 件でもある枠を稼働として数えています。" +
+    "セッションを開いたまま放置した時間は入りません。";
+
+  const host = document.getElementById("hourly-chart");
+  host.textContent = "";
+  const peak = data.reduce((a, d) => Math.max(a, d.rate || 0), 0);
+  if (!data.length || peak <= 0) {
+    host.appendChild(el("p", { class: "empty", text: "稼働の記録がありません" }));
+    return;
+  }
+
+  const W = 1200, H = 240, padL = 44, padR = 12, padT = 14, padB = 24;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const max = Math.max(10, Math.ceil(peak / 10) * 10);
+  const svg = svgEl("svg", { width: "100%", height: H, viewBox: "0 0 " + W + " " + H });
+
+  for (let g = 0; g <= 4; g++) {
+    const y = padT + ih - (g / 4) * ih;
+    svg.appendChild(svgEl("line", {
+      x1: padL, y1: y, x2: W - padR, y2: y,
+      stroke: "var(--border)", "stroke-dasharray": "2 3", "stroke-width": 1,
+    }));
+    const label = svgEl("text", {
+      x: padL - 6, y: y + 3, "text-anchor": "end",
+      fill: "var(--text-muted)", "font-size": 10,
+    });
+    label.textContent = (max * g / 4).toFixed(0) + "%";
+    svg.appendChild(label);
+  }
+
+  const bw = iw / 24;
+  data.forEach(d => {
+    const h = (d.rate / max) * ih;
+    const x = padL + d.hour * bw;
+    const isCore = d.hour >= 8 && d.hour < 18;
+    const rect = svgEl("rect", {
+      x: x + 3, y: padT + ih - h, width: Math.max(1, bw - 6), height: Math.max(0, h), rx: 2,
+      fill: isCore ? "var(--accent)" : "var(--accent-soft)",
+    });
+    rect.appendChild(svgEl("title", {})).textContent =
+      d.hour + " 時台 " + d.rate + "%（稼働枠 " + fmt(d.activeSlots) + "）";
+    svg.appendChild(rect);
+
+    if (d.rate >= max / 10) {
+      const value = svgEl("text", {
+        x: x + bw / 2, y: padT + ih - h - 4, "text-anchor": "middle",
+        fill: "var(--text)", "font-size": 10,
+      });
+      value.textContent = d.rate;
+      svg.appendChild(value);
+    }
+    const tick = svgEl("text", {
+      x: x + bw / 2, y: H - 8, "text-anchor": "middle",
+      fill: "var(--text-muted)", "font-size": 10,
+    });
+    tick.textContent = d.hour;
+    svg.appendChild(tick);
+  });
+  svg.appendChild(svgEl("line", {
+    x1: padL, y1: padT + ih, x2: W - padR, y2: padT + ih, stroke: "var(--border)", "stroke-width": 1,
+  }));
+  host.appendChild(svg);
+}
+
+/* 日別の稼働時間（直近 60 日）。土日は淡い色にする */
+function renderActiveDaily() {
+  const all = (impactOf().activeByDay || []).slice();
+  const host = document.getElementById("active-daily-chart");
+  host.textContent = "";
+  if (!all.length) {
+    host.appendChild(el("p", { class: "empty", text: "稼働の記録がありません" }));
+    return;
+  }
+  const data = all.slice(-60);
+  const W = 1200, H = 200, padL = 44, padR = 12, padT = 14, padB = 46;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const peak = data.reduce((a, d) => Math.max(a, d.minutes || 0), 0);
+  const max = Math.max(60, Math.ceil(peak / 60) * 60);
+  const svg = svgEl("svg", { width: "100%", height: H, viewBox: "0 0 " + W + " " + H });
+
+  for (let g = 0; g <= 4; g++) {
+    const y = padT + ih - (g / 4) * ih;
+    svg.appendChild(svgEl("line", {
+      x1: padL, y1: y, x2: W - padR, y2: y,
+      stroke: "var(--border)", "stroke-dasharray": "2 3", "stroke-width": 1,
+    }));
+    const label = svgEl("text", {
+      x: padL - 6, y: y + 3, "text-anchor": "end", fill: "var(--text-muted)", "font-size": 10,
+    });
+    label.textContent = (max * g / 4 / 60).toFixed(0) + " h";
+    svg.appendChild(label);
+  }
+
+  const bw = iw / data.length;
+  data.forEach((d, i) => {
+    const date = new Date(d.date + "T00:00:00");
+    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+    const h = (d.minutes / max) * ih;
+    const x = padL + i * bw;
+    const rect = svgEl("rect", {
+      x: x + 1, y: padT + ih - h, width: Math.max(1, bw - 2), height: Math.max(0, h), rx: 1,
+      fill: isWeekend ? "var(--accent-soft)" : "var(--accent)",
+    });
+    rect.appendChild(svgEl("title", {})).textContent =
+      d.date + " " + (d.minutes / 60).toFixed(1) + " h";
+    svg.appendChild(rect);
+
+    if (i % 5 === 0) {
+      const cx = x + bw / 2;
+      const tick = svgEl("text", {
+        x: cx, y: H - 14, "text-anchor": "end", fill: "var(--text-muted)", "font-size": 10,
+        transform: "rotate(-50 " + cx + " " + (H - 14) + ")",
+      });
+      tick.textContent = d.date.slice(5);
+      svg.appendChild(tick);
+    }
+  });
+  svg.appendChild(svgEl("line", {
+    x1: padL, y1: padT + ih, x2: W - padR, y2: padT + ih, stroke: "var(--border)", "stroke-width": 1,
+  }));
+  host.appendChild(svg);
+}
+
+function renderAdoption() {
+  const ad = impactOf().adoption || {};
+  const host = document.getElementById("adoption-cards");
+  host.textContent = "";
+  host.appendChild(impactKpiCard("稼働日 / 営業日",
+    ad.businessDays ? (ad.usedBusinessDays / ad.businessDays * 100).toFixed(1) + "%" : "—",
+    (ad.usedBusinessDays || 0) + " / " + (ad.businessDays || 0) + " 日"));
+  host.appendChild(impactKpiCard("最長連続", (ad.bestStreak || 0) + " 日", "営業日ベース"));
+  host.appendChild(impactKpiCard("現在の連続", (ad.currentStreak || 0) + " 日", "最終稼働日から遡って"));
+  host.appendChild(impactKpiCard("稼働した日数", (ad.activeDays || 0) + " 日", "土日を含む"));
+}
+
+function renderSubagent() {
+  const sg = impactOf().subagent || {};
+  const totalBillable = (sg.parentBillable || 0) + (sg.subagentBillable || 0);
+  const totalSessions = (sg.parents || 0) + (sg.subagents || 0);
+
+  const host = document.getElementById("subagent-cards");
+  host.textContent = "";
+  host.appendChild(impactKpiCard("親セッション", fmt(sg.parents || 0), ""));
+  host.appendChild(impactKpiCard("サブエージェント", fmt(sg.subagents || 0),
+    sg.parents ? "親 1 件あたり " + (sg.subagents / sg.parents).toFixed(1) + " 件" : ""));
+  host.appendChild(impactKpiCard("トークン比率",
+    totalBillable ? (sg.subagentBillable / totalBillable * 100).toFixed(1) + "%" : "—",
+    "サブ / 全体（課金相当）"));
+
+  const bars = document.getElementById("subagent-bars");
+  bars.textContent = "";
+  [
+    ["課金相当トークン", sg.parentBillable || 0, sg.subagentBillable || 0,
+      fmtCompact(totalBillable)],
+    ["セッション数", sg.parents || 0, sg.subagents || 0, fmt(totalSessions)],
+  ].forEach(row => {
+    bars.appendChild(el("div", { class: "bar-line" }, [
+      el("span", { class: "nm", text: row[0] }),
+      stackedBar([
+        { value: row[1], varName: "--accent", label: "親" },
+        { value: row[2], varName: "--claude", label: "サブエージェント" },
+      ], 300, 14),
+      el("span", { class: "vl", text: row[3] }),
+    ]));
+  });
+}
+
+function renderPhaseMonthly() {
+  const host = document.getElementById("phase-monthly");
+  host.textContent = "";
+  let drawn = 0;
+  impactMonths().forEach(month => {
+    const p = DATA.periods["month:" + month];
+    if (!p) { return; }
+    const counts = p.byPhase || {};
+    const total = PHASES.reduce((a, ph) => a + (counts[ph.key] || 0), 0);
+    if (!total) { return; }
+    drawn++;
+    const parts = PHASES.map(ph => ({
+      value: counts[ph.key] || 0, varName: ph.varName, label: ph.label,
+    }));
+    const classified = 100 - (counts.unknown || 0) / total * 100;
+    host.appendChild(el("div", { class: "bar-line" }, [
+      el("span", { class: "nm", text: month }),
+      stackedBar(parts, 300, 14),
+      el("span", { class: "vl", text: classified.toFixed(0) + "% 分類" }),
+    ]));
+  });
+  if (!drawn) {
+    host.appendChild(el("p", { class: "empty", text: "分類できた実行がありません" }));
+  }
+  const legend = document.getElementById("phase-monthly-legend");
+  legend.textContent = "";
+  PHASES.forEach(ph => legend.appendChild(
+    el("span", { class: "lg-" + ph.key, text: ph.label })));
+}
+
+/* 月別のモデル構成比。色は課金相当トークンの多い上位 5 件に割り当てる */
+const IMPACT_MODEL_COLORS = ["--claude", "--accent", "--codex", "--cursor", "--phase-test"];
+
+function renderModelMonthly() {
+  const top = (impactAll().modelCost || []).slice(0, 5).map(m => m.model);
+  const colorOf = {};
+  top.forEach((name, i) => { colorOf[name] = IMPACT_MODEL_COLORS[i]; });
+
+  const host = document.getElementById("model-monthly");
+  host.textContent = "";
+  impactMonths().forEach(month => {
+    const p = DATA.periods["month:" + month];
+    if (!p) { return; }
+    const byModel = p.byModel || [];
+    const total = byModel.reduce((a, x) => a + (x.turns || 0), 0);
+    if (!total) { return; }
+    const parts = top.map(name => ({
+      value: byModel.filter(x => x.model === name).reduce((a, x) => a + (x.turns || 0), 0),
+      varName: colorOf[name], label: name,
+    }));
+    const other = total - parts.reduce((a, x) => a + x.value, 0);
+    if (other > 0) {
+      parts.push({ value: other, varName: "--phase-unknown", label: "その他" });
+    }
+    host.appendChild(el("div", { class: "bar-line" }, [
+      el("span", { class: "nm", text: month }),
+      stackedBar(parts, 300, 14),
+      el("span", { class: "vl", text: fmt(total) + " ターン" }),
+    ]));
+  });
+
+  // 凡例は span を使わない。.legend span::before が固定色の丸を出すため、
+  // 動的に色を決めるこの凡例では自前の要素で丸を描く。
+  const legend = document.getElementById("model-monthly-legend");
+  legend.textContent = "";
+  top.forEach((name, i) => {
+    const dot = el("i", {
+      style: "display:inline-block;width:10px;height:10px;border-radius:2px;" +
+        "margin-right:5px;background:var(" + IMPACT_MODEL_COLORS[i] + ")",
+    });
+    const item = el("div", { style: "display:flex;align-items:center" }, [dot]);
+    item.appendChild(document.createTextNode(name));
+    legend.appendChild(item);
+  });
+}
+
+function renderMonthFilterOptions() {
+  const sel = document.getElementById("month-filter");
+  impactMonths().forEach(m => {
+    const option = el("option", { value: m, text: m });
+    sel.appendChild(option);
+  });
+}
+
+/* 期間ボタンで変わる部分。renderAll から呼ぶ */
+function renderImpactPeriod() {
+  document.getElementById("impact-period-label").textContent = "（" + period().label + "）";
+  renderHourlyChart();
+  renderActiveDaily();
+  renderAdoption();
+  renderSubagent();
+  renderImpactMoney();
+}
+
+/* 期間に依存しない部分。読み込み時に 1 度だけ呼ぶ */
+function initImpact() {
+  document.getElementById("in-rate").value = ASSUMPTIONS.hourlyRateJpy || 0;
+  document.getElementById("in-factor").value = ASSUMPTIONS.reductionFactor || 0;
+  document.getElementById("in-fx").value = ASSUMPTIONS.usdJpyRate || 0;
+  document.getElementById("slot-width").textContent = (ASSUMPTIONS.slotMinutes || 5) + " 分枠";
+  document.getElementById("impact-coef-date").textContent =
+    ASSUMPTIONS.coefficientReferenceDate || "—";
+  document.getElementById("impact-coef-src").textContent = ASSUMPTIONS.coefficientSourceUrl || "";
+
+  // 月単位で推移を見るブロックは、期間ボタンに関わらず全期間を出す
+  renderPhaseMonthly();
+  renderModelMonthly();
+  renderMonthFilterOptions();
+
+  ["in-rate", "in-factor", "in-fx"].forEach(id =>
+    document.getElementById(id).addEventListener("input", renderImpactMoney));
+  document.getElementById("month-filter").addEventListener("change", renderMonthTable);
+  document.getElementById("month-search").addEventListener("input", renderMonthTable);
+  document.getElementById("model-search").addEventListener("input", renderModelImpact);
+}
+
 function renderAll() {
   document.getElementById("current-period").textContent = "表示期間: " + period().label;
   renderKpi();
@@ -1531,6 +2354,7 @@ function renderAll() {
   renderSessions();
   renderTools();
   renderQuality();
+  renderImpactPeriod();
 }
 
 /* ── テーマ切替（ダーク → ライト → OS 追従 を巡回）─────────── */
@@ -1640,6 +2464,7 @@ document.getElementById("skip-search").addEventListener("input", renderQuality);
   names.forEach(n => select.appendChild(el("option", { value: n, text: n })));
 })();
 
+initImpact();
 renderAll();
 </script>
 </body>

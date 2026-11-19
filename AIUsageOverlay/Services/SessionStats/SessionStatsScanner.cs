@@ -269,8 +269,11 @@ namespace AIUsageOverlay.Services.SessionStats
                 progress?.Report((++done, total));
             }
 
-            // 削除された履歴ファイルの分も過去分として残す（設計書 6 章）
-            if (cache is not null && cache.SchemaVersion == SessionStatsCache.CurrentSchemaVersion)
+            // 削除された履歴ファイルの分も過去分として残す（設計書 6 章）。
+            // 版が上がっていても、既存指標の定義が変わっていない範囲
+            // （MinCompatibleSchemaVersion 以上）なら引き継ぐ。
+            // 履歴が消えたセッションは再パースで復元できず、ここで捨てると二度と戻らない。
+            if (cache is not null && cache.SchemaVersion >= SessionStatsCache.MinCompatibleSchemaVersion)
             {
                 var known = new HashSet<string>(result.Sessions.Select(s => s.Key), StringComparer.Ordinal);
                 foreach (var old in cache.Sessions)
@@ -1105,6 +1108,13 @@ namespace AIUsageOverlay.Services.SessionStats
             /// <summary>観測した相異なる時刻の数（2 未満なら経過時間を測定不可とする）。</summary>
             private readonly HashSet<DateTime> _distinctTimestamps = new();
 
+            /// <summary>
+            /// 稼働していた 5 分枠。キーはローカル日付、値は枠番号の集合。
+            /// 同じ枠に何件記録があっても 1 回しか数えないため集合で持つ。
+            /// </summary>
+            private readonly Dictionary<string, HashSet<int>> _activeSlots =
+                new(StringComparer.Ordinal);
+
             /// <summary>現在のターンが属するローカル日付。</summary>
             private string? _currentDay;
 
@@ -1168,6 +1178,19 @@ namespace AIUsageOverlay.Services.SessionStats
                 {
                     _distinctTimestamps.Add(t);
                 }
+
+                // 稼働していた 5 分枠を記録する。
+                // ローカル時刻で数えるのは、時間帯別の見え方を利用者の生活時間に合わせるため。
+                // 日付の帰属は既存の日別集計（設計書 7.4）と同じくローカル日付に揃える。
+                var local = t.ToLocalTime();
+                var day = local.ToString("yyyy-MM-dd");
+                if (!_activeSlots.TryGetValue(day, out var slots))
+                {
+                    slots = new HashSet<int>();
+                    _activeSlots[day] = slots;
+                }
+                slots.Add(local.Hour * SessionStatsRecord.ActiveSlotsPerHour
+                    + local.Minute / SessionStatsRecord.ActiveSlotMinutes);
             }
 
             /// <summary>
@@ -1326,6 +1349,12 @@ namespace AIUsageOverlay.Services.SessionStats
                     FirstPrompt = FirstPrompt,
                     Turns = _turns,
                     Tokens = totals,
+                    ActiveSlots = _activeSlots
+                        .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+                        .ToDictionary(
+                            kv => kv.Key,
+                            kv => kv.Value.OrderBy(slot => slot).ToList(),
+                            StringComparer.Ordinal),
                     ByModel = _byModel
                         .Where(kv => !IsEmpty(kv.Value))
                         .OrderByDescending(kv => kv.Value.Output + kv.Value.Input)

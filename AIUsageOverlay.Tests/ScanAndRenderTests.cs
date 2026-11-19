@@ -274,9 +274,15 @@ public class ScanAndRenderTests : IDisposable
         Assert.Contains("<!--", raw!, StringComparison.Ordinal);
     }
 
-    /// <summary>4ツール表示とAPI換算ポイントを含み、通貨・金額表記を出さない。</summary>
+    /// <summary>
+    /// 4 ツール表示と API 換算ポイントを描画し、実際の支払いと誤解させる表記は出さない。
+    ///
+    /// 効果・稼働タブでは意図して金額（円 / USD）を出す。定額プランの支払額ではなく
+    /// 「同じ量を API で使ったらいくらか」という参考値であることが前提で、
+    /// 「請求額」「支払額」「節約額」のように実際の支払いと取り違えるラベルは使わない。
+    /// </summary>
     [Fact]
-    public void CoworkとAPI換算ポイントを金額非表示で描画する()
+    public void Coworkと効果タブを描画し支払額とは呼ばない()
     {
         var html = BuildHtml();
 
@@ -286,10 +292,14 @@ public class ScanAndRenderTests : IDisposable
         Assert.Contains("API換算ポイント", html, StringComparison.Ordinal);
         Assert.Contains("value=\"cursor\"", html, StringComparison.Ordinal);
         Assert.Contains("value=\"cowork\"", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("USD", html, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("$", html, StringComparison.Ordinal);
-        Assert.DoesNotContain("円換算", html, StringComparison.Ordinal);
+
+        // 効果・稼働タブ（金額を出す側）
+        Assert.Contains("従量課金だった場合の費用（参考値）", html, StringComparison.Ordinal);
+        Assert.Contains("効果額", html, StringComparison.Ordinal);
+
         Assert.DoesNotContain("請求額", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("支払額", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("節約額", html, StringComparison.Ordinal);
     }
 
     /// <summary>entrypoint欠落Coworkは採用し、品質状態をpartialにする。</summary>
