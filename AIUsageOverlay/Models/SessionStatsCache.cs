@@ -16,8 +16,20 @@ namespace AIUsageOverlay.Models
         /// 2: キャッシュ書き込みを TTL 別（cacheCreate5m / cacheCreate1h）に持つようにした。
         ///    版を据え置くと、既存のキャッシュを流用したセッションは内訳が 0 のままとなり、
         ///    コスト換算で全量が「保持時間不明」に落ちる。
+        /// 3: 稼働していた 5 分枠（activeSlots）を持つようにした。
+        ///    版を据え置くと、既存のキャッシュを流用したセッションは枠が空のままとなり、
+        ///    時間帯別の稼働率と効果額が古いセッションだけ 0 になる。
         /// </summary>
-        public const int CurrentSchemaVersion = 2;
+        public const int CurrentSchemaVersion = 3;
+
+        /// <summary>
+        /// 過去分（履歴ファイルが既に消えたセッション）を引き継げる最小のスキーマ版。
+        ///
+        /// 版が上がると全件再パースするが、履歴ファイルが消えたセッションは再パースできない。
+        /// そこを版の一致で切ると、二度と復元できない過去の集計を毎回の版上げで失う。
+        /// 既存指標の定義を変えた場合だけこの値を上げること（版 3 は枠の追加のみで定義は不変）。
+        /// </summary>
+        public const int MinCompatibleSchemaVersion = 2;
 
         /// <summary>キャッシュのスキーマ版数。</summary>
         [JsonPropertyName("schemaVersion")]

@@ -1,4 +1,5 @@
 using AIUsageOverlay.Models;
+using System.Globalization;
 using System.IO;
 
 namespace AIUsageOverlay.Services.SessionStats
@@ -30,6 +31,14 @@ namespace AIUsageOverlay.Services.SessionStats
         /// ダッシュボード API 傍受で取得した値を別途注入する。
         /// </summary>
         public Dictionary<string, Models.CursorMonthlyTokens> CursorMonthly { get; set; } = new();
+
+        /// <summary>
+        /// 効果・稼働タブのデータ（全期間固定）。
+        ///
+        /// 上部の期間ボタンでは切り替えない。月ごとの推移は Periods の "month:yyyy-MM" を参照する。
+        /// 期間を絞ると定着率や時間帯別の母数が小さくなり、かえって読みづらくなるため。
+        /// </summary>
+        public ImpactView Impact { get; set; } = new();
     }
 
     /// <summary>セッション一覧の 1 行。</summary>
@@ -244,6 +253,9 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>この期間に含まれるセッションのキー一覧。</summary>
         public List<string> SessionKeys { get; set; } = new();
+
+        /// <summary>この期間の稼働・効果データ（効果・稼働タブ）。</summary>
+        public PeriodImpactView Impact { get; set; } = new();
     }
 
     /// <summary>日別の 1 点。</summary>
@@ -361,6 +373,20 @@ namespace AIUsageOverlay.Services.SessionStats
         /// <summary>出力（入力単価の 5 倍）の構成比。</summary>
         public double OutputPercent { get; set; }
 
+        /// <summary>
+        /// 従量課金だった場合の費用（USD）。API 公開単価でトークンを換算した金額。
+        ///
+        /// 定額プランで実際に支払った額ではない。同じ量を API で使ったらいくらになるか、
+        /// という参考値であり、画面でもそう明記する。
+        /// </summary>
+        public decimal UsdAmount { get; set; }
+
+        /// <summary>
+        /// モデル別の USD。どのモデルに費用が寄っているかを出すために持つ。
+        /// セッション明細では空にする（同じ表が何百回も JSON に載るため）。
+        /// </summary>
+        public Dictionary<string, decimal> UsdByModel { get; set; } = new();
+
         /// <summary>換算に含めたトークン数（課金相当）。</summary>
         public long CoveredTokens { get; set; }
 
@@ -424,6 +450,166 @@ namespace AIUsageOverlay.Services.SessionStats
 
         /// <summary>件数。</summary>
         public int Count { get; set; }
+    }
+
+    /// <summary>
+    /// 効果額・費用換算に使う前提値。レポート生成時に設定から渡す。
+    ///
+    /// いずれも実測値ではなく置き方の問題であり、値次第で金額は何倍にも変わる。
+    /// レポートには計算式と併せて必ず表示し、画面上でも変更できるようにする。
+    /// </summary>
+    /// <param name="HourlyRateJpy">社内工数単価（円 / 時間）</param>
+    /// <param name="ReductionFactor">削減係数 k（AI 稼働時間に掛ける倍率）</param>
+    /// <param name="UsdJpyRate">為替レート（円 / USD）</param>
+    public sealed record ReportAssumptions(
+        int HourlyRateJpy, double ReductionFactor, double UsdJpyRate)
+    {
+        /// <summary>設定を読めない場合の既定値。AppSettings の既定と揃える。</summary>
+        public static ReportAssumptions Default { get; } = new(5000, 2.0, 150.0);
+    }
+
+    /// <summary>
+    /// 効果・稼働タブのうち、期間に依存しない部分。
+    ///
+    /// 稼働時間・効果額・定着率は上部の期間ボタンで切り替わるため、
+    /// 実数は期間ごとに <see cref="PeriodView.Impact"/> へ入れる。
+    /// </summary>
+    public class ImpactView
+    {
+        /// <summary>金額計算の前提値。</summary>
+        public AssumptionView Assumptions { get; set; } = new();
+    }
+
+    /// <summary>
+    /// 期間 1 つ分の稼働・効果データ。
+    ///
+    /// 稼働枠は「枠の日付が期間内か」で絞る。セッションの開始日では絞らない
+    /// （日をまたいだセッションの枠が、期間の境界で丸ごと落ちたり入ったりするため）。
+    /// </summary>
+    public class PeriodImpactView
+    {
+        /// <summary>時間帯別の稼働率（0 時から 23 時まで 24 件）。</summary>
+        public List<HourRateView> Hourly { get; set; } = new();
+
+        /// <summary>時間帯別の母数になった平日の日数（期間内で実際に稼働した平日）。</summary>
+        public int HourlyWeekdayCount { get; set; }
+
+        /// <summary>日別の稼働時間（分）。土日も含む。</summary>
+        public List<DayMinutesView> ActiveByDay { get; set; } = new();
+
+        /// <summary>稼働時間の合計（分）。効果額の入力になる値。</summary>
+        public long TotalActiveMinutes { get; set; }
+
+        /// <summary>定着率。</summary>
+        public AdoptionView Adoption { get; set; } = new();
+
+        /// <summary>サブエージェントの内訳。</summary>
+        public SubagentView Subagent { get; set; } = new();
+
+        /// <summary>モデル別の費用換算。</summary>
+        public List<ModelCostView> ModelCost { get; set; } = new();
+    }
+
+    /// <summary>効果額・費用換算の前提値（画面表示用）。</summary>
+    public class AssumptionView
+    {
+        /// <summary>社内工数単価（円 / 時間）。</summary>
+        public int HourlyRateJpy { get; set; }
+
+        /// <summary>削減係数 k。</summary>
+        public double ReductionFactor { get; set; }
+
+        /// <summary>為替レート（円 / USD）。生成時点の参考値。</summary>
+        public double UsdJpyRate { get; set; }
+
+        /// <summary>稼働枠の幅（分）。</summary>
+        public int SlotMinutes { get; set; }
+
+        /// <summary>API 単価を公式表と照合した日。</summary>
+        public string CoefficientReferenceDate { get; set; } = string.Empty;
+
+        /// <summary>API 単価の参照元。</summary>
+        public string CoefficientSourceUrl { get; set; } = string.Empty;
+    }
+
+    /// <summary>時間帯 1 つ分の稼働率。</summary>
+    public class HourRateView
+    {
+        /// <summary>時（0〜23）。</summary>
+        public int Hour { get; set; }
+
+        /// <summary>稼働していた枠の延べ数。</summary>
+        public int ActiveSlots { get; set; }
+
+        /// <summary>稼働率（0〜100）。その時間帯の枠のうち稼働していた割合。</summary>
+        public double Rate { get; set; }
+    }
+
+    /// <summary>日ごとの稼働時間。</summary>
+    public class DayMinutesView
+    {
+        /// <summary>ローカル日付（yyyy-MM-dd）。</summary>
+        public string Date { get; set; } = string.Empty;
+
+        /// <summary>稼働時間（分）。</summary>
+        public int Minutes { get; set; }
+    }
+
+    /// <summary>定着率。母数は土日を除いた営業日で、祝日は考慮しない。</summary>
+    public class AdoptionView
+    {
+        /// <summary>最初に稼働した日。</summary>
+        public string FirstDay { get; set; } = string.Empty;
+
+        /// <summary>最後に稼働した日。</summary>
+        public string LastDay { get; set; } = string.Empty;
+
+        /// <summary>期間内の営業日数。</summary>
+        public int BusinessDays { get; set; }
+
+        /// <summary>そのうち実際に稼働した営業日数。</summary>
+        public int UsedBusinessDays { get; set; }
+
+        /// <summary>稼働した日数（土日を含む）。</summary>
+        public int ActiveDays { get; set; }
+
+        /// <summary>最長の連続稼働日数（営業日ベース）。</summary>
+        public int BestStreak { get; set; }
+
+        /// <summary>最終稼働日から遡った連続稼働日数（営業日ベース）。</summary>
+        public int CurrentStreak { get; set; }
+    }
+
+    /// <summary>サブエージェントの内訳。</summary>
+    public class SubagentView
+    {
+        /// <summary>親セッション数。</summary>
+        public int Parents { get; set; }
+
+        /// <summary>サブエージェント数。</summary>
+        public int Subagents { get; set; }
+
+        /// <summary>親セッションの課金相当トークン（単独値の総和）。</summary>
+        public long ParentBillable { get; set; }
+
+        /// <summary>サブエージェントの課金相当トークン（単独値の総和）。</summary>
+        public long SubagentBillable { get; set; }
+    }
+
+    /// <summary>モデル別の費用換算 1 行。</summary>
+    public class ModelCostView
+    {
+        /// <summary>モデル名。</summary>
+        public string Model { get; set; } = string.Empty;
+
+        /// <summary>ターン数。</summary>
+        public int Turns { get; set; }
+
+        /// <summary>課金相当トークン。</summary>
+        public long Billable { get; set; }
+
+        /// <summary>従量課金だった場合の費用（USD）。換算対象外なら 0。</summary>
+        public decimal Usd { get; set; }
     }
 
     /// <summary>データ品質タブに出す情報（設計書 8.5）。</summary>
@@ -585,7 +771,8 @@ namespace AIUsageOverlay.Services.SessionStats
             bool includePrompt,
             string appVersion,
             bool cacheWasCorrupted,
-            DateTime nowLocal)
+            DateTime nowLocal,
+            ReportAssumptions? assumptions = null)
         {
             var sessions = scan.Sessions;
             var cumulative = BuildCumulative(sessions);
@@ -609,6 +796,7 @@ namespace AIUsageOverlay.Services.SessionStats
             }
 
             AddMonthlyPeriods(report, sessions);
+            report.Impact = BuildImpactAssumptions(assumptions ?? ReportAssumptions.Default);
             return report;
         }
 
@@ -637,6 +825,303 @@ namespace AIUsageOverlay.Services.SessionStats
                     BuildPeriod(label, sessions, month, month.AddMonths(1));
             }
         }
+
+        /// <summary>金額計算の前提値を画面用へ写す（期間に依存しない）。</summary>
+        /// <param name="assumptions">設定から渡された前提値</param>
+        /// <returns>効果・稼働タブの前提ブロック</returns>
+        private static ImpactView BuildImpactAssumptions(ReportAssumptions assumptions)
+            => new()
+            {
+                Assumptions = new AssumptionView
+                {
+                    HourlyRateJpy = assumptions.HourlyRateJpy,
+                    ReductionFactor = assumptions.ReductionFactor,
+                    UsdJpyRate = assumptions.UsdJpyRate,
+                    SlotMinutes = SessionStatsRecord.ActiveSlotMinutes,
+                    CoefficientReferenceDate = ModelPricing.CoefficientReferenceDate,
+                    CoefficientSourceUrl = ModelPricing.CoefficientSourceUrl,
+                },
+            };
+
+        /// <summary>
+        /// 期間 1 つ分の稼働・効果データを作る。
+        ///
+        /// 稼働時間は 5 分枠の数から求める。セッションの経過時間（開始〜終了の差）は
+        /// 離席・レビュー待ちを含むため使わない（設計書 7.2 / 7.2.1）。
+        /// 枠はセッションをまたいで重複排除するので、サブエージェントを並列に走らせても
+        /// 同じ時刻が二重計上されることはない。
+        ///
+        /// 枠は全セッションから「枠の日付が期間内か」で絞る。セッションの開始日で絞ると、
+        /// 日をまたいだセッションの枠が期間の境界で丸ごと落ちたり入ったりする。
+        /// 一方でトークンとモデル別費用はセッション基準（開始日）で、他の指標と揃える。
+        /// </summary>
+        /// <param name="allSessions">全セッション（枠の抽出に使う）</param>
+        /// <param name="inPeriod">開始日が期間内のセッション（トークン系の集計に使う）</param>
+        /// <param name="fromLocal">期間の開始日（ローカル）。MinValue なら下限なし</param>
+        /// <param name="toLocalExclusive">期間の終端（この日を含まない）。MaxValue なら上限なし</param>
+        /// <returns>期間 1 つ分の稼働・効果データ</returns>
+        private static PeriodImpactView BuildPeriodImpact(
+            IReadOnlyCollection<SessionStatsRecord> allSessions,
+            IReadOnlyCollection<SessionStatsRecord> inPeriod,
+            DateTime fromLocal,
+            DateTime toLocalExclusive)
+        {
+            var slotsByDay = MergeActiveSlots(allSessions, fromLocal, toLocalExclusive);
+
+            var impact = new PeriodImpactView
+            {
+                ActiveByDay = slotsByDay
+                    .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+                    .Select(kv => new DayMinutesView
+                    {
+                        Date = kv.Key,
+                        Minutes = kv.Value.Count * SessionStatsRecord.ActiveSlotMinutes,
+                    })
+                    .ToList(),
+                Adoption = BuildAdoption(slotsByDay),
+                Subagent = BuildSubagent(inPeriod),
+                ModelCost = BuildModelCost(inPeriod),
+            };
+            impact.TotalActiveMinutes = impact.ActiveByDay.Sum(d => (long)d.Minutes);
+            impact.Hourly = BuildHourly(slotsByDay, out var weekdayCount);
+            impact.HourlyWeekdayCount = weekdayCount;
+            return impact;
+        }
+
+        /// <summary>
+        /// 全セッションの稼働枠を日付ごとに重ね合わせる。
+        /// 同じ枠に複数のセッションが居ても 1 回しか数えない。
+        /// </summary>
+        /// <param name="sessions">全セッション</param>
+        /// <param name="fromLocal">この日より前の枠は捨てる。MinValue なら下限なし</param>
+        /// <param name="toLocalExclusive">この日以降の枠は捨てる。MaxValue なら上限なし</param>
+        /// <returns>ローカル日付 → 稼働していた枠番号の集合</returns>
+        private static Dictionary<string, HashSet<int>> MergeActiveSlots(
+            IReadOnlyCollection<SessionStatsRecord> sessions,
+            DateTime fromLocal,
+            DateTime toLocalExclusive)
+        {
+            var slotsByDay = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
+            foreach (var session in sessions)
+            {
+                foreach (var (day, slots) in session.ActiveSlots)
+                {
+                    if (!TryParseDay(day, out var date))
+                    {
+                        continue;
+                    }
+                    if (date < fromLocal.Date ||
+                        (toLocalExclusive != DateTime.MaxValue && date >= toLocalExclusive.Date))
+                    {
+                        continue;
+                    }
+                    if (!slotsByDay.TryGetValue(day, out var set))
+                    {
+                        set = new HashSet<int>();
+                        slotsByDay[day] = set;
+                    }
+                    set.UnionWith(slots);
+                }
+            }
+            return slotsByDay;
+        }
+
+        /// <summary>
+        /// 時間帯別の稼働率を求める。
+        ///
+        /// 母数は「期間内で実際に稼働した平日」。使わなかった日まで分母へ入れると
+        /// 「使う日は何時に使うか」という問いが薄まる。使った日の割合は定着率で別に出す。
+        /// </summary>
+        /// <param name="slotsByDay">日付ごとの稼働枠（期間で絞り込み済み）</param>
+        /// <param name="weekdayCount">母数になった平日の日数</param>
+        /// <returns>24 件の稼働率</returns>
+        private static List<HourRateView> BuildHourly(
+            Dictionary<string, HashSet<int>> slotsByDay, out int weekdayCount)
+        {
+            var target = new List<HashSet<int>>();
+            foreach (var (day, slots) in slotsByDay)
+            {
+                if (!TryParseDay(day, out var date))
+                {
+                    continue;
+                }
+                if (!IsBusinessDay(date))
+                {
+                    continue;
+                }
+                target.Add(slots);
+            }
+            weekdayCount = target.Count;
+
+            var denominator = target.Count * SessionStatsRecord.ActiveSlotsPerHour;
+            var hourly = new List<HourRateView>(24);
+            for (var hour = 0; hour < 24; hour++)
+            {
+                var lo = hour * SessionStatsRecord.ActiveSlotsPerHour;
+                var hi = lo + SessionStatsRecord.ActiveSlotsPerHour;
+                var active = target.Sum(slots => slots.Count(slot => slot >= lo && slot < hi));
+                hourly.Add(new HourRateView
+                {
+                    Hour = hour,
+                    ActiveSlots = active,
+                    Rate = denominator == 0 ? 0d : Math.Round((double)active / denominator * 100d, 1),
+                });
+            }
+            return hourly;
+        }
+
+        /// <summary>
+        /// 定着率を求める。母数は初回稼働日から最終稼働日までの営業日。
+        /// 土日を除くだけで祝日は考慮しない（社内カレンダーを持ち込まない）。
+        /// 連続日数も営業日で数え、土日は切れ目にしない。
+        /// </summary>
+        /// <param name="slotsByDay">日付ごとの稼働枠</param>
+        /// <returns>定着率</returns>
+        private static AdoptionView BuildAdoption(Dictionary<string, HashSet<int>> slotsByDay)
+        {
+            var days = new SortedSet<DateTime>();
+            foreach (var day in slotsByDay.Keys)
+            {
+                if (TryParseDay(day, out var date))
+                {
+                    days.Add(date);
+                }
+            }
+            if (days.Count == 0)
+            {
+                return new AdoptionView();
+            }
+
+            var first = days.Min;
+            var last = days.Max;
+            var businessDays = 0;
+            var used = 0;
+            var streak = 0;
+            var best = 0;
+            for (var cur = first; cur <= last; cur = cur.AddDays(1))
+            {
+                if (!IsBusinessDay(cur))
+                {
+                    continue;
+                }
+                businessDays++;
+                if (days.Contains(cur))
+                {
+                    used++;
+                    streak++;
+                    best = Math.Max(best, streak);
+                }
+                else
+                {
+                    streak = 0;
+                }
+            }
+
+            // 現在の連続は、最終稼働日から営業日を遡って数える
+            var current = 0;
+            for (var cur = last; cur >= first; cur = cur.AddDays(-1))
+            {
+                if (!IsBusinessDay(cur))
+                {
+                    continue;
+                }
+                if (!days.Contains(cur))
+                {
+                    break;
+                }
+                current++;
+            }
+
+            return new AdoptionView
+            {
+                FirstDay = first.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                LastDay = last.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                BusinessDays = businessDays,
+                UsedBusinessDays = used,
+                ActiveDays = days.Count,
+                BestStreak = best,
+                CurrentStreak = current,
+            };
+        }
+
+        /// <summary>
+        /// サブエージェントの内訳を作る。トークンは単独値を使う。
+        /// 累計値（配下を含む値）を足すと二重計上になる（設計書 5.4）。
+        /// </summary>
+        /// <param name="sessions">全セッション</param>
+        /// <returns>サブエージェントの内訳</returns>
+        private static SubagentView BuildSubagent(IReadOnlyCollection<SessionStatsRecord> sessions)
+        {
+            var view = new SubagentView();
+            foreach (var session in sessions)
+            {
+                var billable = session.Tokens.Billable(session.Tool);
+                if (session.IsSubagent)
+                {
+                    view.Subagents++;
+                    view.SubagentBillable += billable;
+                }
+                else
+                {
+                    view.Parents++;
+                    view.ParentBillable += billable;
+                }
+            }
+            return view;
+        }
+
+        /// <summary>
+        /// モデル別の「従量課金だった場合の費用」を作る。
+        ///
+        /// 単価表に無いモデルと Codex は CostAccumulator が換算から外すため USD は 0 になる。
+        /// ターン数と課金相当トークンは除外分も出す（量を隠さない。設計書 7.1.1）。
+        /// </summary>
+        /// <param name="sessions">全セッション</param>
+        /// <returns>課金相当トークンの多い順に並べたモデル別の行</returns>
+        private static List<ModelCostView> BuildModelCost(
+            IReadOnlyCollection<SessionStatsRecord> sessions)
+        {
+            var turns = new Dictionary<string, int>(StringComparer.Ordinal);
+            var tokens = new Dictionary<string, long>(StringComparer.Ordinal);
+            var accumulator = new CostAccumulator();
+
+            foreach (var session in sessions)
+            {
+                foreach (var model in session.ByModel)
+                {
+                    var name = string.IsNullOrWhiteSpace(model.Model) ? "(モデル不明)" : model.Model;
+                    turns[name] = turns.GetValueOrDefault(name) + model.Turns;
+                    tokens[name] = tokens.GetValueOrDefault(name) + model.Tokens.Billable(session.Tool);
+                    accumulator.Add(session.Tool, model.Model, model.Tokens);
+                }
+            }
+
+            var usdByModel = accumulator.Build(withPrices: true).UsdByModel;
+            return tokens
+                .Select(kv => new ModelCostView
+                {
+                    Model = kv.Key,
+                    Turns = turns.GetValueOrDefault(kv.Key),
+                    Billable = kv.Value,
+                    Usd = usdByModel.GetValueOrDefault(kv.Key),
+                })
+                .OrderByDescending(v => v.Billable)
+                .ToList();
+        }
+
+        /// <summary>yyyy-MM-dd をローカル日付として解釈する。</summary>
+        /// <param name="text">日付文字列</param>
+        /// <param name="date">解釈できた日付</param>
+        /// <returns>解釈できたか</returns>
+        private static bool TryParseDay(string text, out DateTime date)
+            => DateTime.TryParseExact(
+                text, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+
+        /// <summary>営業日か。土日を除くだけで祝日は考慮しない。</summary>
+        /// <param name="date">判定する日</param>
+        /// <returns>営業日なら true</returns>
+        private static bool IsBusinessDay(DateTime date)
+            => date.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday);
 
         /// <summary>
         /// cursor-tokens.json の日別集計を各 PeriodView.ByDay の CursorBillable へ流し込む。
@@ -968,6 +1453,7 @@ namespace AIUsageOverlay.Services.SessionStats
                 .Select(kv => new CountView { Name = kv.Key, Count = kv.Value })
                 .ToList();
             view.ByDay = days.Values.OrderBy(d => d.Date, StringComparer.Ordinal).ToList();
+            view.Impact = BuildPeriodImpact(sessions, inPeriod, fromLocal, toLocalExclusive);
 
             var totalPhase = phases.Values.Sum();
             var unknown = phases.GetValueOrDefault(PhaseClassifier.Unknown);
